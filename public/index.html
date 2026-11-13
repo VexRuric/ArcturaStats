@@ -289,8 +289,6 @@ function viewPlayers(){
     {k:'dmg',l:'Damage',f:function(r){return num(r.dmg)}},
     {k:'dpm',l:'Dmg/min',f:function(r){return num(r.dpm)}},
     {k:'taken',l:'Taken',f:function(r){return num(r.taken)}},
-    {k:'crit',l:'Crit %',f:function(r){return num(r.crit,1)}},
-    {k:'maxHit',l:'Best hit',f:function(r){return num(r.maxHit,1)}},
     {k:'mobKills',l:'Mobs',f:function(r){return num(r.mobKills)}},
     {k:'bossKills',l:'Boss',f:function(r){return num(r.bossKills)}}
   ],rows)+'</div><p class="note">Healing is not a column yet: current logs record spawn vitals and passive regen but no player to player heals.</p>';
@@ -331,12 +329,10 @@ function viewClass(c){
     {k:'kdr',l:'K/D',f:function(r){return num(r.kdr,2)}},
     {k:'dpm',l:'Dmg/min',f:function(r){return num(r.dpm)}},
     {k:'spm',l:'Score/min',f:function(r){return num(r.spm,1)}},
-    {k:'hpm',l:'Heal/min',f:function(r){return num(r.hpm)}},
-    {k:'crit',l:'Crit %',f:function(r){return num(r.crit,1)}},
-    {k:'best',l:'Best hit',f:function(r){return num(r.best,1)}}],rows)+'<p class="note">Ranked by the class rating, the moving average of this player\'s matches as '+c+'. Click a column to rank by something else. Level is rating divided by 20, capped at '+LVMAX+'.</p></div>';
+    {k:'hpm',l:'Heal/min',f:function(r){return num(r.hpm)}}],rows)+'<p class="note">Ranked by the class rating, the moving average of this player\'s matches as '+c+'. Click a column to rank by something else. Level is rating divided by 20, capped at '+LVMAX+'.</p></div>';
   var recent=[];rows.forEach(function(r){r.list.forEach(function(x){recent.push({n:r.name,x:x})})});recent.sort(function(a,b){return b.x.t-a.x.t});
   h+='<div class="cols"><div class="panel"><h2>Leaders by stat</h2><div class="lbs">'+
-    leaderBars(rows,'dpm','Damage per minute',function(v){return num(v)},col)+leaderBars(rows,'kdr','Kill/death ratio',function(v){return num(v,2)},col)+leaderBars(rows,'spm','Score per minute',function(v){return num(v,1)},col)+leaderBars(rows,'best','Best single hit',function(v){return num(v,1)},col)+(c==='Priest'||rows.some(function(r){return r.hpm>0})?leaderBars(rows,'hpm','Healing per minute',function(v){return num(v)},col):'')+'</div></div>'+
+    leaderBars(rows,'dpm','Damage per minute',function(v){return num(v)},col)+leaderBars(rows,'kdr','Kill/death ratio',function(v){return num(v,2)},col)+leaderBars(rows,'spm','Score per minute',function(v){return num(v,1)},col)+(c==='Priest'||rows.some(function(r){return r.hpm>0})?leaderBars(rows,'hpm','Healing per minute',function(v){return num(v)},col):'')+'</div></div>'+
     '<div class="panel"><h2>Recent '+c+' matches</h2><ul class="events">'+recent.slice(0,8).map(function(q){var x=q.x;return '<li><time>'+esc(new Date(x.t).toLocaleDateString(undefined,{month:'short',day:'numeric'}))+'</time>'+chip(outcome(x.doc,x.p.team))+'<span><a class="plink" href="#player-'+slug(q.n)+'">'+esc(q.n)+'</a> <span class="note" style="margin:0">'+x.p.kills+'/'+x.p.deaths+', '+num(x.p.dmg)+' dmg, <a class="plink" href="#match-'+esc(x.id)+'">match</a></span></span></li>'}).join('')+'</ul></div></div>';
   h+='<p class="note">With few matches and a single tester, this board is a pipeline check. Win and loss counts stay at 0 until a winner is recorded on the match page.</p>';
   return h;
@@ -646,7 +642,6 @@ function viewMatch(id){
     {k:'dmgM',l:'To mob bots',f:function(r){return num(r.dmgM)}},
     {k:'dmgB',l:'To boss',f:function(r){return num(r.dmgB)}},
     {k:'taken',l:'Taken',f:function(r){return num(r.taken)}},
-    {k:'crit',l:'Crit %',f:function(r){return num(r.crit,1)}},
     {k:'dpm',l:'Dmg/min',f:function(r){return num(r.dpm)}}
   ],rows)+'</div>';
   h+=objPanel(d,(d.players||[]).filter(function(p){return !(hideBots&&isBot(p.name))}));
@@ -699,7 +694,7 @@ function viewPlayer(slugId){
   var mainC=Object.keys(h.reduce(function(o,x){if(x.cls)o[x.cls]=(o[x.cls]||0)+1;return o},{})).sort(function(a,b){var f=function(c){return h.filter(function(x){return x.cls===c}).length};return f(b)-f(a)})[0];
   var out='<div class="bar"><div class="chero">'+(mainC&&CIMG[mainC]?'<a href="#class-'+mainC+'"><img class="cimg" alt="'+mainC+'" src="'+CIMG[mainC]+'"></a>':'')+'<div><h1>'+esc(name)+'</h1><p class="sub">'+h.length+' match'+(h.length===1?'':'es')+' tracked ('+h.filter(function(x){return x.practice}).length+' practice vs bots), last played '+esc(new Date(last.t).toLocaleDateString())+' '+(h.length<PROVISIONAL?'<span class="tag warn">Provisional until '+PROVISIONAL+' matches</span>':'')+(isBot(name)?' <span class="tag">Test bot</span>':'')+'</p></div></div><div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><label class="chk"><input type="checkbox" id="ratedChk"'+(ratedOnly?' checked':'')+'> Rated matches only</label><a class="btn ghost" href="#players" style="text-decoration:none">All players</a></div></div>';
   out+=claimBlock(name);
-  out+='<div class="kpis"><div class="kpi"><b>'+num(last.ema)+'</b><small>Skill rating, '+tier(last.ema)+'</small></div><div class="kpi"><b>'+num(peak)+'</b><small>Peak rating</small></div><div class="kpi"><b>'+(trend||'-')+'</b><small>Last 3 vs earlier</small></div><div class="kpi"><b>'+num(tot.d?tot.k/tot.d:tot.k,2)+'</b><small>K/D</small></div><div class="kpi"><b>'+num(tot.dmg/tot.mins)+'</b><small>Damage/min</small></div><div class="kpi"><b>'+num(tot.hits?100*tot.crits/tot.hits:0,1)+'</b><small>Crit %</small></div></div>';
+  out+='<div class="kpis"><div class="kpi"><b>'+num(last.ema)+'</b><small>Skill rating, '+tier(last.ema)+'</small></div><div class="kpi"><b>'+num(peak)+'</b><small>Peak rating</small></div><div class="kpi"><b>'+(trend||'-')+'</b><small>Last 3 vs earlier</small></div><div class="kpi"><b>'+num(tot.d?tot.k/tot.d:tot.k,2)+'</b><small>K/D</small></div><div class="kpi"><b>'+num(tot.dmg/tot.mins)+'</b><small>Damage/min</small></div></div>';
   out+='<div class="cols"><div class="panel"><h2>Skill over match history</h2>'+ratingChart(h,'ema')+'</div><div class="panel"><h2>What drives the rating</h2><div class="comps">'+compBars(avgC)+'</div><p class="note">Average over all matches, as a share of the reference. The tick marks the reference (100%). Damage 35%, score 25%, kills 20%, survival 20%.</p></div></div>';
   var byC={};h.forEach(function(x){var c=x.cls||'?';(byC[c]||(byC[c]={cls:c==='?'?'':c,matches:0,dmg:0,k:0,d:0,mins:0,score:0,hits:0,crits:0,best:0,rating:0,peak:0,comp:{dmg:0,score:0,kills:0,surv:0},list:[]})).list.push(x)});
   var crows=Object.keys(byC).map(function(c){var o=byC[c];o.list.forEach(function(x){o.matches++;o.dmg+=x.p.dmg;o.k+=x.p.kills;o.d+=x.p.deaths;o.mins+=x.pf.mins;o.score+=x.p.score;o.hits+=x.p.hits;o.crits+=x.p.crits;if(x.p.maxHit>o.best)o.best=x.p.maxHit;for(var q in o.comp)o.comp[q]+=x.pf.comp[q]/o.list.length;if(x.cema>o.peak)o.peak=x.cema});
@@ -717,7 +712,7 @@ function viewPlayer(slugId){
       return '<details class="cdet" data-cls="'+c+'"'+(openCls[c]?' open':'')+'><summary>'+clsCell(c)+' <strong>Level '+num(lv,1)+'</strong> <span class="tag">'+tier(o.rating)+'</span>'+(o.matches<PROVISIONAL?' <span class="tag warn">Provisional</span>':'')+'</summary>'+
         '<div class="lvbar"><i style="width:'+Math.round(lv*10)+'%;background:'+CCOL[c]+'"></i></div>'+
         '<div class="comps">'+compBars(o.comp)+'</div>'+
-        '<p class="note" style="margin:8px 0 0">'+o.matches+' match'+(o.matches===1?'':'es')+', K/D '+num(o.kdr,2)+', '+num(o.dpm)+' dmg/min, '+num(o.spm,1)+' score/min, crit '+num(o.crit,1)+'%, best hit '+num(o.best,1)+', peak level '+num(level(o.peak),1)+'.</p></details>'}).join('')+
+        '<p class="note" style="margin:8px 0 0">'+o.matches+' match'+(o.matches===1?'':'es')+', K/D '+num(o.kdr,2)+', '+num(o.dpm)+' dmg/min, '+num(o.spm,1)+' score/min, peak level '+num(level(o.peak),1)+'.</p></details>'}).join('')+
     '</div></div></div>';
   var sd={};playerGames(name).forEach(function(x){var s=x.p.team>=0?x.p.team:-1,a=sd[s]||(sd[s]={side:s,name:sideName(s),m:0,w:0,l:0,dr:0,u:0,kills:0,points:0});a.m++;var o=outcome(x.doc,s);if(o==='win')a.w++;else if(o==='loss')a.l++;else if(o==='draw')a.dr++;else a.u++;var tt=(x.doc.teams||{})[s];if(tt){a.kills+=tt.kills;a.points+=tt.points}});
   var srows=Object.keys(sd).map(function(k){var a=sd[k],dn=a.w+a.l+a.dr;a.wp=dn?100*a.w/dn:-1;return a});var tw=srows.reduce(function(s,a){return s+a.w},0),tl=srows.reduce(function(s,a){return s+a.l},0);
@@ -727,7 +722,6 @@ function viewPlayer(slugId){
     {k:'rating',l:'Rating',f:function(r){return '<strong>'+num(r.rating)+'</strong> <span class="tag">'+tier(r.rating)+'</span>'+(r.matches<PROVISIONAL?' <span class="tag warn">Provisional</span>':'')}},
     {k:'matches',l:'Matches'},{k:'kdr',l:'K/D',f:function(r){return num(r.kdr,2)}},
     {k:'dpm',l:'Dmg/min',f:function(r){return num(r.dpm)}},{k:'spm',l:'Score/min',f:function(r){return num(r.spm,1)}},
-    {k:'crit',l:'Crit %',f:function(r){return num(r.crit,1)}},{k:'best',l:'Best hit',f:function(r){return num(r.best,1)}},
     {k:'peak',l:'Peak',f:function(r){return num(r.peak)}}],crows)+'</div>';
   var hr=h.map(function(x,i){return {id:x.id,practice:x.practice,t:x.t,cls:x.cls,name:x.doc.name,len:x.doc.duration,k:x.p.kills,d:x.p.deaths,dmg:x.p.dmg,score:x.p.score,r:x.r,ema:x.ema,delta:i?x.ema-h[i-1].ema:0}});
   out+='<div class="panel"><h2>Match history</h2>'+table('phist',[
@@ -748,7 +742,7 @@ function viewUpload(){if(!canEdit)return '<div><h1>Upload</h1></div>'+empty('Adm
     h+='<div class="panel scroll"><table><thead><tr><th scope="col"><button type="button" disabled>File</button></th><th scope="col"><button type="button" disabled>Length</button></th><th scope="col"><button type="button" disabled>Players</button></th><th scope="col"><button type="button" disabled>Status</button></th><th scope="col"><button type="button" disabled></button></th></tr></thead><tbody>'+
     uploads.map(function(u,i){return '<tr><td><strong>'+esc(u.name)+'</strong></td><td>'+(u.doc?dur(u.doc.duration):'-')+'</td><td>'+(u.doc?u.doc.players.length:'-')+'</td><td class="'+(u.err?'err':u.saved?'ok':'')+'">'+esc(u.err||(u.saved?'Saved':u.dup?'Already saved':'Ready'))+'</td><td>'+(u.doc&&!u.saved&&!u.dup&&db&&canWrite?'<button class="btn" type="button" data-save="'+i+'">Save</button> ':'')+'<button class="btn" type="button" data-discard="'+i+'" style="background:transparent;color:var(--fg);border:1px solid var(--line)">Drop</button></td></tr>'}).join('')+'</tbody></table></div>';
   }
-  h+='<div class="panel"><h2>What the logs contain</h2><p class="note" style="margin:8px 0 0">Per player: damage (to players, mobs, boss), damage taken, crits, best hit, kills, deaths, mob and boss kills, score, damage per 30 seconds, kill and capture events. Class is inferred from the vitals and regen effects. The log has no ability names (every hit is AeonResolvedDamageEffect) and no player to player healing yet, so ability and healing pages need those two fields added to the log.</p></div>';
+  h+='<div class="panel"><h2>What the logs contain</h2><p class="note" style="margin:8px 0 0">Per player: damage (to players, mobs, boss), damage taken, kills, deaths, mob and boss kills, score, damage per 30 seconds, kill and capture events. Class is inferred from the vitals and regen effects. The log has no ability names (every hit is AeonResolvedDamageEffect) and no player to player healing yet, so ability and healing pages need those two fields added to the log.</p></div>';
   return h;
 }
 
