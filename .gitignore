@@ -6,3 +6,4 @@ dbg.js
 t_*.js
 dev.js
 .vercel
+.env*
