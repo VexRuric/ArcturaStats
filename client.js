@@ -67,7 +67,6 @@ function accountsPanel(){
   else h+='<div class="scroll"><table><thead><tr><th scope="col">Discord</th><th scope="col">Claimed player</th><th scope="col">Role</th><th scope="col"></th></tr></thead><tbody>'+d.users.map(function(u){
     return '<tr><td>'+avatarImg(u)+esc(u.name)+'</td><td>'+(u.claim?'<a class="plink" href="#player-'+slug(u.claim)+'">'+esc(u.claim)+'</a>':'-')+'</td><td>'+(u.admin?'<span class="tag ok">Admin</span>':'<span class="tag">Player</span>')+'</td><td style="text-align:right;white-space:nowrap">'+
       (u.admin?'<button class="btn ghost" type="button" data-aop="removeAdmin:'+esc(u.id)+'">Remove admin</button>':'<button class="btn" type="button" data-aop="makeAdmin:'+esc(u.id)+'">Make admin</button>')+(u.claim?' <button class="btn ghost" type="button" data-aop="release:'+esc(u.claim)+'">Release claim</button>':'')+'</td></tr>'}).join('')+'</tbody></table></div>';
-  h+='<h2 style="margin-top:18px">Bundled matches</h2><p class="note" style="margin-top:0">Imports the earlier Nov 2 and screenshot test games into the shared store. Matches already saved are skipped.</p><button class="btn ghost" type="button" data-aop="seed">Import bundled matches</button>';
   return h+'</div>';
 }
 function loadAdmin(){
@@ -84,9 +83,6 @@ document.addEventListener('click',function(e){
   var op=e.target.closest('[data-aop]');
   if(op){
     var raw=op.dataset.aop,i=raw.indexOf(':'),name=i<0?raw:raw.slice(0,i),arg=i<0?'':raw.slice(i+1);
-    if(name==='seed'){
-      fetch('/seed/manifest.json').then(function(r){return r.json()}).then(function(list){
-        return list.reduce(function(p,it){return p.then(function(){if(remote[it.id])return;return fetch('/seed/'+it.file).then(function(r){return r.json()}).then(function(d){return api('PUT','/api/doc?c=matches&id='+encodeURIComponent(it.id),d)})})},Promise.resolve())}).then(function(){return refresh(true)}).catch(function(){claimMsg='Import failed.';render()});return}
     var body=name==='release'?{op:'release',player:arg}:{op:name,id:arg};
     api('POST','/api/admin',body).then(function(){adminData=null;return refresh(true)}).then(function(){if(canEdit)loadAdmin()},function(err){authMsg=ERR[err.code]||'Action failed.';claimMsg=authMsg;render()});
   }
