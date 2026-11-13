@@ -29,17 +29,20 @@ module.exports = L.handler(async (req, res) => {
     let me;
     try {
       const tr = await fetch(L.DISCORD() + '/api/oauth2/token', {
-        method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        method: 'POST', signal: AbortSignal.timeout(10000), headers: { 'content-type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({ client_id: process.env.DISCORD_CLIENT_ID, client_secret: process.env.DISCORD_CLIENT_SECRET || '', grant_type: 'authorization_code', code: req.q.code, redirect_uri: L.site(req) + '/auth/callback' })
       });
       const t = await tr.json(); if (!tr.ok || !t.access_token) throw new Error('token');
-      const ur = await fetch(L.DISCORD() + '/api/users/@me', { headers: { authorization: 'Bearer ' + t.access_token } });
+      const ur = await fetch(L.DISCORD() + '/api/users/@me', { signal: AbortSignal.timeout(10000), headers: { authorization: 'Bearer ' + t.access_token } });
       me = await ur.json(); if (!ur.ok || !me.id) throw new Error('user');
     } catch (e) { return L.redirect(res, '/?authError=discord#players'); }
     const id = String(me.id), name = String(me.global_name || me.username || 'Discord user').slice(0, 60);
     const avatar = me.avatar ? 'https://cdn.discordapp.com/avatars/' + id + '/' + me.avatar + '.png?size=64' : null;
     await L.mutate(async st => {
       st.users[id] = { name, avatar, seen: Date.now() };
+      /* ADMIN_DISCORD_IDS (server env, comma separated Discord user ids) are made admins when they log in */
+      const boot = String(process.env.ADMIN_DISCORD_IDS || '').split(',').map(x => x.trim()).filter(Boolean);
+      if (boot.indexOf(id) >= 0 && st.admins.indexOf(id) < 0) st.admins.push(id);
     });
     L.setCookie(res, L.COOKIE, L.sign({ k: 'd', id, exp: Date.now() + 30 * 86400e3 }), 30 * 86400);
     return L.redirect(res, '/#players');

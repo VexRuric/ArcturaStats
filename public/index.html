@@ -916,7 +916,7 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape'&&loginOpen){
 render();renderAuth();
 (function(){var q=new URLSearchParams(location.search);if(q.get('authError')){authMsg=AUTHERR[q.get('authError')]||'Login failed.';loginOpen=true;history.replaceState(null,'',location.pathname+location.hash)}})();
 refresh(true).then(function(){renderAuth()});
-setInterval(function(){if(document.visibilityState==='visible')refresh(false)},30000);
+setInterval(function(){if(document.visibilityState==='visible')refresh(false)},120000);
 
 })();
 </script>

@@ -3,41 +3,54 @@ const crypto = require('crypto'), fs = require('fs'), path = require('path');
 
 const COOKIE = 'arctura_sess', OCOOKIE = 'arctura_oauth';
 const SECRET = () => process.env.SESSION_SECRET || '';
-const useBlob = !!process.env.BLOB_READ_WRITE_TOKEN;
+const SB_URL = () => (process.env.SUPABASE_URL || '').replace(/\/$/, '');
+const SB_KEY = () => process.env.SUPABASE_SECRET_KEY || '';
+const useDb = () => !!(SB_URL() && SB_KEY());
 const LOCAL = process.env.LOCAL_DATA || path.join(process.cwd(), '.data');
 const AUTHP = () => 'auth/' + (process.env.AUTH_PATH || 'local') + '/state.json';
 const DISCORD = () => process.env.DISCORD_BASE || 'https://discord.com';
-let _blob = null;
-const B = () => _blob || (_blob = require('@vercel/blob'));
 
-/* ---------- storage (Vercel Blob in production, files when no token) ---------- */
+/* ---------- storage (Supabase Postgres in production, plain files when SUPABASE_* is not set) ----------
+   Two tables, both locked down with row-level security and reachable only with the server-side secret key:
+   docs(path, body, v) holds every match and event document; app_state(id=1, version, data) holds account state. */
+async function sb(method, pq, body, prefer) {
+  const k = SB_KEY();
+  const r = await fetch(SB_URL() + '/rest/v1/' + pq, {
+    method, signal: AbortSignal.timeout(8000),
+    headers: { apikey: k, authorization: 'Bearer ' + k, 'content-type': 'application/json', prefer: prefer || 'return=minimal' },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  const t = await r.text();
+  if (!r.ok) throw new Error('db_' + r.status + ' ' + t.slice(0, 200));
+  return t ? JSON.parse(t) : null;
+}
+const eq = p => 'eq.' + encodeURIComponent(p);
+
 async function putJSON(p, obj) {
-  const body = JSON.stringify(obj);
-  if (useBlob) { await B().put(p, body, { access: 'public', allowOverwrite: true, addRandomSuffix: false, contentType: 'application/json', cacheControlMaxAge: 60 }); return; }
-  const f = path.join(LOCAL, p); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, body);
+  if (useDb()) { await sb('POST', 'docs', { path: p, body: obj, v: Date.now() }, 'resolution=merge-duplicates,return=minimal'); return; }
+  const f = path.join(LOCAL, p); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, JSON.stringify(obj));
 }
 async function delPath(p) {
-  if (useBlob) { const r = await B().list({ prefix: p, limit: 5 }); const hit = r.blobs.filter(b => b.pathname === p).map(b => b.url); if (hit.length) await B().del(hit); return; }
+  if (useDb()) { await sb('DELETE', 'docs?path=' + eq(p)); return; }
   fs.rmSync(path.join(LOCAL, p), { force: true });
 }
+/* ids and versions only; the page fetches each document from /api/doc (cached by version) */
 async function listDocs(prefix) {
-  if (useBlob) {
-    let out = [], cursor;
-    do {
-      const r = await B().list({ prefix, cursor, limit: 1000 });
-      out = out.concat(r.blobs.map(b => ({ id: b.pathname.slice(prefix.length).replace(/\.json$/, ''), url: b.url, v: new Date(b.uploadedAt).getTime() })));
-      cursor = r.hasMore ? r.cursor : null;
-    } while (cursor);
+  const c = prefix.replace(/\/$/, '');
+  if (useDb()) {
+    let out = [], off = 0;
+    for (;;) {
+      const rows = await sb('GET', 'docs?select=path,v&path=like.' + encodeURIComponent(prefix + '*') + '&order=path&limit=1000&offset=' + off, undefined, 'count=none');
+      out = out.concat(rows.map(r => ({ id: r.path.slice(prefix.length).replace(/\.json$/, ''), url: '/api/doc?c=' + c + '&id=' + encodeURIComponent(r.path.slice(prefix.length).replace(/\.json$/, '')), v: Number(r.v) })));
+      if (rows.length < 1000) break; off += 1000;
+    }
     return out;
   }
   const d = path.join(LOCAL, prefix); if (!fs.existsSync(d)) return [];
-  return fs.readdirSync(d).filter(n => n.endsWith('.json')).map(n => ({ id: n.slice(0, -5), url: '/local/' + prefix + n, v: Math.floor(fs.statSync(path.join(d, n)).mtimeMs) }));
+  return fs.readdirSync(d).filter(n => n.endsWith('.json')).map(n => ({ id: n.slice(0, -5), url: '/api/doc?c=' + c + '&id=' + encodeURIComponent(n.slice(0, -5)), v: Math.floor(fs.statSync(path.join(d, n)).mtimeMs) }));
 }
 async function getJSON(p) {
-  if (useBlob) {
-    const r = await B().list({ prefix: p, limit: 5 }); const b = r.blobs.find(x => x.pathname === p); if (!b) return null;
-    const res = await fetch(b.url + '?t=' + Date.now(), { cache: 'no-store' }); return res.ok ? res.json() : null;
-  }
+  if (useDb()) { const rows = await sb('GET', 'docs?select=body&path=' + eq(p) + '&limit=1'); return rows && rows[0] ? rows[0].body : null; }
   const f = path.join(LOCAL, p); return fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : null;
 }
 
@@ -45,9 +58,8 @@ async function getJSON(p) {
 const blank = () => ({ users: {}, admins: [], claims: {}, byUser: {}, players: {}, published: {}, bugs: {} });
 let chain = Promise.resolve();
 
-/* The Blob store is public, so the state file is encrypted (AES-256-GCM, key derived from SESSION_SECRET)
-   before it is written. A plain fetch of the file returns only ciphertext. An old plaintext file is still
-   read and is encrypted the next time state is saved. Rotating SESSION_SECRET makes the saved state unreadable. */
+/* State is also encrypted (AES-256-GCM, key derived from SESSION_SECRET) before it is written.
+   Rotating SESSION_SECRET makes the saved state unreadable. */
 const stateKey = () => crypto.createHash('sha256').update('arctura-state-v1:' + SECRET()).digest();
 function seal(obj) {
   if (!SECRET()) throw new Error('SESSION_SECRET is required to save state');
@@ -62,44 +74,28 @@ function unseal(doc) {
   d.setAuthTag(buf.subarray(12, 28));
   return JSON.parse(Buffer.concat([d.update(buf.subarray(28)), d.final()]).toString('utf8'));
 }
-/* In Blob the state is saved as numbered versions (state-00000001.json, state-00000002.json, ...). A save
-   always creates the next number and never overwrites a file, so a reader can never be handed an old cached
-   copy of "the" state file, and two writers that race for the same number cannot silently erase each other:
-   the loser gets a conflict, re-reads the newest state and applies its change again. */
-const SDIR = () => 'auth/' + (process.env.AUTH_PATH || 'local') + '/';
-const VNAME = n => SDIR() + 'state-' + String(n).padStart(8, '0') + '.json';
-async function stateVersions() {
-  const out = []; let cursor;
-  do {
-    const r = await B().list({ prefix: SDIR() + 'state-', cursor, limit: 1000 });
-    r.blobs.forEach(b => { const m = /state-(\d{8})\.json$/.exec(b.pathname); if (m) out.push({ n: +m[1], url: b.url }); });
-    cursor = r.hasMore ? r.cursor : null;
-  } while (cursor);
-  return out.sort((a, b) => b.n - a.n);
-}
+/* Saves are compare-and-swap on a version number: a writer that lost a race gets a conflict, re-reads and
+   applies its change again, so two requests at once cannot erase each other. */
 async function readStateV() {
-  if (!useBlob) return { s: Object.assign(blank(), unseal(await getJSON(AUTHP())) || {}), n: 0, vs: [] };
-  const vs = await stateVersions();
-  /* nothing numbered yet: first run, or state saved by the older single-file layout */
-  if (!vs.length) return { s: Object.assign(blank(), unseal(await getJSON(AUTHP())) || {}), n: 0, vs };
-  const res = await fetch(vs[0].url, { cache: 'no-store' });
-  if (!res.ok) throw new Error('state_unreadable');   /* never treat an unreadable file as empty state */
-  return { s: Object.assign(blank(), unseal(await res.json())), n: vs[0].n, vs };
+  if (!useDb()) return { s: Object.assign(blank(), unseal(await getJSON(AUTHP())) || {}), n: 0 };
+  const rows = await sb('GET', 'app_state?select=version,data&id=eq.1');
+  if (!rows || !rows.length) return { s: blank(), n: 0 };
+  return { s: Object.assign(blank(), unseal(rows[0].data)), n: rows[0].version };
 }
-async function writeState(s, n, vs) {
+async function writeState(s, n) {
   const sealed = seal(s);
-  if (!useBlob) { await putJSON(AUTHP(), sealed); return; }
-  try { await B().put(VNAME(n + 1), JSON.stringify(sealed), { access: 'public', allowOverwrite: false, addRandomSuffix: false, contentType: 'application/json', cacheControlMaxAge: 60 }); }
-  catch (e) { if (/already exists/i.test(String(e && e.message))) throw Object.assign(new Error('conflict'), { conflict: true }); throw e; }
-  const old = vs.filter(v => v.n <= n - 4).map(v => v.url);   /* keep a few recent versions, drop the rest */
-  if (old.length) B().del(old).catch(() => {});
+  if (!useDb()) { await putJSON(AUTHP(), sealed); return; }
+  const rows = n === 0
+    ? await sb('POST', 'app_state', { id: 1, version: 1, data: sealed }, 'resolution=ignore-duplicates,return=representation')
+    : await sb('PATCH', 'app_state?id=eq.1&version=eq.' + n, { version: n + 1, data: sealed }, 'return=representation');
+  if (!rows || !rows.length) throw Object.assign(new Error('conflict'), { conflict: true });
 }
 async function readState() { return (await readStateV()).s; }
 function mutate(fn) {
   const run = chain.then(async () => {
     for (let a = 0; a < 8; a++) {
-      const { s, n, vs } = await readStateV(), out = await fn(s);
-      try { await writeState(s, n, vs); return out; }
+      const { s, n } = await readStateV(), out = await fn(s);
+      try { await writeState(s, n); return out; }
       catch (e) { if (!e.conflict) throw e; await new Promise(r => setTimeout(r, 25 + Math.random() * 100)); }
     }
     throw Object.assign(new Error('busy_try_again'), { code: 409 });
