@@ -62,9 +62,48 @@ function unseal(doc) {
   d.setAuthTag(buf.subarray(12, 28));
   return JSON.parse(Buffer.concat([d.update(buf.subarray(28)), d.final()]).toString('utf8'));
 }
-async function readState() { const s = unseal(await getJSON(AUTHP())); return Object.assign(blank(), s || {}); }
+/* In Blob the state is saved as numbered versions (state-00000001.json, state-00000002.json, ...). A save
+   always creates the next number and never overwrites a file, so a reader can never be handed an old cached
+   copy of "the" state file, and two writers that race for the same number cannot silently erase each other:
+   the loser gets a conflict, re-reads the newest state and applies its change again. */
+const SDIR = () => 'auth/' + (process.env.AUTH_PATH || 'local') + '/';
+const VNAME = n => SDIR() + 'state-' + String(n).padStart(8, '0') + '.json';
+async function stateVersions() {
+  const out = []; let cursor;
+  do {
+    const r = await B().list({ prefix: SDIR() + 'state-', cursor, limit: 1000 });
+    r.blobs.forEach(b => { const m = /state-(\d{8})\.json$/.exec(b.pathname); if (m) out.push({ n: +m[1], url: b.url }); });
+    cursor = r.hasMore ? r.cursor : null;
+  } while (cursor);
+  return out.sort((a, b) => b.n - a.n);
+}
+async function readStateV() {
+  if (!useBlob) return { s: Object.assign(blank(), unseal(await getJSON(AUTHP())) || {}), n: 0, vs: [] };
+  const vs = await stateVersions();
+  /* nothing numbered yet: first run, or state saved by the older single-file layout */
+  if (!vs.length) return { s: Object.assign(blank(), unseal(await getJSON(AUTHP())) || {}), n: 0, vs };
+  const res = await fetch(vs[0].url, { cache: 'no-store' });
+  if (!res.ok) throw new Error('state_unreadable');   /* never treat an unreadable file as empty state */
+  return { s: Object.assign(blank(), unseal(await res.json())), n: vs[0].n, vs };
+}
+async function writeState(s, n, vs) {
+  const sealed = seal(s);
+  if (!useBlob) { await putJSON(AUTHP(), sealed); return; }
+  try { await B().put(VNAME(n + 1), JSON.stringify(sealed), { access: 'public', allowOverwrite: false, addRandomSuffix: false, contentType: 'application/json', cacheControlMaxAge: 60 }); }
+  catch (e) { if (/already exists/i.test(String(e && e.message))) throw Object.assign(new Error('conflict'), { conflict: true }); throw e; }
+  const old = vs.filter(v => v.n <= n - 4).map(v => v.url);   /* keep a few recent versions, drop the rest */
+  if (old.length) B().del(old).catch(() => {});
+}
+async function readState() { return (await readStateV()).s; }
 function mutate(fn) {
-  const run = chain.then(async () => { const s = await readState(); const out = await fn(s); await putJSON(AUTHP(), seal(s)); return out; });
+  const run = chain.then(async () => {
+    for (let a = 0; a < 8; a++) {
+      const { s, n, vs } = await readStateV(), out = await fn(s);
+      try { await writeState(s, n, vs); return out; }
+      catch (e) { if (!e.conflict) throw e; await new Promise(r => setTimeout(r, 25 + Math.random() * 100)); }
+    }
+    throw Object.assign(new Error('busy_try_again'), { code: 409 });
+  });
   chain = run.catch(() => {}); return run;
 }
 
