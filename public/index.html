@@ -186,9 +186,9 @@ function teamName(n){return TEAMS[n]?TEAMS[n].name:'Team '+n}
 function teamTag(n){if(!(n>=0))return '-';var c=TEAMS[n]?TEAMS[n].col:'#555';return '<a class="team" href="#faction-'+n+'" style="background:'+c+';text-decoration:none">'+(TFLAG[n]?'<img class="tflag" alt="" src="'+TFLAG[n]+'">':'')+esc(teamName(n))+'</a>'}
 var CCOL={Assassin:'var(--c-assassin)',Hunter:'var(--c-hunter)',Mystic:'var(--c-mystic)',Priest:'var(--c-priest)',Warrior:'var(--c-warrior)'};
 var SERIES=['var(--c-assassin)','var(--c-hunter)','var(--c-mystic)','var(--c-priest)','var(--c-warrior)','var(--accent)'];
-var TABS=[['players','Players'],['classes','Classes'],['factions','Factions'],['matches','Matches'],['snapshots','Snapshots'],['upload','Upload']];
+var TABS=[['players','Players'],['classes','Classes'],['factions','Factions'],['matches','Matches'],['events','Events'],['upload','Upload']];
 var $view=document.getElementById('view'),$nav=document.getElementById('nav');
-var remote={},local={},snaps={},snapDraft={name:'',sel:{}},delSel={},confirmKey='',db=null,user=null,canWrite=true,canEdit=false,loaded=false,dbState='loading';
+var remote={},local={},snaps={},snapDraft={name:'',sel:{}},evEdit={id:'',v:''},evMsg='',delSel={},confirmKey='',db=null,user=null,canWrite=true,canEdit=false,loaded=false,dbState='loading';
 var sortState={objs:{k:'mobT',d:-1},snplayers:{k:'score',d:-1},snfac:{k:'team',d:1},fplayers:{k:'rating',d:-1},cboard:{k:'rating',d:-1},pside:{k:'name',d:1},adteam:{k:'team',d:1},adcls:{k:'dpm',d:-1},admatch:{k:'t',d:-1},players:{k:'rating',d:-1},match:{k:'dmg',d:-1},classes:{k:'avgDmg',d:-1},pclass:{k:'rating',d:-1},phist:{k:'t',d:-1}};
 var hideBots=true,ratedOnly=false,uploads=[];
 
@@ -413,28 +413,34 @@ function median(a){a=a.slice().sort(function(x,y){return x-y});var n=a.length;re
 function snapSave(){
   var ids=Object.keys(snapDraft.sel).filter(function(k){return snapDraft.sel[k]});
   if(!db||!ids.length)return;var id='s'+Date.now().toString(36);
-  var doc={name:(snapDraft.name||'').trim()||('Snapshot '+new Date().toLocaleDateString()),matchIds:ids,createdAt:Date.now()};
-  db.collection('snapshots').doc(id).set(doc).then(function(){snapDraft={name:'',sel:{}};location.hash='snapshot-'+id},function(){})
+  var doc={name:(snapDraft.name||'').trim()||('Event '+new Date().toLocaleDateString()),matchIds:ids,createdAt:Date.now()};
+  db.collection('snapshots').doc(id).set(doc).then(function(){snapDraft={name:'',sel:{}};location.hash='event-'+id},function(){})
+}
+function evRename(id){
+  var n=(evEdit.id===id?evEdit.v:(snaps[id]||{}).name||'').trim().slice(0,80);
+  if(!n||!snaps[id]||!db)return;
+  db.collection('snapshots').doc(id).set(Object.assign({},snaps[id],{name:n})).then(function(){evEdit={id:'',v:''};evMsg='';render()},function(){evMsg='Could not save the name.';render()})
 }
 function snapDelete(id){db&&db.collection('snapshots').doc(id).delete().then(function(){location.hash='admin'},function(){})}
 function snapshotPanel(){
   var ms=allMatches().filter(function(m){return m.saved}).sort(function(a,b){return playedAt(a.doc)-playedAt(b.doc)});
   var list=Object.keys(snaps).map(function(k){return {id:k,s:snaps[k]}}).sort(function(a,b){return (b.s.createdAt||0)-(a.s.createdAt||0)});
   var n=Object.keys(snapDraft.sel).filter(function(k){return snapDraft.sel[k]}).length;
-  var h='<div class="panel"><h2>Snapshots</h2><p class="note" style="margin-top:0">Pick the matches from one night of testing and save them as a snapshot. Each snapshot gets its own stats page.</p>';
-  h+=list.length?'<ul class="events">'+list.map(function(x){return '<li><time>'+esc(new Date(x.s.createdAt||0).toLocaleDateString(undefined,{month:'short',day:'numeric'}))+'</time><span class="tag">'+(x.s.matchIds||[]).length+' matches</span><span><a class="plink" href="#snapshot-'+esc(x.id)+'">'+esc(x.s.name)+'</a></span><span style=\"margin-left:auto;display:flex;gap:8px;align-items:center\">'+pubTag(x.id)+pubBtn(x.id)+'</span></li>'}).join('')+'</ul>':'<p class="note">No snapshots yet.</p>';
-  h+='<h3 style="font:600 13px var(--font-d);letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:16px 0 8px">New snapshot</h3><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px"><input id="snapName" type="text" placeholder="Name, for example Test night Nov 9" value="'+esc(snapDraft.name)+'" style="flex:1 1 260px;padding:8px 10px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--fg);font:inherit"><button class="btn ghost" type="button" data-snapall="1" style="background:transparent;color:var(--fg);border:1px solid var(--line)">Select all</button><button class="btn" type="button" data-snapall="0" style="background:transparent;color:var(--fg);border:1px solid var(--line)">Clear</button></div>';
+  var h='<div class="panel"><h2>Events</h2><p class="note" style="margin-top:0">Pick the matches from one night of testing and save them as an event. Each event gets its own stats page and can be renamed there.</p>';
+  h+=list.length?'<ul class="events">'+list.map(function(x){return '<li><time>'+esc(new Date(x.s.createdAt||0).toLocaleDateString(undefined,{month:'short',day:'numeric'}))+'</time><span class="tag">'+(x.s.matchIds||[]).length+' matches</span><span><a class="plink" href="#event-'+esc(x.id)+'">'+esc(x.s.name)+'</a></span><span style=\"margin-left:auto;display:flex;gap:8px;align-items:center\">'+pubTag(x.id)+pubBtn(x.id)+'</span></li>'}).join('')+'</ul>':'<p class="note">No events yet.</p>';
+  h+='<h3 style="font:600 13px var(--font-d);letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:16px 0 8px">New event</h3><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px"><input id="snapName" type="text" placeholder="Name, for example Test night Nov 9" value="'+esc(snapDraft.name)+'" style="flex:1 1 260px;padding:8px 10px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--fg);font:inherit"><button class="btn ghost" type="button" data-snapall="1" style="background:transparent;color:var(--fg);border:1px solid var(--line)">Select all</button><button class="btn" type="button" data-snapall="0" style="background:transparent;color:var(--fg);border:1px solid var(--line)">Clear</button></div>';
   h+='<div class="scroll"><table><tbody>'+ms.map(function(m){var d=m.doc;return '<tr><td><label class="chk"><input type="checkbox" data-snapsel="'+esc(m.id)+'"'+(snapDraft.sel[m.id]?' checked':'')+'> <strong>'+esc(d.name)+'</strong></label></td><td>'+esc(new Date(playedAt(d)).toLocaleDateString())+'</td><td>'+dur(d.duration||0)+'</td><td>'+(d.players||[]).filter(function(p){return !isBot(p.name)}).length+' players</td><td>'+(hasResult(d)?(d.result.winner==='draw'?'Draw':esc(teamName(d.result.winner))+' won'):'-')+'</td></tr>'}).join('')+'</tbody></table></div>';
-  h+='<div style="margin-top:12px"><button class="btn" type="button" data-snapcreate="1"'+(n&&db?'':' disabled')+'>Create snapshot ('+n+' selected)</button></div></div>';
+  h+='<div style="margin-top:12px"><button class="btn" type="button" data-snapcreate="1"'+(n&&db?'':' disabled')+'>Create event ('+n+' selected)</button></div></div>';
   return h;
 }
 function viewSnapshot(id){
   var s=snaps[id];
-  if(!s)return '<div><h1>Snapshot not found</h1></div>'+empty(dbState==='loading'?'Loading':'No snapshot with that id','It may have been deleted, or it is still loading.');
+  if(!s)return '<div><h1>Event not found</h1></div>'+empty(dbState==='loading'?'Loading':'No event with that id','It may have been deleted, or it is still loading.');
   var ms=(s.matchIds||[]).map(function(k){return allMatches().filter(function(m){return m.id===k})[0]}).filter(Boolean).sort(function(a,b){return playedAt(a.doc)-playedAt(b.doc)});
   var missing=(s.matchIds||[]).length-ms.length;
-  var h='<div class="bar"><div><p class="sub" style="margin:0">'+(canEdit?'<a class="plink" href="#admin">Admin</a>':'<a class="plink" href="#snapshots">Snapshots</a>')+' / Snapshot '+pubTag(id)+'</p><h1>'+esc(s.name)+'</h1><p class="sub">'+ms.length+' match'+(ms.length===1?'':'es')+', created '+esc(new Date(s.createdAt||0).toLocaleDateString())+(missing?' <span class="tag warn">'+missing+' match'+(missing===1?'':'es')+' no longer stored</span>':'')+'</p></div><div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><label class="chk"><input type="checkbox" id="botsChk"'+(hideBots?' checked':'')+'> Hide bot players</label>'+(canEdit?pubBtn(id)+'<button class="btn ghost" type="button" data-snapdel="'+esc(id)+'">Delete snapshot</button>':'')+'</div></div>';
-  if(!ms.length)return h+empty('No matches','Every match in this snapshot has been removed.');
+  var h='<div class="bar"><div><p class="sub" style="margin:0">'+(canEdit?'<a class="plink" href="#admin">Admin</a>':'<a class="plink" href="#events">Events</a>')+' / Event '+pubTag(id)+'</p><h1>'+esc(s.name)+'</h1><p class="sub">'+ms.length+' match'+(ms.length===1?'':'es')+', created '+esc(new Date(s.createdAt||0).toLocaleDateString())+(missing?' <span class="tag warn">'+missing+' match'+(missing===1?'':'es')+' no longer stored</span>':'')+'</p></div><div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><label class="chk"><input type="checkbox" id="botsChk"'+(hideBots?' checked':'')+'> Hide bot players</label>'+(canEdit?pubBtn(id)+'<button class="btn ghost" type="button" data-snapdel="'+esc(id)+'">Delete event</button>':'')+'</div></div>';
+  if(canEdit)h+='<div class="panel" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><label for="evName" class="note" style="margin:0">Event name</label><input id="evName" type="text" maxlength="80" value="'+esc(evEdit.id===id?evEdit.v:s.name)+'" style="flex:1 1 260px;padding:8px 10px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--fg);font:inherit"><button class="btn" type="button" data-evrename="'+esc(id)+'">Save name</button>'+(evMsg?'<span class="note err" role="alert" style="margin:0">'+esc(evMsg)+'</span>':'')+'</div>';
+  if(!ms.length)return h+empty('No matches','Every match in this event has been removed.');
   var F={0:{w:0,l:0,dr:0,u:0,k:0,sc:0,mob:0,m:0},1:{w:0,l:0,dr:0,u:0,k:0,sc:0,mob:0,m:0}},P={},C={},mins=0,K=0;
   ms.forEach(function(m){var d=m.doc;mins+=(d.duration||0)/60;
     [0,1].forEach(function(f){var o=outcome(d,f),pl=(d.players||[]).filter(function(p){return p.team===f});if(!pl.length&&!(d.teams||{})[f])return;var a=F[f];a.m++;if(o==='win')a.w++;else if(o==='loss')a.l++;else if(o==='draw')a.dr++;else a.u++});
@@ -450,7 +456,7 @@ function viewSnapshot(id){
   var mvp=prow.slice().sort(function(a,b){return b.score-a.score})[0];
   h+='<div class="fac">'+[0,1].map(function(f){var a=F[f];return '<a class="fcard'+(a.w>a.l?' win':'')+'" href="#faction-'+f+'" style="--fc:'+TEAMS[f].col+'33;text-decoration:none;color:var(--fg)"><img alt="" src="'+TFLAG[f]+'"><div><b>'+esc(teamName(f))+'</b><p class="note" style="margin:6px 0 0"><strong style="font-size:22px;color:var(--fg)">'+a.w+'</strong> wins, '+a.l+' losses'+(a.dr?', '+a.dr+' draws':'')+(a.u?', '+a.u+' unrecorded':'')+'</p><p class="note" style="margin:2px 0 0">'+a.k+' kills, '+num(a.sc)+' points, '+num(a.mob)+' mob kills</p></div></a>'}).join('')+'</div>';
   h+='<div class="kpis"><div class="kpi"><b>'+ms.length+'</b><small>Matches</small></div><div class="kpi"><b>'+prow.length+'</b><small>Players</small></div><div class="kpi"><b>'+num(mins,0)+' min</b><small>Total match time</small></div><div class="kpi"><b>'+K+'</b><small>Player kills</small></div><div class="kpi"><b>'+(mvp?esc(mvp.name):'-')+'</b><small>Most points'+(mvp?' ('+num(mvp.score)+')':'')+'</small></div></div>';
-  h+='<div class="panel"><h2>Players across the snapshot</h2>'+table('snplayers',[
+  h+='<div class="panel"><h2>Players across the event</h2>'+table('snplayers',[
     {k:'name',l:'Player',f:function(r){return '<a class="plink" href="#player-'+slug(r.name)+'">'+esc(r.name)+'</a>'}},
     {k:'main',l:'Class',f:function(r){return r.main?clsCell(r.main):'-'}},
     {k:'games',l:'Games'},{k:'wr',l:'W-L',f:function(r){return r.w+'-'+r.l+(r.wr>=0?' ('+num(r.wr)+'%)':'')}},
@@ -481,7 +487,7 @@ function matchTools(ms){
 }
 function dataPanel(){
   var pr=bulkIds('practice'),su=bulkIds('summary'),al=bulkIds('all');
-  return '<div class="panel"><h2>Clear logs</h2><p class="note" style="margin-top:0">Deleting removes the stored match for everyone and cannot be undone. Snapshots keep their name but lose the deleted matches. Each button asks you to click twice.</p><div style="display:flex;gap:10px;flex-wrap:wrap">'+confirmBtn('practice','Delete practice matches vs bots',pr)+confirmBtn('summary','Delete imported summaries',su)+confirmBtn('all','Delete ALL matches',al,true)+'</div><p class="note">Pick individual matches on the Matches tab.</p></div>';
+  return '<div class="panel"><h2>Clear logs</h2><p class="note" style="margin-top:0">Deleting removes the stored match for everyone and cannot be undone. Events keep their name but lose the deleted matches. Each button asks you to click twice.</p><div style="display:flex;gap:10px;flex-wrap:wrap">'+confirmBtn('practice','Delete practice matches vs bots',pr)+confirmBtn('summary','Delete imported summaries',su)+confirmBtn('all','Delete ALL matches',al,true)+'</div><p class="note">Pick individual matches on the Matches tab.</p></div>';
 }
 var bugFilter='active',bugMsg='',lastBugs=[];
 function bugWho(a){var u=[];a.forEach(function(x){if(u.indexOf(x)<0)u.push(x)});return u.slice(0,6).join(', ')+(u.length>6?' and '+(u.length-6)+' more':'')}
@@ -571,13 +577,13 @@ function viewAdmin(){
   return h;
 }
 function viewMatches(){
-  var ms=allMatches();
+  var ms=allMatches().sort(function(a,b){return playedAt(b.doc)-playedAt(a.doc)||(b.doc.uploadedAt||0)-(a.doc.uploadedAt||0)});
   var h='<div><h1>Matches</h1><p class="sub">'+ms.length+' stored '+statusLine()+'</p></div>';
   if(!ms.length)return h+empty('No matches yet','Upload a combat log on the Upload tab.');
   h+=matchTools(ms);
-  h+='<div class="panel scroll"><table><thead><tr>'+(canEdit?'<th scope="col"><button type="button" disabled></button></th>':'')+'<th scope="col"><button type="button" disabled>Log</button></th><th scope="col"><button type="button" disabled>Uploaded</button></th><th scope="col"><button type="button" disabled>Length</button></th><th scope="col"><button type="button" disabled>Players</button></th><th scope="col"><button type="button" disabled>Result</button></th><th scope="col"><button type="button" disabled>Kills</button></th><th scope="col"><button type="button" disabled>Damage</button></th><th scope="col"><button type="button" disabled></button></th></tr></thead><tbody>';
+  h+='<div class="panel scroll"><table><thead><tr>'+(canEdit?'<th scope="col"><button type="button" disabled></button></th>':'')+'<th scope="col"><button type="button" disabled>Log</button></th><th scope="col"><button type="button" disabled>Played</button></th><th scope="col"><button type="button" disabled>Length</button></th><th scope="col"><button type="button" disabled>Players</button></th><th scope="col"><button type="button" disabled>Result</button></th><th scope="col"><button type="button" disabled>Kills</button></th><th scope="col"><button type="button" disabled>Damage</button></th><th scope="col"><button type="button" disabled></button></th></tr></thead><tbody>';
   ms.forEach(function(m){var d=m.doc,k=0,dm=0;(d.players||[]).forEach(function(p){k+=p.kills;dm+=p.dmg});
-    h+='<tr class="click" tabindex="0" data-go="match-'+esc(m.id)+'">'+(canEdit?'<td>'+(m.saved?'<input type="checkbox" aria-label="Select '+esc(d.name)+'" data-delsel="'+esc(m.id)+'"'+(delSel[m.id]?' checked':'')+'>':'')+'</td>':'')+'<td><strong>'+esc(d.name)+'</strong></td><td>'+esc(new Date(d.uploadedAt||0).toLocaleDateString())+'</td><td>'+dur(d.duration)+'</td><td>'+(d.players||[]).length+'</td><td>'+(hasResult(d)?(d.result.winner==='draw'?'Draw':teamName(d.result.winner)+' won'):'-')+'</td><td>'+num(k)+'</td><td>'+num(dm)+'</td><td>'+(isPractice(d)?'<span class="tag">Practice vs bots</span> ':'')+(m.saved?'':'<span class="tag warn">Not saved</span>')+'</td></tr>'});
+    h+='<tr class="click" tabindex="0" data-go="match-'+esc(m.id)+'">'+(canEdit?'<td>'+(m.saved?'<input type="checkbox" aria-label="Select '+esc(d.name)+'" data-delsel="'+esc(m.id)+'"'+(delSel[m.id]?' checked':'')+'>':'')+'</td>':'')+'<td><strong>'+esc(d.name)+'</strong></td><td>'+esc(new Date(playedAt(d)).toLocaleDateString())+'</td><td>'+dur(d.duration)+'</td><td>'+(d.players||[]).length+'</td><td>'+(hasResult(d)?(d.result.winner==='draw'?'Draw':teamName(d.result.winner)+' won'):'-')+'</td><td>'+num(k)+'</td><td>'+num(dm)+'</td><td>'+(isPractice(d)?'<span class="tag">Practice vs bots</span> ':'')+(m.saved?'':'<span class="tag warn">Not saved</span>')+'</td></tr>'});
   return h+'</tbody></table></div>';
 }
 function chart(d){
@@ -747,17 +753,17 @@ function viewUpload(){if(!canEdit)return '<div><h1>Upload</h1></div>'+empty('Adm
 }
 
 /* ---- routing and render ---- */
-function route(){var h=location.hash.replace('#','')||'players';if(h.indexOf('match-')===0)return {t:'match',id:h.slice(6)};if(h.indexOf('player-')===0)return {t:'player',id:h.slice(7)};if(h.indexOf('class-')===0)return {t:'class',id:h.slice(6)};if(h.indexOf('faction-')===0)return {t:'faction',id:h.slice(8)};if(h.indexOf('snapshot-')===0)return {t:'snapshot',id:h.slice(9)};return {t:(TABS.some(function(x){return x[0]===h})||h==='admin')?h:'players'}}
+function route(){var h=location.hash.replace('#','')||'players';if(h.indexOf('match-')===0)return {t:'match',id:h.slice(6)};if(h.indexOf('player-')===0)return {t:'player',id:h.slice(7)};if(h.indexOf('class-')===0)return {t:'class',id:h.slice(6)};if(h.indexOf('faction-')===0)return {t:'faction',id:h.slice(8)};if(h.indexOf('event-')===0)return {t:'snapshot',id:h.slice(6)};if(h.indexOf('snapshot-')===0)return {t:'snapshot',id:h.slice(9)};if(h==='events'||h==='snapshots')return {t:'snapshots'};return {t:(TABS.some(function(x){return x[0]===h})||h==='admin')?h:'players'}}
 function render(){
   var r=route();if(r.t==="admin"&&canEdit&&!adminData)loadAdmin();
-  var cur=r.t==='snapshot'?'snapshots':r.t==='match'?'matches':r.t==='player'?'players':r.t==='class'?'classes':r.t==='faction'?'factions':r.t;
+  var cur=r.t==='snapshot'||r.t==='snapshots'?'events':r.t==='match'?'matches':r.t==='player'?'players':r.t==='class'?'classes':r.t==='faction'?'factions':r.t;
   $nav.innerHTML=TABS.filter(function(x){return x[0]!=='upload'||canEdit}).concat(canEdit?[['admin','Admin']]:[]).map(function(t){return '<a href="#'+t[0]+'"'+(t[0]===cur?' aria-current="page"':'')+'>'+t[1]+'</a>'}).join('');
   var f=document.activeElement&&document.activeElement.id;
   $view.innerHTML=r.t==='snapshots'?viewSnapshots():r.t==='player'?viewPlayer(r.id):r.t==='match'?viewMatch(r.id):r.t==='snapshot'?viewSnapshot(r.id):r.t==='class'?viewClass(r.id):r.t==='faction'?viewFaction(+r.id):r.t==='factions'?viewFactions():r.t==='classes'?viewClasses():r.t==='matches'?viewMatches():r.t==='upload'?viewUpload():r.t==='admin'?viewAdmin():viewPlayers();
   if(f){var e=document.getElementById(f);if(e&&e.focus)try{e.focus()}catch(x){}}
 }
 document.addEventListener('change',function(e){var ds=e.target.closest&&e.target.closest('[data-delsel]');if(ds){delSel[ds.dataset.delsel]=ds.checked;confirmKey='';render();return}var c=e.target.closest&&e.target.closest('[data-snapsel]');if(c){snapDraft.sel[c.dataset.snapsel]=c.checked;render()}});
-document.addEventListener('input',function(e){if(e.target&&e.target.id==='snapName')snapDraft.name=e.target.value});
+document.addEventListener('input',function(e){if(e.target&&e.target.id==='snapName')snapDraft.name=e.target.value;if(e.target&&e.target.id==='evName'){var rt=route();evEdit={id:rt.t==='snapshot'?rt.id:'',v:e.target.value};evMsg=''}});
 document.addEventListener('toggle',function(e){var d=e.target;if(d&&d.classList&&d.classList.contains('cdet'))openCls[d.dataset.cls]=d.open},true);
 document.addEventListener('click',function(e){
   var t=e.target.closest('[data-sort]');if(t){var p=t.dataset.sort.split(':'),s=sortState[p[0]];s.d=s.k===p[1]?-s.d:(p[1]==='name'||p[1]==='main'||p[1]==='cls'?1:p[1]==='t'?-1:-1);s.k=p[1];render();return}
@@ -770,6 +776,7 @@ document.addEventListener('click',function(e){
   if(e.target.closest('[data-discardall]')){uploads.forEach(function(u){if(u.id&&local[u.id])delete local[u.id]});uploads=[];render();return}
   var sa=e.target.closest('[data-snapall]');if(sa){var on=sa.dataset.snapall==='1';allMatches().forEach(function(m){if(m.saved)snapDraft.sel[m.id]=on});render();return}
   if(e.target.closest('[data-snapcreate]')){snapSave();return}
+  var er=e.target.closest('[data-evrename]');if(er){evRename(er.dataset.evrename);return}
   var sd=e.target.closest('[data-snapdel]');if(sd){snapDelete(sd.dataset.snapdel);return}
   var rs=e.target.closest('[data-res]');if(rs){var q=rs.dataset.res.split(':');setResult(q[0],q[1]);return}
   var dl=e.target.closest('[data-del]');if(dl){remove(dl.dataset.del)}
@@ -826,11 +833,30 @@ function refresh(force){
 }
 function pubTag(id){return canEdit?(pubIds[id]?'<span class="tag ok">Public</span>':'<span class="tag">Private</span>'):''}
 function pubBtn(id){return canEdit?(pubIds[id]?'<button class="btn ghost" type="button" data-aop="unpublish:'+esc(id)+'">Unpublish</button>':'<button class="btn" type="button" data-aop="publish:'+esc(id)+'">Publish</button>'):''}
+function evDate(s){var t=0;(s.matchIds||[]).forEach(function(k){var m=allMatches().filter(function(x){return x.id===k})[0];if(m){var p=playedAt(m.doc);if(p>t)t=p}});return t||s.createdAt||0}
+function eventCard(id,s){
+  var ms=(s.matchIds||[]).map(function(k){return allMatches().filter(function(m){return m.id===k})[0]}).filter(Boolean).sort(function(a,b){return playedAt(b.doc)-playedAt(a.doc)});
+  var F={0:{w:0,l:0},1:{w:0,l:0}},P={},any=false;
+  ms.forEach(function(m){var d=m.doc;[0,1].forEach(function(f){var o=outcome(d,f);if(o==='win'){F[f].w++;any=true}else if(o==='loss')F[f].l++});
+    (d.players||[]).forEach(function(p){if(isBot(p.name))return;var a=P[p.name]||(P[p.name]={name:p.name,score:0,k:0,d:0,g:0});a.score+=p.score||0;a.k+=p.kills||0;a.d+=p.deaths||0;a.g++})});
+  var pr=Object.keys(P).map(function(k){return P[k]}).sort(function(a,b){return b.score-a.score});
+  var when=new Date(evDate(s)).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'});
+  var h='<details class="cdet"><summary><strong>'+esc(s.name)+'</strong> <span class="note" style="margin:0">'+esc(when)+'</span> <span class="tag">'+ms.length+' match'+(ms.length===1?'':'es')+'</span> <span class="tag">'+pr.length+' player'+(pr.length===1?'':'s')+'</span>'+(any?' <span class="note" style="margin:0">'+esc(teamName(0))+' '+F[0].w+' - '+F[1].w+' '+esc(teamName(1))+'</span>':'')+' '+pubTag(id)+'</summary>';
+  h+='<div style="padding:8px 0">';
+  if(!ms.length)h+='<p class="note">Every match in this event has been removed.</p>';
+  else{
+    h+='<div class="kpis"><div class="kpi"><b>'+ms.length+'</b><small>Matches</small></div><div class="kpi"><b>'+pr.length+'</b><small>Players</small></div><div class="kpi"><b>'+num(ms.reduce(function(t,m){return t+(m.doc.duration||0)},0)/60,0)+' min</b><small>Total match time</small></div><div class="kpi"><b>'+(pr[0]?esc(pr[0].name):'-')+'</b><small>Most points'+(pr[0]?' ('+num(pr[0].score)+')':'')+'</small></div></div>';
+    h+='<div class="cols"><div class="panel"><h2>Top players</h2><div class="scroll"><table><thead><tr><th scope="col"><button type="button" disabled>Player</button></th><th scope="col"><button type="button" disabled>Games</button></th><th scope="col"><button type="button" disabled>Pts</button></th><th scope="col"><button type="button" disabled>K/D</button></th></tr></thead><tbody>'+pr.slice(0,5).map(function(p){return '<tr><td><a class="plink" href="#player-'+slug(p.name)+'">'+esc(p.name)+'</a></td><td>'+p.g+'</td><td>'+num(p.score)+'</td><td>'+num(p.d?p.k/p.d:p.k,2)+'</td></tr>'}).join('')+'</tbody></table></div></div>';
+    h+='<div class="panel"><h2>Matches, newest first</h2><ul class="events">'+ms.map(function(m){var d=m.doc;return '<li><time>'+esc(new Date(playedAt(d)).toLocaleDateString(undefined,{month:'short',day:'numeric'}))+'</time><span><a class="plink" href="#match-'+esc(m.id)+'">'+esc(d.name)+'</a></span> '+resultTag(d)+' <span class="note" style="margin:0">'+dur(d.duration||0)+'</span></li>'}).join('')+'</ul></div></div>';
+  }
+  h+='<p style="margin:10px 0 0"><a class="btn" style="text-decoration:none" href="#event-'+esc(id)+'">Open full event page</a>'+(canEdit?' '+pubBtn(id):'')+'</p></div></details>';
+  return h;
+}
 function viewSnapshots(){
-  var list=Object.keys(snaps).map(function(k){return {id:k,s:snaps[k]}}).sort(function(a,b){return (b.s.createdAt||0)-(a.s.createdAt||0)});
-  var h='<div><h1>Snapshots</h1><p class="sub">Stats from test sessions, published by the admins '+statusLine()+'</p></div>';
-  if(!list.length)return h+empty('Nothing published yet','Admins publish a snapshot of a test session to share its stats here.');
-  return h+'<div class="panel scroll"><table><thead><tr><th scope="col">Snapshot</th><th scope="col">Created</th><th scope="col">Matches</th>'+(canEdit?'<th scope="col">Visibility</th>':'')+'</tr></thead><tbody>'+list.map(function(x){return '<tr><td><a class="plink" href="#snapshot-'+esc(x.id)+'"><strong>'+esc(x.s.name)+'</strong></a></td><td>'+esc(new Date(x.s.createdAt||0).toLocaleDateString())+'</td><td>'+(x.s.matchIds||[]).length+'</td>'+(canEdit?'<td>'+pubTag(x.id)+'</td>':'')+'</tr>'}).join('')+'</tbody></table></div>';
+  var list=Object.keys(snaps).map(function(k){return {id:k,s:snaps[k]}}).sort(function(a,b){return evDate(b.s)-evDate(a.s)||(b.s.createdAt||0)-(a.s.createdAt||0)});
+  var h='<div><h1>Events</h1><p class="sub">Recorded events with their own stats, newest first. Open one to see the details '+statusLine()+'</p></div>';
+  if(!list.length)return h+empty('No events yet',canEdit?'Create an event from stored matches in the Admin tab, then publish it.':'Admins publish an event to share its stats here.');
+  return h+list.map(function(x){return eventCard(x.id,x.s)}).join('');
 }
 function avatarImg(u){return u&&u.avatar?'<img alt="" src="'+esc(u.avatar)+'" style="width:22px;height:22px;border-radius:50%;vertical-align:middle;margin-right:6px">':''}
 var AUTHERR={not_configured:'Discord login is not set up yet.',cancelled:'Discord login was cancelled.',state:'Login expired, try again.',discord:'Discord did not accept the login, try again.'};
@@ -864,7 +890,7 @@ function accountsPanel(){
   var h='<div class="panel"><h2>Accounts</h2>';
   if(!adminData)return h+'<p class="note">Loading accounts</p></div>';
   var d=adminData;
-  h+='<p class="note" style="margin-top:0">People who logged in with Discord. Admins can upload and delete logs, set winners, make snapshots and manage accounts. One Discord account can claim one player.</p>';
+  h+='<p class="note" style="margin-top:0">People who logged in with Discord. Admins can upload and delete logs, set winners, make events and manage accounts. One Discord account can claim one player.</p>';
   if(!d.users.length)h+='<p class="note">Nobody has logged in with Discord yet.</p>';
   else h+='<div class="scroll"><table><thead><tr><th scope="col">Discord</th><th scope="col">Claimed player</th><th scope="col">Role</th><th scope="col"></th></tr></thead><tbody>'+d.users.map(function(u){
     return '<tr><td>'+avatarImg(u)+esc(u.name)+'</td><td>'+(u.claim?'<a class="plink" href="#player-'+slug(u.claim)+'">'+esc(u.claim)+'</a>':'-')+'</td><td>'+(u.admin?'<span class="tag ok">Admin</span>':'<span class="tag">Player</span>')+'</td><td style="text-align:right;white-space:nowrap">'+
