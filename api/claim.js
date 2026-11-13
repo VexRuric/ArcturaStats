@@ -8,8 +8,17 @@ module.exports = L.handler(async (req, res) => {
   if (!s0 || s0.k !== 'd') return L.send(res, 401, { error: 'login_with_discord' });
   const b = await L.body(req, 2048), player = String(b.player || '').trim();
   if (!player || player.length > 60 || L.isBot(player)) return L.send(res, 400, { error: 'bad_player' });
+  /* A name counts as a known player if it is registered or appears in any stored match (matches can be imported without the register being updated). */
+  let seen = false;
+  if (!(await L.readState()).players[player]) {
+    for (const it of await L.listDocs('matches/')) {
+      const d = await L.getJSON('matches/' + it.id + '.json');
+      if (d && Array.isArray(d.players) && d.players.some(x => x && x.name === player)) { seen = true; break; }
+    }
+  }
   const out = await L.mutate(st => {
     if (!st.users[s0.id]) return { code: 401, error: 'login_with_discord' };
+    if (seen) st.players[player] = 1;
     if (!st.players[player]) return { code: 404, error: 'unknown_player' };
     if (st.byUser[s0.id]) return { code: 409, error: 'you_already_claimed', player: st.byUser[s0.id] };
     if (st.claims[player]) return { code: 409, error: 'taken' };
