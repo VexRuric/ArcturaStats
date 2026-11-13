@@ -8,7 +8,7 @@ module.exports = L.handler(async (req, res) => {
   if (req.method === 'GET') {
     const users = Object.keys(st0.users).map(id => ({ id, name: st0.users[id].name, avatar: st0.users[id].avatar || null, seen: st0.users[id].seen || 0, admin: st0.admins.indexOf(id) >= 0, claim: st0.byUser[id] || null }))
       .sort((a, b) => (b.admin - a.admin) || a.name.localeCompare(b.name));
-    return L.send(res, 200, { users, bootstrapActive: !st0.bootstrapDeleted, players: Object.keys(st0.players).length });
+    return L.send(res, 200, { users, players: Object.keys(st0.players).length });
   }
   if (req.method !== 'POST') return L.send(res, 405, { error: 'method' });
 
@@ -21,12 +21,8 @@ module.exports = L.handler(async (req, res) => {
     }
     if (op === 'removeAdmin') {
       const left = st.admins.filter(x => x !== b.id);
-      if (left.length === 0 && st.bootstrapDeleted) return { code: 409, error: 'last_admin' };
+      if (left.length === 0) return { code: 409, error: 'last_admin' };
       st.admins = left; return { code: 200, ok: true };
-    }
-    if (op === 'deleteBootstrap') {
-      if (st.admins.length === 0) return { code: 409, error: 'make_a_discord_admin_first' };
-      st.bootstrapDeleted = true; return { code: 200, ok: true };
     }
     if (op === 'publish' || op === 'unpublish') {
       if (!L.ID_OK.test(String(b.id || ''))) return { code: 400, error: 'bad_id' };

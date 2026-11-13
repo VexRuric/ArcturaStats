@@ -42,7 +42,7 @@ async function getJSON(p) {
 }
 
 /* ---------- account state: one small document, changed one request at a time ---------- */
-const blank = () => ({ users: {}, admins: [], claims: {}, byUser: {}, players: {}, published: {}, bootstrapDeleted: false });
+const blank = () => ({ users: {}, admins: [], claims: {}, byUser: {}, players: {}, published: {} });
 let chain = Promise.resolve();
 
 /* The Blob store is public, so the state file is encrypted (AES-256-GCM, key derived from SESSION_SECRET)
@@ -93,12 +93,10 @@ const session = req => unsign(cookies(req)[COOKIE]);
 
 function isAdmin(s, st) {
   if (!s) return false;
-  if (s.k === 'b') return !st.bootstrapDeleted;
   return s.k === 'd' && st.admins.indexOf(s.id) >= 0;
 }
 function who(s, st) {
   if (!s) return { role: null };
-  if (s.k === 'b') return st.bootstrapDeleted ? { role: null } : { role: 'admin', via: 'bootstrap', id: 'bootstrap', name: s.name || 'Admin' };
   const u = st.users[s.id]; if (!u) return { role: null };
   return { role: st.admins.indexOf(s.id) >= 0 ? 'admin' : 'user', via: 'discord', id: s.id, name: u.name, avatar: u.avatar || null, claim: st.byUser[s.id] || null };
 }
