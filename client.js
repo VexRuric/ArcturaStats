@@ -1,5 +1,5 @@
 /* ---- hosted storage and accounts ---- */
-var me=null,claims={},adminData=null,adminLoading=false,loginOpen=false,authMsg='',docCache={},lastSig='',bootArm=false,discordOn=true,claimMsg='',lgUserVal='';
+var me=null,claims={},adminData=null,adminLoading=false,loginOpen=false,authMsg='',docCache={},lastSig='',bootArm=false,discordOn=true,claimMsg='',lgUserVal='',pubIds={};
 function api(method,url,body){
   return fetch(url,{method:method,credentials:'same-origin',headers:body?{'content-type':'application/json'}:{},body:body?JSON.stringify(body):undefined}).then(function(r){
     return r.json().catch(function(){return {}}).then(function(j){if(!r.ok){var e=new Error(j.error||'error');e.code=j.error||('http'+r.status);throw e}return j})})
@@ -13,14 +13,22 @@ function fetchDoc(kind,it){
 }
 function refresh(force){
   return api('GET','/api/index').then(function(ix){
-    me=ix.me&&ix.me.role?ix.me:null;claims=ix.claims||{};discordOn=!!ix.discord;
+    me=ix.me&&ix.me.role?ix.me:null;claims=ix.claims||{};pubIds={};(ix.pub||[]).forEach(function(k){pubIds[k]=true});discordOn=!!ix.discord;
     var was=canEdit;canEdit=!!(me&&me.role==='admin');canWrite=canEdit;if(canEdit!==was)adminData=null;
-    var sig=JSON.stringify([ix.matches.map(function(x){return x.id+x.v}),ix.snapshots.map(function(x){return x.id+x.v}),claims,me]);
+    var sig=JSON.stringify([ix.matches.map(function(x){return x.id+x.v}),ix.snapshots.map(function(x){return x.id+x.v}),claims,me,ix.pub]);
     if(!force&&sig===lastSig&&loaded)return;
     return Promise.all([Promise.all(ix.matches.map(function(it){return fetchDoc('m',it).then(function(d){return [it.id,d]},function(){return null})})),Promise.all(ix.snapshots.map(function(it){return fetchDoc('s',it).then(function(d){return [it.id,d]},function(){return null})}))]).then(function(r){
       remote={};snaps={};r[0].forEach(function(p){if(p)remote[p[0]]=p[1]});r[1].forEach(function(p){if(p)snaps[p[0]]=p[1]});
       lastSig=sig;loaded=true;dbState='ok';renderAuth();render()})
   }).catch(function(){if(!loaded){dbState='off';render()}})
+}
+function pubTag(id){return canEdit?(pubIds[id]?'<span class="tag ok">Public</span>':'<span class="tag">Private</span>'):''}
+function pubBtn(id){return canEdit?(pubIds[id]?'<button class="btn ghost" type="button" data-aop="unpublish:'+esc(id)+'">Unpublish</button>':'<button class="btn" type="button" data-aop="publish:'+esc(id)+'">Publish</button>'):''}
+function viewSnapshots(){
+  var list=Object.keys(snaps).map(function(k){return {id:k,s:snaps[k]}}).sort(function(a,b){return (b.s.createdAt||0)-(a.s.createdAt||0)});
+  var h='<div><h1>Snapshots</h1><p class="sub">Stats from test sessions, published by the admins '+statusLine()+'</p></div>';
+  if(!list.length)return h+empty('Nothing published yet','Admins publish a snapshot of a test session to share its stats here.');
+  return h+'<div class="panel scroll"><table><thead><tr><th scope="col">Snapshot</th><th scope="col">Created</th><th scope="col">Matches</th>'+(canEdit?'<th scope="col">Visibility</th>':'')+'</tr></thead><tbody>'+list.map(function(x){return '<tr><td><a class="plink" href="#snapshot-'+esc(x.id)+'"><strong>'+esc(x.s.name)+'</strong></a></td><td>'+esc(new Date(x.s.createdAt||0).toLocaleDateString())+'</td><td>'+(x.s.matchIds||[]).length+'</td>'+(canEdit?'<td>'+pubTag(x.id)+'</td>':'')+'</tr>'}).join('')+'</tbody></table></div>';
 }
 function avatarImg(u){return u&&u.avatar?'<img alt="" src="'+esc(u.avatar)+'" style="width:22px;height:22px;border-radius:50%;vertical-align:middle;margin-right:6px">':''}
 var AUTHERR={not_configured:'Discord login is not set up yet.',cancelled:'Discord login was cancelled.',state:'Login expired, try again.',discord:'Discord did not accept the login, try again.'};

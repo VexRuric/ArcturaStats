@@ -42,7 +42,7 @@ async function getJSON(p) {
 }
 
 /* ---------- account state: one small document, changed one request at a time ---------- */
-const blank = () => ({ users: {}, admins: [], claims: {}, byUser: {}, players: {}, bootstrapDeleted: false });
+const blank = () => ({ users: {}, admins: [], claims: {}, byUser: {}, players: {}, published: {}, bootstrapDeleted: false });
 let chain = Promise.resolve();
 async function readState() { const s = await getJSON(AUTHP()); return Object.assign(blank(), s || {}); }
 function mutate(fn) {

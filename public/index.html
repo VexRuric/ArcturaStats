@@ -186,7 +186,7 @@ function teamName(n){return TEAMS[n]?TEAMS[n].name:'Team '+n}
 function teamTag(n){if(!(n>=0))return '-';var c=TEAMS[n]?TEAMS[n].col:'#555';return '<a class="team" href="#faction-'+n+'" style="background:'+c+';text-decoration:none">'+(TFLAG[n]?'<img class="tflag" alt="" src="'+TFLAG[n]+'">':'')+esc(teamName(n))+'</a>'}
 var CCOL={Assassin:'var(--c-assassin)',Hunter:'var(--c-hunter)',Mystic:'var(--c-mystic)',Priest:'var(--c-priest)',Warrior:'var(--c-warrior)'};
 var SERIES=['var(--c-assassin)','var(--c-hunter)','var(--c-mystic)','var(--c-priest)','var(--c-warrior)','var(--accent)'];
-var TABS=[['players','Players'],['classes','Classes'],['factions','Factions'],['matches','Matches'],['upload','Upload']];
+var TABS=[['players','Players'],['classes','Classes'],['factions','Factions'],['matches','Matches'],['snapshots','Snapshots'],['upload','Upload']];
 var $view=document.getElementById('view'),$nav=document.getElementById('nav');
 var remote={},local={},snaps={},snapDraft={name:'',sel:{}},delSel={},confirmKey='',db=null,user=null,canWrite=true,canEdit=false,loaded=false,dbState='loading';
 var sortState={objs:{k:'mobT',d:-1},snplayers:{k:'score',d:-1},snfac:{k:'team',d:1},fplayers:{k:'rating',d:-1},cboard:{k:'rating',d:-1},pside:{k:'name',d:1},adteam:{k:'team',d:1},adcls:{k:'dpm',d:-1},admatch:{k:'t',d:-1},players:{k:'rating',d:-1},match:{k:'dmg',d:-1},classes:{k:'avgDmg',d:-1},pclass:{k:'rating',d:-1},phist:{k:'t',d:-1}};
@@ -422,7 +422,7 @@ function snapshotPanel(){
   var list=Object.keys(snaps).map(function(k){return {id:k,s:snaps[k]}}).sort(function(a,b){return (b.s.createdAt||0)-(a.s.createdAt||0)});
   var n=Object.keys(snapDraft.sel).filter(function(k){return snapDraft.sel[k]}).length;
   var h='<div class="panel"><h2>Snapshots</h2><p class="note" style="margin-top:0">Pick the matches from one night of testing and save them as a snapshot. Each snapshot gets its own stats page.</p>';
-  h+=list.length?'<ul class="events">'+list.map(function(x){return '<li><time>'+esc(new Date(x.s.createdAt||0).toLocaleDateString(undefined,{month:'short',day:'numeric'}))+'</time><span class="tag">'+(x.s.matchIds||[]).length+' matches</span><span><a class="plink" href="#snapshot-'+esc(x.id)+'">'+esc(x.s.name)+'</a></span></li>'}).join('')+'</ul>':'<p class="note">No snapshots yet.</p>';
+  h+=list.length?'<ul class="events">'+list.map(function(x){return '<li><time>'+esc(new Date(x.s.createdAt||0).toLocaleDateString(undefined,{month:'short',day:'numeric'}))+'</time><span class="tag">'+(x.s.matchIds||[]).length+' matches</span><span><a class="plink" href="#snapshot-'+esc(x.id)+'">'+esc(x.s.name)+'</a></span><span style=\"margin-left:auto;display:flex;gap:8px;align-items:center\">'+pubTag(x.id)+pubBtn(x.id)+'</span></li>'}).join('')+'</ul>':'<p class="note">No snapshots yet.</p>';
   h+='<h3 style="font:600 13px var(--font-d);letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:16px 0 8px">New snapshot</h3><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px"><input id="snapName" type="text" placeholder="Name, for example Test night Nov 9" value="'+esc(snapDraft.name)+'" style="flex:1 1 260px;padding:8px 10px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--fg);font:inherit"><button class="btn ghost" type="button" data-snapall="1" style="background:transparent;color:var(--fg);border:1px solid var(--line)">Select all</button><button class="btn" type="button" data-snapall="0" style="background:transparent;color:var(--fg);border:1px solid var(--line)">Clear</button></div>';
   h+='<div class="scroll"><table><tbody>'+ms.map(function(m){var d=m.doc;return '<tr><td><label class="chk"><input type="checkbox" data-snapsel="'+esc(m.id)+'"'+(snapDraft.sel[m.id]?' checked':'')+'> <strong>'+esc(d.name)+'</strong></label></td><td>'+esc(new Date(playedAt(d)).toLocaleDateString())+'</td><td>'+dur(d.duration||0)+'</td><td>'+(d.players||[]).filter(function(p){return !isBot(p.name)}).length+' players</td><td>'+(hasResult(d)?(d.result.winner==='draw'?'Draw':esc(teamName(d.result.winner))+' won'):'-')+'</td></tr>'}).join('')+'</tbody></table></div>';
   h+='<div style="margin-top:12px"><button class="btn" type="button" data-snapcreate="1"'+(n&&db?'':' disabled')+'>Create snapshot ('+n+' selected)</button></div></div>';
@@ -433,7 +433,7 @@ function viewSnapshot(id){
   if(!s)return '<div><h1>Snapshot not found</h1></div>'+empty(dbState==='loading'?'Loading':'No snapshot with that id','It may have been deleted, or it is still loading.');
   var ms=(s.matchIds||[]).map(function(k){return allMatches().filter(function(m){return m.id===k})[0]}).filter(Boolean).sort(function(a,b){return playedAt(a.doc)-playedAt(b.doc)});
   var missing=(s.matchIds||[]).length-ms.length;
-  var h='<div class="bar"><div><p class="sub" style="margin:0"><a class="plink" href="#admin">Admin</a> / Snapshot</p><h1>'+esc(s.name)+'</h1><p class="sub">'+ms.length+' match'+(ms.length===1?'':'es')+', created '+esc(new Date(s.createdAt||0).toLocaleDateString())+(missing?' <span class="tag warn">'+missing+' match'+(missing===1?'':'es')+' no longer stored</span>':'')+'</p></div><div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><label class="chk"><input type="checkbox" id="botsChk"'+(hideBots?' checked':'')+'> Hide bot players</label>'+(canEdit?'<button class="btn ghost" type="button" data-snapdel="'+esc(id)+'">Delete snapshot</button>':'')+'</div></div>';
+  var h='<div class="bar"><div><p class="sub" style="margin:0">'+(canEdit?'<a class="plink" href="#admin">Admin</a>':'<a class="plink" href="#snapshots">Snapshots</a>')+' / Snapshot '+pubTag(id)+'</p><h1>'+esc(s.name)+'</h1><p class="sub">'+ms.length+' match'+(ms.length===1?'':'es')+', created '+esc(new Date(s.createdAt||0).toLocaleDateString())+(missing?' <span class="tag warn">'+missing+' match'+(missing===1?'':'es')+' no longer stored</span>':'')+'</p></div><div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><label class="chk"><input type="checkbox" id="botsChk"'+(hideBots?' checked':'')+'> Hide bot players</label>'+(canEdit?pubBtn(id)+'<button class="btn ghost" type="button" data-snapdel="'+esc(id)+'">Delete snapshot</button>':'')+'</div></div>';
   if(!ms.length)return h+empty('No matches','Every match in this snapshot has been removed.');
   var F={0:{w:0,l:0,dr:0,u:0,k:0,sc:0,mob:0,m:0},1:{w:0,l:0,dr:0,u:0,k:0,sc:0,mob:0,m:0}},P={},C={},mins=0,K=0;
   ms.forEach(function(m){var d=m.doc;mins+=(d.duration||0)/60;
@@ -716,10 +716,10 @@ function viewUpload(){if(!canEdit)return '<div><h1>Upload</h1></div>'+empty('Adm
 function route(){var h=location.hash.replace('#','')||'players';if(h.indexOf('match-')===0)return {t:'match',id:h.slice(6)};if(h.indexOf('player-')===0)return {t:'player',id:h.slice(7)};if(h.indexOf('class-')===0)return {t:'class',id:h.slice(6)};if(h.indexOf('faction-')===0)return {t:'faction',id:h.slice(8)};if(h.indexOf('snapshot-')===0)return {t:'snapshot',id:h.slice(9)};return {t:(TABS.some(function(x){return x[0]===h})||h==='admin')?h:'players'}}
 function render(){
   var r=route();if(r.t==="admin"&&canEdit&&!adminData)loadAdmin();
-  var cur=r.t==='snapshot'?'admin':r.t==='match'?'matches':r.t==='player'?'players':r.t==='class'?'classes':r.t==='faction'?'factions':r.t;
+  var cur=r.t==='snapshot'?'snapshots':r.t==='match'?'matches':r.t==='player'?'players':r.t==='class'?'classes':r.t==='faction'?'factions':r.t;
   $nav.innerHTML=TABS.filter(function(x){return x[0]!=='upload'||canEdit}).concat(canEdit?[['admin','Admin']]:[]).map(function(t){return '<a href="#'+t[0]+'"'+(t[0]===cur?' aria-current="page"':'')+'>'+t[1]+'</a>'}).join('');
   var f=document.activeElement&&document.activeElement.id;
-  $view.innerHTML=r.t==='player'?viewPlayer(r.id):r.t==='match'?viewMatch(r.id):r.t==='snapshot'?viewSnapshot(r.id):r.t==='class'?viewClass(r.id):r.t==='faction'?viewFaction(+r.id):r.t==='factions'?viewFactions():r.t==='classes'?viewClasses():r.t==='matches'?viewMatches():r.t==='upload'?viewUpload():r.t==='admin'?viewAdmin():viewPlayers();
+  $view.innerHTML=r.t==='snapshots'?viewSnapshots():r.t==='player'?viewPlayer(r.id):r.t==='match'?viewMatch(r.id):r.t==='snapshot'?viewSnapshot(r.id):r.t==='class'?viewClass(r.id):r.t==='faction'?viewFaction(+r.id):r.t==='factions'?viewFactions():r.t==='classes'?viewClasses():r.t==='matches'?viewMatches():r.t==='upload'?viewUpload():r.t==='admin'?viewAdmin():viewPlayers();
   if(f){var e=document.getElementById(f);if(e&&e.focus)try{e.focus()}catch(x){}}
 }
 document.addEventListener('change',function(e){var ds=e.target.closest&&e.target.closest('[data-delsel]');if(ds){delSel[ds.dataset.delsel]=ds.checked;confirmKey='';render();return}var c=e.target.closest&&e.target.closest('[data-snapsel]');if(c){snapDraft.sel[c.dataset.snapsel]=c.checked;render()}});
@@ -767,7 +767,7 @@ function save(i){
 function remove(id){db&&db.collection('matches').doc(id).delete().then(function(){location.hash='matches'},function(){})}
 
 /* ---- hosted storage and accounts ---- */
-var me=null,claims={},adminData=null,adminLoading=false,loginOpen=false,authMsg='',docCache={},lastSig='',bootArm=false,discordOn=true,claimMsg='',lgUserVal='';
+var me=null,claims={},adminData=null,adminLoading=false,loginOpen=false,authMsg='',docCache={},lastSig='',bootArm=false,discordOn=true,claimMsg='',lgUserVal='',pubIds={};
 function api(method,url,body){
   return fetch(url,{method:method,credentials:'same-origin',headers:body?{'content-type':'application/json'}:{},body:body?JSON.stringify(body):undefined}).then(function(r){
     return r.json().catch(function(){return {}}).then(function(j){if(!r.ok){var e=new Error(j.error||'error');e.code=j.error||('http'+r.status);throw e}return j})})
@@ -781,14 +781,22 @@ function fetchDoc(kind,it){
 }
 function refresh(force){
   return api('GET','/api/index').then(function(ix){
-    me=ix.me&&ix.me.role?ix.me:null;claims=ix.claims||{};discordOn=!!ix.discord;
+    me=ix.me&&ix.me.role?ix.me:null;claims=ix.claims||{};pubIds={};(ix.pub||[]).forEach(function(k){pubIds[k]=true});discordOn=!!ix.discord;
     var was=canEdit;canEdit=!!(me&&me.role==='admin');canWrite=canEdit;if(canEdit!==was)adminData=null;
-    var sig=JSON.stringify([ix.matches.map(function(x){return x.id+x.v}),ix.snapshots.map(function(x){return x.id+x.v}),claims,me]);
+    var sig=JSON.stringify([ix.matches.map(function(x){return x.id+x.v}),ix.snapshots.map(function(x){return x.id+x.v}),claims,me,ix.pub]);
     if(!force&&sig===lastSig&&loaded)return;
     return Promise.all([Promise.all(ix.matches.map(function(it){return fetchDoc('m',it).then(function(d){return [it.id,d]},function(){return null})})),Promise.all(ix.snapshots.map(function(it){return fetchDoc('s',it).then(function(d){return [it.id,d]},function(){return null})}))]).then(function(r){
       remote={};snaps={};r[0].forEach(function(p){if(p)remote[p[0]]=p[1]});r[1].forEach(function(p){if(p)snaps[p[0]]=p[1]});
       lastSig=sig;loaded=true;dbState='ok';renderAuth();render()})
   }).catch(function(){if(!loaded){dbState='off';render()}})
+}
+function pubTag(id){return canEdit?(pubIds[id]?'<span class="tag ok">Public</span>':'<span class="tag">Private</span>'):''}
+function pubBtn(id){return canEdit?(pubIds[id]?'<button class="btn ghost" type="button" data-aop="unpublish:'+esc(id)+'">Unpublish</button>':'<button class="btn" type="button" data-aop="publish:'+esc(id)+'">Publish</button>'):''}
+function viewSnapshots(){
+  var list=Object.keys(snaps).map(function(k){return {id:k,s:snaps[k]}}).sort(function(a,b){return (b.s.createdAt||0)-(a.s.createdAt||0)});
+  var h='<div><h1>Snapshots</h1><p class="sub">Stats from test sessions, published by the admins '+statusLine()+'</p></div>';
+  if(!list.length)return h+empty('Nothing published yet','Admins publish a snapshot of a test session to share its stats here.');
+  return h+'<div class="panel scroll"><table><thead><tr><th scope="col">Snapshot</th><th scope="col">Created</th><th scope="col">Matches</th>'+(canEdit?'<th scope="col">Visibility</th>':'')+'</tr></thead><tbody>'+list.map(function(x){return '<tr><td><a class="plink" href="#snapshot-'+esc(x.id)+'"><strong>'+esc(x.s.name)+'</strong></a></td><td>'+esc(new Date(x.s.createdAt||0).toLocaleDateString())+'</td><td>'+(x.s.matchIds||[]).length+'</td>'+(canEdit?'<td>'+pubTag(x.id)+'</td>':'')+'</tr>'}).join('')+'</tbody></table></div>';
 }
 function avatarImg(u){return u&&u.avatar?'<img alt="" src="'+esc(u.avatar)+'" style="width:22px;height:22px;border-radius:50%;vertical-align:middle;margin-right:6px">':''}
 var AUTHERR={not_configured:'Discord login is not set up yet.',cancelled:'Discord login was cancelled.',state:'Login expired, try again.',discord:'Discord did not accept the login, try again.'};

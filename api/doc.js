@@ -17,6 +17,6 @@ module.exports = L.handler(async (req, res) => {
     }
     return L.send(res, 200, { ok: true });
   }
-  if (req.method === 'DELETE') { await L.delPath(p); return L.send(res, 200, { ok: true }); }
+  if (req.method === 'DELETE') { await L.delPath(p); if (c === 'snapshots') await L.mutate(s => { delete s.published[id]; }); return L.send(res, 200, { ok: true }); }
   L.send(res, 405, { error: 'method' });
 });
