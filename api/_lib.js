@@ -44,9 +44,27 @@ async function getJSON(p) {
 /* ---------- account state: one small document, changed one request at a time ---------- */
 const blank = () => ({ users: {}, admins: [], claims: {}, byUser: {}, players: {}, published: {}, bootstrapDeleted: false });
 let chain = Promise.resolve();
-async function readState() { const s = await getJSON(AUTHP()); return Object.assign(blank(), s || {}); }
+
+/* The Blob store is public, so the state file is encrypted (AES-256-GCM, key derived from SESSION_SECRET)
+   before it is written. A plain fetch of the file returns only ciphertext. An old plaintext file is still
+   read and is encrypted the next time state is saved. Rotating SESSION_SECRET makes the saved state unreadable. */
+const stateKey = () => crypto.createHash('sha256').update('arctura-state-v1:' + SECRET()).digest();
+function seal(obj) {
+  if (!SECRET()) throw new Error('SESSION_SECRET is required to save state');
+  const iv = crypto.randomBytes(12), c = crypto.createCipheriv('aes-256-gcm', stateKey(), iv);
+  const ct = Buffer.concat([c.update(JSON.stringify(obj), 'utf8'), c.final()]);
+  return { enc: 1, d: Buffer.concat([iv, c.getAuthTag(), ct]).toString('base64') };
+}
+function unseal(doc) {
+  if (!doc || doc.enc !== 1) return doc;
+  if (!SECRET()) throw new Error('SESSION_SECRET is required to read state');
+  const buf = Buffer.from(String(doc.d), 'base64'), d = crypto.createDecipheriv('aes-256-gcm', stateKey(), buf.subarray(0, 12));
+  d.setAuthTag(buf.subarray(12, 28));
+  return JSON.parse(Buffer.concat([d.update(buf.subarray(28)), d.final()]).toString('utf8'));
+}
+async function readState() { const s = unseal(await getJSON(AUTHP())); return Object.assign(blank(), s || {}); }
 function mutate(fn) {
-  const run = chain.then(async () => { const s = await readState(); const out = await fn(s); await putJSON(AUTHP(), s); return out; });
+  const run = chain.then(async () => { const s = await readState(); const out = await fn(s); await putJSON(AUTHP(), seal(s)); return out; });
   chain = run.catch(() => {}); return run;
 }
 
