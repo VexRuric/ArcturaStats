@@ -493,6 +493,7 @@ function copyBugs(){
   function done(m){bugMsg=m;render()}
   try{navigator.clipboard.writeText(t).then(function(){done('Copied '+L.length+' bug'+(L.length===1?'':'s')+' for the devs.')},function(){done('Copy failed. Your browser blocked clipboard access.')})}catch(e){done('Copy failed. Your browser blocked clipboard access.')}
 }
+var DOC_LIMIT=3.5*1024*1024,DOC_WARN=0.8*DOC_LIMIT;
 function viewAdmin(){
   var h='<div><h1>Admin stats</h1><p class="sub">Overall numbers and automatic checks to find problems in the logs, the game and the balance '+statusLine()+'</p></div>';
   if(!canEdit)return h+empty('Editors only','This page is for people with edit access to the site.');
@@ -507,7 +508,7 @@ function viewAdmin(){
     o.forEach(function(b){bl.push(b)})}
   var noRes=[],oldFmt=[],noClass=[],noTeam=[],priest0=[],killNoDmg=[],short=[],bigDoc=[],hits=[],practice=[],noCols=[],noCore=[],noOther=[],oddType=[],blankType=[];
   ms.forEach(function(m){var d=m.doc;T.mins+=(d.duration||0)/60;T.rows+=d.rows||0;
-    var sz=JSON.stringify(d).length;if(sz>sizeMax)sizeMax=sz;if(sz>200000)bigDoc.push({m:m.id,mn:d.name});
+    var sz=JSON.stringify(d).length;if(sz>sizeMax)sizeMax=sz;if(sz>DOC_WARN)bigDoc.push({m:m.id,mn:d.name});
     if(!hasResult(d))noRes.push({m:m.id,mn:d.name});if(!d.v||d.v<2)oldFmt.push({m:m.id,mn:d.name});if((d.duration||0)<300)short.push({m:m.id,mn:d.name});if(isPractice(d))practice.push({m:m.id,mn:d.name});
     if(d.cols&&!d.summary)EXPECT_COLS.forEach(function(c){if(d.cols.indexOf(c)<0)noCols.push({m:m.id,mn:d.name,t:c})});
     if(d.types&&!d.summary&&(d.rows||0)>0){
@@ -546,7 +547,7 @@ function viewAdmin(){
   addIssue('summary','Low','Imported from a summary, not a combat log',ms.filter(function(m){return m.doc.summary}).map(function(m){return {m:m.id,mn:m.doc.name}}),'No hit, crit or best hit data. Re-upload the real combat log if you have it.');
   addIssue('short','Low','Match shorter than 5 minutes',short,'Probably a crash, a restart or a test.');
   addIssue('practice','Low','Practice match (no other human player)',practice,'Left out of rated numbers when Rated matches only is on.');
-  addIssue('bigDoc','High','Stored match near the 256 KiB size limit',bigDoc,'The next save of a bigger log would fail.');
+  addIssue('bigDoc','High','Stored match near the 3.5 MiB size limit',bigDoc,'The site rejects a match document over 3.5 MiB, so a bigger log would fail to save.');
   var nh=Object.keys(T.humans).length;
   h+='<div class="kpis"><div class="kpi"><b>'+T.matches+'</b><small>Matches</small></div><div class="kpi"><b>'+num(T.mins/60,1)+'</b><small>Hours logged</small></div><div class="kpi"><b>'+nh+'</b><small>Human players</small></div><div class="kpi"><b>'+Object.keys(T.bots).length+'</b><small>Bot names seen</small></div><div class="kpi"><b>'+num(T.dmg)+'</b><small>Player damage</small></div><div class="kpi"><b>'+num(T.kills)+' / '+num(T.deaths)+'</b><small>Kills / deaths</small></div></div>';
   h+=accountsPanel();
@@ -569,7 +570,7 @@ function viewAdmin(){
   h+='<div class="panel"><h2>Team results, all matches</h2>'+(trows.length?table('adteam',[{k:'team',l:'Team',f:function(r){return teamTag(r.team)}},{k:'matches',l:'Matches'},{k:'w',l:'Wins'},{k:'l',l:'Losses'},{k:'dr',l:'Draws'},{k:'sw',l:'Win %',f:function(r){return r.sw==null?'-':num(r.sw)+'%'}},{k:'kills',l:'Kills'},{k:'points',l:'Points'},{k:'relics',l:'Relics'}],trows):'<p class="note">No team data yet.</p>')+'<p class="note">Wins stay at 0 until a winner is recorded. Only a team that appears in the log gets counted.</p></div>'+
     '<div class="panel"><h2>Class balance</h2>'+(crow.length?table('adcls',[{k:'cls',l:'Class',f:function(r){return clsCell(r.cls)}},{k:'picks',l:'Picks'},{k:'dpm',l:'Dmg/min',f:function(r){return num(r.dpm)}},{k:'vs',l:'vs avg',f:function(r){return '<span class="'+(Math.abs(r.vs)>40?'err':'')+'">'+(r.vs>0?'+':'')+num(r.vs)+'%</span>'}},{k:'tpm',l:'Taken/min',f:function(r){return num(r.tpm)}},{k:'hpm',l:'Heal/min',f:function(r){return num(r.hpm)}},{k:'kdr',l:'K/D',f:function(r){return num(r.kdr,2)}}],crow):'<p class="note">No class data yet.</p>')+'</div>';
   var mrows=ms.map(function(m){var d=m.doc,hu=(d.players||[]).filter(function(p){return !isBot(p.name)}).length;return {id:m.id,name:d.name,len:d.duration||0,hu:hu,bots:(d.players||[]).length-hu,tm:Object.keys(d.teams||{}).length,res:hasResult(d)?(d.result.winner==='draw'?'Draw':teamName(d.result.winner)):'-',rows:d.rows||0,sz:Math.round(JSON.stringify(d).length/1024),t:d.uploadedAt||0}});
-  h+='<div class="panel"><h2>Every stored match</h2>'+table('admatch',[{k:'name',l:'Log',f:function(r){return '<a class="plink" href="#match-'+esc(r.id)+'">'+esc(r.name)+'</a>'}},{k:'len',l:'Length',f:function(r){return dur(r.len)}},{k:'hu',l:'Humans'},{k:'bots',l:'Bots'},{k:'tm',l:'Teams logged'},{k:'res',l:'Result'},{k:'rows',l:'Rows',f:function(r){return num(r.rows)}},{k:'sz',l:'Stored KiB'}],mrows)+'<p class="note">Largest stored match is '+num(sizeMax/1024)+' KiB of the 256 KiB limit.</p></div>';
+  h+='<div class="panel"><h2>Every stored match</h2>'+table('admatch',[{k:'name',l:'Log',f:function(r){return '<a class="plink" href="#match-'+esc(r.id)+'">'+esc(r.name)+'</a>'}},{k:'len',l:'Length',f:function(r){return dur(r.len)}},{k:'hu',l:'Humans'},{k:'bots',l:'Bots'},{k:'tm',l:'Teams logged'},{k:'res',l:'Result'},{k:'rows',l:'Rows',f:function(r){return num(r.rows)}},{k:'sz',l:'Stored KiB'}],mrows)+'<p class="note">Largest stored match is '+num(sizeMax/1024)+' KiB of the 3,584 KiB (3.5 MiB) limit.</p></div>';
   return h;
 }
 function viewMatches(){
