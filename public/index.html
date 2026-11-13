@@ -172,7 +172,7 @@ function parseCombatLog(text,fileName){
   const n=Math.floor(dur/BUCKET)+1,r1=v=>Math.round(v*10)/10,series={};
   for(const k in buck){const a=[];for(let i=0;i<n;i++)a.push(r1(buck[k][i]||0));series[k]=a}
   const players=Object.values(P).filter(p=>p.dmg||p.taken||p.heal||p.kills||p.deaths||p.mobKills||p.score||p.relicPickups||p.relicCaps).map(p=>{for(const k of ['dmg','dmgP','dmgM','dmgB','taken','heal','maxHit'])p[k]=r1(p[k]);const v=tv[p.name]||{},ks=Object.keys(v).sort((a,b)=>v[b]-v[a]);p.team=ks.length?parseInt(ks[0],10):-1;return p});
-  return{v:2,teams:TM,result,types,name:fileName||'combat log',uploadedAt:Date.now(),duration:r1(dur),rows:rows.length,bucket:BUCKET,players,series,events:events.slice(0,200)};
+  return{v:2,teams:TM,result,types,cols:H.filter(Boolean),name:fileName||'combat log',uploadedAt:Date.now(),duration:r1(dur),rows:rows.length,bucket:BUCKET,players,series,events:events.slice(0,200)};
 }
 
 
@@ -483,52 +483,86 @@ function dataPanel(){
   var pr=bulkIds('practice'),su=bulkIds('summary'),al=bulkIds('all');
   return '<div class="panel"><h2>Clear logs</h2><p class="note" style="margin-top:0">Deleting removes the stored match for everyone and cannot be undone. Snapshots keep their name but lose the deleted matches. Each button asks you to click twice.</p><div style="display:flex;gap:10px;flex-wrap:wrap">'+confirmBtn('practice','Delete practice matches vs bots',pr)+confirmBtn('summary','Delete imported summaries',su)+confirmBtn('all','Delete ALL matches',al,true)+'</div><p class="note">Pick individual matches on the Matches tab.</p></div>';
 }
+var bugFilter='active',bugMsg='',lastBugs=[];
+function bugWho(a){var u=[];a.forEach(function(x){if(u.indexOf(x)<0)u.push(x)});return u.slice(0,6).join(', ')+(u.length>6?' and '+(u.length-6)+' more':'')}
+function copyBugs(){
+  var L=lastBugs.filter(function(b){return b.s==='devs'});
+  var t='ArcturaStats combat log bugs ('+L.length+')\n\n'+L.map(function(b){return '- ['+b.sev+'] '+b.check+' | '+b.mn+(b.who.length?' | '+bugWho(b.who):'')+'\n  '+b.detail}).join('\n');
+  function done(m){bugMsg=m;render()}
+  try{navigator.clipboard.writeText(t).then(function(){done('Copied '+L.length+' bug'+(L.length===1?'':'s')+' for the devs.')},function(){done('Copy failed. Your browser blocked clipboard access.')})}catch(e){done('Copy failed. Your browser blocked clipboard access.')}
+}
 function viewAdmin(){
   var h='<div><h1>Admin stats</h1><p class="sub">Overall numbers and automatic checks to find problems in the logs, the game and the balance '+statusLine()+'</p></div>';
   if(!canEdit)return h+empty('Editors only','This page is for people with edit access to the site.');
   var ms=allMatches();if(!ms.length)return h+accountsPanel()+empty('No matches yet','Upload combat logs on the Upload tab.');
   var T={matches:ms.length,mins:0,rows:0,dmg:0,kills:0,deaths:0,boss:0,pts:0,relics:0,humans:{},bots:{}};
-  var teams={},cls={},issues=[],sizeMax=0;
-  function addIssue(sev,check,items,detail){if(items.length)issues.push({sev:sev,check:check,n:items.length,detail:detail,ex:items.slice(0,4).join(', ')+(items.length>4?' and '+(items.length-4)+' more':'')})}
-  var noRes=[],oldFmt=[],noClass=[],noTeam=[],priest0=[],killNoDmg=[],short=[],bigDoc=[],hits=[],practice=[];
+  var teams={},cls={},bl=[],sizeMax=0;
+  var EXPECT_COLS=['Time','Type','Source','Target','Message','Effective','TeamIndex','Killer','Victim','Ability','Critical','MobCampTier','PlayersPresent','ScoreAwarded'],
+    CORE_TYPES=['DamageDealt','PlayerKill','Death'],OTHER_TYPES=['HealingDealt','ScoreAwarded','MobKill','BossKill','RelicTaken','RelicCaptured','RelicRunOutcome','ControlPointCaptured'],KNOWN_TYPES=CORE_TYPES.concat(OTHER_TYPES);
+  var bugs=(adminData&&adminData.bugs)||{};
+  function addIssue(id,sev,check,items,detail){
+    var g={},o=[];items.forEach(function(x){var k=x.m||'all';if(!g[k]){g[k]={key:id+':'+k,id:id,sev:sev,check:check,detail:detail,m:x.m||null,mn:x.mn||'All matches',who:[]};o.push(g[k])}if(x.t)g[k].who.push(x.t)});
+    o.forEach(function(b){bl.push(b)})}
+  var noRes=[],oldFmt=[],noClass=[],noTeam=[],priest0=[],killNoDmg=[],short=[],bigDoc=[],hits=[],practice=[],noCols=[],noCore=[],noOther=[],oddType=[],blankType=[];
   ms.forEach(function(m){var d=m.doc;T.mins+=(d.duration||0)/60;T.rows+=d.rows||0;
-    var sz=JSON.stringify(d).length;if(sz>sizeMax)sizeMax=sz;if(sz>200000)bigDoc.push(d.name);
-    if(!hasResult(d))noRes.push(d.name);if(!d.v||d.v<2)oldFmt.push(d.name);if((d.duration||0)<300)short.push(d.name);if(isPractice(d))practice.push(d.name);
+    var sz=JSON.stringify(d).length;if(sz>sizeMax)sizeMax=sz;if(sz>200000)bigDoc.push({m:m.id,mn:d.name});
+    if(!hasResult(d))noRes.push({m:m.id,mn:d.name});if(!d.v||d.v<2)oldFmt.push({m:m.id,mn:d.name});if((d.duration||0)<300)short.push({m:m.id,mn:d.name});if(isPractice(d))practice.push({m:m.id,mn:d.name});
+    if(d.cols&&!d.summary)EXPECT_COLS.forEach(function(c){if(d.cols.indexOf(c)<0)noCols.push({m:m.id,mn:d.name,t:c})});
+    if(d.types&&!d.summary&&(d.rows||0)>0){
+      CORE_TYPES.forEach(function(t){if(!d.types[t]&&!(t==='DamageDealt'&&d.noDmg))noCore.push({m:m.id,mn:d.name,t:t})});
+      OTHER_TYPES.forEach(function(t){if(!d.types[t])noOther.push({m:m.id,mn:d.name,t:t})});
+      Object.keys(d.types).forEach(function(t){if(t==='')blankType.push({m:m.id,mn:d.name,t:d.types[t]+' rows'});else if(KNOWN_TYPES.indexOf(t)<0)oddType.push({m:m.id,mn:d.name,t:t+' ('+d.types[t]+')'})})}
     var tms=d.teams||{};Object.keys(tms).forEach(function(k){var a=teams[k]||(teams[k]={team:+k,matches:0,w:0,l:0,dr:0,kills:0,points:0,relics:0});a.matches++;a.kills+=tms[k].kills;a.points+=tms[k].points;a.relics+=tms[k].relics;var o=outcome(d,+k);if(o==='win')a.w++;else if(o==='loss')a.l++;else if(o==='draw')a.dr++});
     (d.players||[]).forEach(function(p){
       if(isBot(p.name)){T.bots[p.name]=1;return}T.humans[p.name]=1;
       T.dmg+=p.dmg;T.kills+=p.kills;T.deaths+=p.deaths;T.boss+=p.bossKills;
-      if(!p.cls)noClass.push(p.name+' in '+d.name);if(p.team==null||p.team<0)noTeam.push(p.name+' in '+d.name);
-      if(p.cls==='Priest'&&!p.heal)priest0.push(p.name+' in '+d.name);
-      if(p.kills>0&&!p.dmg&&!d.noDmg)killNoDmg.push(p.name+' in '+d.name);
-      hits.push({n:p.name,d:d.name,v:p.maxHit});
+      if(!p.cls)noClass.push({m:m.id,mn:d.name,t:p.name});if(p.team==null||p.team<0)noTeam.push({m:m.id,mn:d.name,t:p.name});
+      if(p.cls==='Priest'&&!p.heal)priest0.push({m:m.id,mn:d.name,t:p.name});
+      if(p.kills>0&&!p.dmg&&!d.noDmg)killNoDmg.push({m:m.id,mn:d.name,t:p.name});
+      hits.push({n:p.name,d:d.name,m:m.id,v:p.maxHit});
       if(p.cls){var c=cls[p.cls]||(cls[p.cls]={cls:p.cls,picks:0,mins:0,dmg:0,taken:0,heal:0,kills:0,deaths:0});var mn=(d.duration||0)/60;c.picks++;c.mins+=mn;c.dmg+=p.dmg;c.taken+=p.taken;c.heal+=p.heal;c.kills+=p.kills;c.deaths+=p.deaths}
     });
     var tm=d.teams||{};T.pts+=Object.keys(tm).reduce(function(s,k){return s+tm[k].points},0);T.relics+=Object.keys(tm).reduce(function(s,k){return s+tm[k].relics},0)});
-  var med=median(hits.map(function(x){return x.v})),outl=hits.filter(function(x){return hits.length>=3&&med>0&&x.v>3*med}).map(function(x){return x.n+' hit '+num(x.v,1)+' in '+x.d});
+  var med=median(hits.map(function(x){return x.v})),outl=hits.filter(function(x){return hits.length>=3&&med>0&&x.v>3*med}).map(function(x){return {m:x.m,mn:x.d,t:x.n+' hit '+num(x.v,1)}});
   var crow=Object.keys(cls).map(function(k){var c=cls[k];c.dpm=c.dmg/c.mins;c.tpm=c.taken/c.mins;c.hpm=c.heal/c.mins;c.kdr=c.deaths?c.kills/c.deaths:c.kills;return c});
   var avg=crow.length?crow.reduce(function(s,c){return s+c.dpm},0)/crow.length:0;
   crow.forEach(function(c){c.vs=avg?100*(c.dpm/avg-1):0});
-  var skew=crow.length>=2?crow.filter(function(c){return Math.abs(c.vs)>40}).map(function(c){return c.cls+' '+(c.vs>0?'+':'')+num(c.vs)+'% damage/min vs class average'}):[];
-  addIssue('High','Match winner is not recorded',noRes,'The combat log has no match result row, so team wins cannot be counted. Set the winner by hand on each match page, or add a match end row with the winning team to the log.');
-  addIssue('High','Stored with the older parser',oldFmt,'These matches have no team or result fields. Re-upload the log to get them.');
-  addIssue('Medium','Player has no team in the log',noTeam,'TeamIndex is only written on some rows (kills, captures, relics). A player with none of those has no side, so they cannot get team wins.');
-  addIssue('Medium','Player class could not be inferred',noClass,'Class comes from spawn and regen effect names. The log should carry the class directly.');
-  addIssue('Medium','Priest with zero healing logged',priest0,'Healing to other players is not reaching the combat log, or the Priest never healed. Both need a look.');
-  addIssue('Medium','Hit far above the typical max hit (over 3 times the median)',outl,'Median max hit is '+num(med,1)+'. Check these for a bug, a stacking buff or an unmitigated hit.');
-  addIssue('Medium','Class damage far from the class average (over 40%)',skew,'A balance signal, but only meaningful with several players per class.');
-  addIssue('Low','Kills with no damage dealt',killNoDmg,'Kill credit is awarded without any logged damage, so the log or the credit is wrong.');
-  addIssue('Low','Imported from a summary, not a combat log',ms.filter(function(m){return m.doc.summary}).map(function(m){return m.doc.name}),'No hit, crit or best hit data. Re-upload the real combat log if you have it.');
-  addIssue('Low','Match shorter than 5 minutes',short,'Probably a crash, a restart or a test.');
-  addIssue('Low','Practice match (no other human player)',practice,'Left out of rated numbers when Rated matches only is on.');
-  addIssue('High','Stored match near the 256 KiB size limit',bigDoc,'The next save of a bigger log would fail.');
+  var skew=crow.length>=2?crow.filter(function(c){return Math.abs(c.vs)>40}).map(function(c){return {m:null,mn:'All matches',t:c.cls+' '+(c.vs>0?'+':'')+num(c.vs)+'% damage/min vs class average'}}):[];
+  addIssue('noRes','High','Match winner is not recorded',noRes,'The combat log has no match result row, so team wins cannot be counted. Set the winner by hand on each match page, or add a match end row with the winning team to the log.');
+  addIssue('oldFmt','High','Stored with the older parser',oldFmt,'These matches have no team or result fields. Re-upload the log to get them.');
+  addIssue('noCols','High','Combat log is missing columns the parser reads',noCols,'The header has no such column, so every stat that depends on it is blank or wrong. The game needs to write it.');
+  addIssue('noCore','Medium','Core event type missing from the log',noCore,'The log has no rows of this type at all. Damage, kills and deaths drive almost every stat.');
+  addIssue('noTeam','Medium','Player has no team in the log',noTeam,'TeamIndex is only written on some rows (kills, captures, relics). A player with none of those has no side, so they cannot get team wins.');
+  addIssue('noClass','Medium','Player class could not be inferred',noClass,'Class comes from spawn and regen effect names. The log should carry the class directly.');
+  addIssue('priest0','Medium','Priest with zero healing logged',priest0,'Healing to other players is not reaching the combat log, or the Priest never healed. Both need a look.');
+  addIssue('blankType','Medium','Rows with a blank Type',blankType,'The Type column is empty on these rows, so the parser skips them.');
+  addIssue('outlier','Medium','Hit far above the typical max hit (over 3 times the median)',outl,'Median max hit is '+num(med,1)+'. Check these for a bug, a stacking buff or an unmitigated hit.');
+  addIssue('skew','Medium','Class damage far from the class average (over 40%)',skew,'A balance signal, but only meaningful with several players per class.');
+  addIssue('killNoDmg','Low','Kills with no damage dealt',killNoDmg,'Kill credit is awarded without any logged damage, so the log or the credit is wrong.');
+  addIssue('oddType','Low','Event type the stats do not use',oddType,'New or renamed event types. The parser ignores them. If they should count, the parser needs updating.');
+  addIssue('noOther','Low','Support or objective event type missing',noOther,'Fine for a short test, a gap for a full match.');
+  addIssue('summary','Low','Imported from a summary, not a combat log',ms.filter(function(m){return m.doc.summary}).map(function(m){return {m:m.id,mn:m.doc.name}}),'No hit, crit or best hit data. Re-upload the real combat log if you have it.');
+  addIssue('short','Low','Match shorter than 5 minutes',short,'Probably a crash, a restart or a test.');
+  addIssue('practice','Low','Practice match (no other human player)',practice,'Left out of rated numbers when Rated matches only is on.');
+  addIssue('bigDoc','High','Stored match near the 256 KiB size limit',bigDoc,'The next save of a bigger log would fail.');
   var nh=Object.keys(T.humans).length;
   h+='<div class="kpis"><div class="kpi"><b>'+T.matches+'</b><small>Matches</small></div><div class="kpi"><b>'+num(T.mins/60,1)+'</b><small>Hours logged</small></div><div class="kpi"><b>'+nh+'</b><small>Human players</small></div><div class="kpi"><b>'+Object.keys(T.bots).length+'</b><small>Bot names seen</small></div><div class="kpi"><b>'+num(T.dmg)+'</b><small>Player damage</small></div><div class="kpi"><b>'+num(T.kills)+' / '+num(T.deaths)+'</b><small>Kills / deaths</small></div></div>';
   h+=accountsPanel();
   h+=snapshotPanel();
   h+=dataPanel();
-  h+='<div class="panel"><h2>Issues found ('+issues.length+')</h2>'+(issues.length?'<div class="scroll"><table><thead><tr><th scope="col"><button type="button" disabled>Severity</button></th><th scope="col"><button type="button" disabled>Check</button></th><th scope="col"><button type="button" disabled>Count</button></th><th scope="col"><button type="button" disabled>What it means</button></th><th scope="col"><button type="button" disabled>Examples</button></th></tr></thead><tbody>'+
-    issues.map(function(i){return '<tr><td><span class="tag '+(i.sev==='High'?'err':i.sev==='Medium'?'warn':'')+'">'+i.sev+'</span></td><td><strong>'+esc(i.check)+'</strong></td><td>'+i.n+'</td><td style="white-space:normal;min-width:260px;text-align:left">'+esc(i.detail)+'</td><td style="white-space:normal;min-width:200px;text-align:left">'+esc(i.ex)+'</td></tr>'}).join('')+'</tbody></table></div>':'<p class="note">No issues found.</p>')+'</div>';
+  var SEV={High:0,Medium:1,Low:2},STL={open:'Open',devs:'With devs',fixed:'Fixed',ignored:'Ignored'},cnt={open:0,devs:0,fixed:0,ignored:0};
+  bl.sort(function(a,b){return (SEV[a.sev]-SEV[b.sev])||String(a.mn).localeCompare(String(b.mn))});
+  bl.forEach(function(b){b.s=(bugs[b.key]&&bugs[b.key].s)||'open';if(cnt[b.s]==null)b.s='open';cnt[b.s]++});
+  lastBugs=bl;
+  var shown=bl.filter(function(b){return bugFilter==='all'||(bugFilter==='active'?(b.s==='open'||b.s==='devs'):b.s===bugFilter)});
+  function bugBtn(b,s,l,pri){return '<button class="btn'+(pri?'':' ghost')+'" type="button" data-aop="bug:'+esc(b.key)+'|'+s+'">'+l+'</button>'}
+  function bugActs(b){return b.s==='open'?bugBtn(b,'devs','Send to devs',1)+' '+bugBtn(b,'ignored','Ignore'):b.s==='devs'?bugBtn(b,'fixed','Mark fixed',1)+' '+bugBtn(b,'open','Reopen'):bugBtn(b,'open','Reopen')}
+  function bth(l){return '<th scope="col"><button type="button" disabled>'+l+'</button></th>'}
+  h+='<div class="panel"><h2>Bugs ('+cnt.open+' open, '+cnt.devs+' with devs)</h2><p class="note" style="margin-top:0">Problems and missing data found in the stored combat logs. Send a bug to the devs to track it, then mark it fixed once a new log shows it is gone. Re-upload a log to re-check it.</p>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'+[['active','Active ('+(cnt.open+cnt.devs)+')'],['open','Open ('+cnt.open+')'],['devs','With devs ('+cnt.devs+')'],['fixed','Fixed ('+cnt.fixed+')'],['ignored','Ignored ('+cnt.ignored+')'],['all','All ('+bl.length+')']].map(function(f){return '<button class="btn'+(bugFilter===f[0]?'':' ghost')+'" type="button" data-bugf="'+f[0]+'" aria-pressed="'+(bugFilter===f[0])+'">'+f[1]+'</button>'}).join('')+(cnt.devs?'<button class="btn ghost" type="button" data-bugcopy="1">Copy dev report</button>':'')+'</div>'+
+    (bugMsg?'<p class="note" role="status">'+esc(bugMsg)+'</p>':'')+
+    (shown.length?'<div class="scroll"><table><thead><tr>'+bth('Severity')+bth('Bug')+bth('Log')+bth('Affected')+bth('Status')+'<th scope="col"></th></tr></thead><tbody>'+
+      shown.map(function(b){return '<tr><td><span class="tag '+(b.sev==='High'?'err':b.sev==='Medium'?'warn':'')+'">'+b.sev+'</span></td><td style="white-space:normal;min-width:240px;text-align:left"><strong>'+esc(b.check)+'</strong><br><span class="note" style="margin:0">'+esc(b.detail)+'</span></td><td style="white-space:normal;text-align:left">'+(b.m?'<a class="plink" href="#match-'+esc(b.m)+'">'+esc(b.mn)+'</a>':esc(b.mn))+'</td><td style="white-space:normal;min-width:160px;text-align:left">'+esc(bugWho(b.who))+'</td><td><span class="tag '+(b.s==='fixed'?'ok':b.s==='devs'?'warn':'')+'">'+STL[b.s]+'</span></td><td style="text-align:right;white-space:nowrap">'+bugActs(b)+'</td></tr>'}).join('')+'</tbody></table></div>':'<p class="note">'+(bl.length?'Nothing in this view.':'No bugs found.')+'</p>')+'</div>';
   var trows=Object.keys(teams).map(function(k){var a=teams[k];a.sw=(a.w+a.l+a.dr)?100*a.w/(a.w+a.l+a.dr):null;return a});
   h+='<div class="panel"><h2>Team results, all matches</h2>'+(trows.length?table('adteam',[{k:'team',l:'Team',f:function(r){return teamTag(r.team)}},{k:'matches',l:'Matches'},{k:'w',l:'Wins'},{k:'l',l:'Losses'},{k:'dr',l:'Draws'},{k:'sw',l:'Win %',f:function(r){return r.sw==null?'-':num(r.sw)+'%'}},{k:'kills',l:'Kills'},{k:'points',l:'Points'},{k:'relics',l:'Relics'}],trows):'<p class="note">No team data yet.</p>')+'<p class="note">Wins stay at 0 until a winner is recorded. Only a team that appears in the log gets counted.</p></div>'+
     '<div class="panel"><h2>Class balance</h2>'+(crow.length?table('adcls',[{k:'cls',l:'Class',f:function(r){return clsCell(r.cls)}},{k:'picks',l:'Picks'},{k:'dpm',l:'Dmg/min',f:function(r){return num(r.dpm)}},{k:'vs',l:'vs avg',f:function(r){return '<span class="'+(Math.abs(r.vs)>40?'err':'')+'">'+(r.vs>0?'+':'')+num(r.vs)+'%</span>'}},{k:'tpm',l:'Taken/min',f:function(r){return num(r.tpm)}},{k:'hpm',l:'Heal/min',f:function(r){return num(r.hpm)}},{k:'kdr',l:'K/D',f:function(r){return num(r.kdr,2)}}],crow):'<p class="note">No class data yet.</p>')+'</div>';
@@ -841,18 +875,20 @@ function loadAdmin(){
   if(adminLoading)return;adminLoading=true;
   api('GET','/api/admin').then(function(d){adminData=d;adminLoading=false;render()},function(){adminLoading=false});
 }
-var ERR={taken:'That player is already claimed.',you_already_claimed:'Your Discord account already owns a player.',unknown_player:'That player is not in any saved match.',login_with_discord:'Log in with Discord first.',last_admin:'That is the last admin. Make another admin first.'};
+var ERR={taken:'That player is already claimed.',you_already_claimed:'Your Discord account already owns a player.',unknown_player:'That player is not in any saved match.',login_with_discord:'Log in with Discord first.',last_admin:'That is the last admin. Make another admin first.',too_many_bugs:'Too many tracked bugs. Reopen or clear some first.'};
 document.addEventListener('click',function(e){
   var a=e.target.closest('[data-auth]');
   if(a){var k=a.dataset.auth;if(k==='open'){loginOpen=!loginOpen;authMsg='';renderAuth()}
     if(k==='logout')api('POST','/api/auth?a=logout').then(function(){me=null;canEdit=false;canWrite=false;adminData=null;lastSig='';renderAuth();return refresh(true)});return}
+  var bf=e.target.closest('[data-bugf]');if(bf){bugFilter=bf.dataset.bugf;bugMsg='';render();return}
+  if(e.target.closest('[data-bugcopy]')){copyBugs();return}
   var cl=e.target.closest('[data-claim]');
   if(cl){claimMsg='';api('POST','/api/claim',{player:cl.dataset.claim}).then(function(){return refresh(true)},function(err){claimMsg=ERR[err.code]||'Could not claim.';render()});return}
   var op=e.target.closest('[data-aop]');
   if(op){
     var raw=op.dataset.aop,i=raw.indexOf(':'),name=i<0?raw:raw.slice(0,i),arg=i<0?'':raw.slice(i+1);
-    var body=name==='release'?{op:'release',player:arg}:{op:name,id:arg};
-    api('POST','/api/admin',body).then(function(){adminData=null;return refresh(true)}).then(function(){if(canEdit)loadAdmin()},function(err){authMsg=ERR[err.code]||'Action failed.';claimMsg=authMsg;render()});
+    var bi=arg.lastIndexOf('|'),body=name==='bug'?{op:'bugStatus',key:arg.slice(0,bi),status:arg.slice(bi+1)}:name==='release'?{op:'release',player:arg}:{op:name,id:arg};
+    bugMsg='';api('POST','/api/admin',body).then(function(){if(name!=='bug')adminData=null;return refresh(true)}).then(function(){if(canEdit)loadAdmin()},function(err){authMsg=ERR[err.code]||'Action failed.';claimMsg=authMsg;render()});
   }
 });
 document.addEventListener('keydown',function(e){if(e.key==='Escape'&&loginOpen){loginOpen=false;renderAuth()}});

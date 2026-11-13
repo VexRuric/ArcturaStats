@@ -42,7 +42,7 @@ async function getJSON(p) {
 }
 
 /* ---------- account state: one small document, changed one request at a time ---------- */
-const blank = () => ({ users: {}, admins: [], claims: {}, byUser: {}, players: {}, published: {} });
+const blank = () => ({ users: {}, admins: [], claims: {}, byUser: {}, players: {}, published: {}, bugs: {} });
 let chain = Promise.resolve();
 
 /* The Blob store is public, so the state file is encrypted (AES-256-GCM, key derived from SESSION_SECRET)
