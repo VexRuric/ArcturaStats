@@ -699,7 +699,7 @@ function viewPlayer(slugId){
   out+='<p class="note">Rating 100 is the reference of '+REF.dpm+' damage/min, '+REF.spm+' score/min, '+REF.kpm+' kills/min and '+REF.dth+' deaths/min, the same for every class for now. Priest and other support play is under-rated until the logs carry healing and ability names. Mobs (BP_MeatPuppets) and SpawnedPlayer test players are both bots. A match with no other human player is marked Practice, and Rated matches only leaves those out. Right now every saved match is practice, so the rating is a trend line and not a rank.</p>';
   return out;
 }
-function viewUpload(){
+function viewUpload(){if(!canEdit)return '<div><h1>Upload</h1></div>'+empty('Admins only','Only admins can upload combat logs. Log in as an admin to upload.');
   var h='<div><h1>Upload combat logs</h1><p class="sub">Drop one or more CombatLog_*.log files. They are read in your browser, then saved to the shared site when you press Save.</p></div>'+
     '<label class="drop" id="drop" for="file"><strong>Drop combat logs here</strong>or click to choose files<input id="file" type="file" accept=".log,.csv,.txt" multiple hidden></label>';
   if(uploads.length)h+='<div><button class="btn" type="button" data-discardall="1" style="background:transparent;color:var(--fg);border:1px solid var(--line)">Clear list</button></div>';
@@ -717,7 +717,7 @@ function route(){var h=location.hash.replace('#','')||'players';if(h.indexOf('ma
 function render(){
   var r=route();if(r.t==="admin"&&canEdit&&!adminData)loadAdmin();
   var cur=r.t==='snapshot'?'admin':r.t==='match'?'matches':r.t==='player'?'players':r.t==='class'?'classes':r.t==='faction'?'factions':r.t;
-  $nav.innerHTML=TABS.concat(canEdit?[['admin','Admin']]:[]).map(function(t){return '<a href="#'+t[0]+'"'+(t[0]===cur?' aria-current="page"':'')+'>'+t[1]+'</a>'}).join('');
+  $nav.innerHTML=TABS.filter(function(x){return x[0]!=='upload'||canEdit}).concat(canEdit?[['admin','Admin']]:[]).map(function(t){return '<a href="#'+t[0]+'"'+(t[0]===cur?' aria-current="page"':'')+'>'+t[1]+'</a>'}).join('');
   var f=document.activeElement&&document.activeElement.id;
   $view.innerHTML=r.t==='player'?viewPlayer(r.id):r.t==='match'?viewMatch(r.id):r.t==='snapshot'?viewSnapshot(r.id):r.t==='class'?viewClass(r.id):r.t==='faction'?viewFaction(+r.id):r.t==='factions'?viewFactions():r.t==='classes'?viewClasses():r.t==='matches'?viewMatches():r.t==='upload'?viewUpload():r.t==='admin'?viewAdmin():viewPlayers();
   if(f){var e=document.getElementById(f);if(e&&e.focus)try{e.focus()}catch(x){}}
