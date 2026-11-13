@@ -1,0 +1,6 @@
+{
+  "rewrites": [
+    { "source": "/auth/discord", "destination": "/api/auth?a=discord" },
+    { "source": "/auth/callback", "destination": "/api/auth?a=callback" }
+  ]
+}
