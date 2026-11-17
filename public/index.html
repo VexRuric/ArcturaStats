@@ -180,11 +180,13 @@ function parseMatchLedger(text,fileName){
     var tl=p.timeline,ci=tl&&tl.cols?{a:tl.cols.indexOf('pvpDmg'),b:tl.cols.indexOf('pveDmg')}:null;
     if(ci&&tl.rows){var a=[],per=Math.max(1,Math.round(BUCKET/(tl.binSec||10)));for(var i=0;i<n;i++){var sum=0;for(var j=i*per;j<(i+1)*per&&j<tl.rows.length;j++)sum+=(tl.rows[j][ci.a]||0)+(tl.rows[j][ci.b]||0);a.push(r1(sum))}if(a.some(Boolean))series[p.name]=a}
     return{name:p.name,uid:p.uid||'',cls:p.class||'',team:p.team==null?-1:p.team,
-      dmg:r1(pvp+pveT),dmgP:r1(pvp),dmgM:r1(Math.max(0,pveT-boss)),dmgB:r1(boss),taken:r1(s.damageTaken),absorbed:r1((s.shieldAbsorbed||0)+(s.damageBlocked||0)+(s.blockedDamage||0)+(s.blocked||0)),healRecv:r1(s.healReceived),heal:r1(s.pvpHeal),
+      dmg:r1(pvp+pveT),dmgP:r1(pvp),dmgM:r1(Math.max(0,pveT-boss)),dmgB:r1(boss),taken:r1(s.damageTaken),absorbed:r1((s.shieldAbsorbed||0)+(s.damageBlocked||0)+(s.blockedDamage||0)+(s.blocked||0)),mit:r1(s.damageMitigated||s.mitigated||s.mitigatedDamage||s.damageReduced||0),healRecv:r1(s.healReceived),heal:r1(s.pvpHeal),
       kills:s.kills||0,deaths:s.deaths||0,assists:s.assists||0,mobKills:s.mobKills||0,bossKills:bossK[p.id]||0,score:s.points||0,
       hits:hits,crits:s.crits||0,maxHit:0,
       relicPickups:s.relicPickups||0,relicReturns:0,relicCaps:s.relicCaptures||0,carrierKills:s.carrierKills||0,
-      cpCaps:s.cpCaptures||0,cpTime:r1(s.cpSec),tiers:t,pos:posC(p.positions)}});
+      cpCaps:s.cpCaptures||0,cpTime:r1(s.cpSec),tiers:t,pos:posC(p.positions),
+      pb:(function(){if(!(tl&&tl.rows&&ci&&ci.a>=0))return null;var r=tl.rows.map(function(x){return Math.round(x[ci.a]||0)});return r.some(Boolean)?{s:tl.binSec||10,r:r}:null})(),
+      from:(p.damageTakenFrom||[]).filter(function(x){return x.player!=null&&byId[x.player]&&x.healthLost>0}).map(function(x){return [byId[x.player].name,Math.round(x.healthLost)]})}});
   players.forEach(function(p){if(p.carrierKills&&p.team>=0)tm(p.team).carrierKills+=p.carrierKills});
   var w=L.winningTeam,result=(w===0||w===1)?{winner:w,src:'log'}:null;
   var types={};['kills','mobKills','bossKills','relicEvents','controlPointEvents','teamScoreEvents'].forEach(function(k){if((L[k]||[]).length)types[k]=L[k].length});
@@ -572,6 +574,189 @@ function evClassTable(crow){
   if(!crow.length)return '';if(!sortState.evcls)sortState.evcls={k:'picks',d:-1};
   return '<div class="panel"><h2>Class breakdown</h2>'+table('evcls',[{k:'cls',l:'Class',f:function(r){return clsCell(r.cls)}},{k:'picks',l:'Picks'},{k:'dpm',l:'Dmg/min',f:function(r){return r.dpm<0?'-':num(r.dpm)}},{k:'avg',l:'Avg points',f:function(r){return num(r.avg)}},{k:'k',l:'Kills'},{k:'d',l:'Deaths'},{k:'kdr',l:'K/D',f:function(r){return num(r.kdr,2)}}],crow)+'</div>';
 }
+/* ---- match analysis: fights, comebacks, positioning, relic chase, death map and accolades ---- */
+var ANA={near:22,together:40,chase:25,fgap:12,frad:70};
+var anaCache=new WeakMap();
+function anaHas(d){return !!(d&&d.ledger&&(d.players||[]).some(function(p){return p.pos&&p.pos.length}))}
+function analyze(d){
+  var key=hideBots?1:0,c=anaCache.get(d);if(!c){c={};anaCache.set(d,c)}
+  if(c[key])return c[key];
+  var r={players:{},fights:[],picks:0,carries:[],deaths:[],cb:null},out=c[key]=r;
+  var pl=(d.players||[]).filter(function(p){return !(hideBots&&isBot(p.name))});
+  pl.forEach(function(p){r.players[p.name]={name:p.name,team:p.team,ea:0,alive:0,obj:0,alone:0,group:0,chase:0,escort:0,fw:0,fl:0,nf:0}});
+  var byT={},times={};
+  pl.forEach(function(p){(p.pos||[]).forEach(function(q){var t=q[0];(byT[t]||(byT[t]=[])).push({n:p.name,t:p.team,x:q[1],y:q[2],a:q[3]});times[t]=1})});
+  var ts=Object.keys(times).map(Number).sort(function(a,b){return a-b}),step=ts.length>1?Math.max(1,ts[1]-ts[0]):5;
+  var cps=['North','South','West','East'].map(function(k){return MAPZONES[k]});
+  ts.forEach(function(t){var g=byT[t];
+    g.forEach(function(a){if(!a.a)return;var s=r.players[a.n];s.alive+=step;
+      if(cps.some(function(z){return Math.hypot(a.x-z[0],a.y-z[1])<=ANA.near}))s.obj+=step;
+      var mate=false;for(var i=0;i<g.length;i++){var b=g[i];if(b!==a&&b.a&&b.t===a.t&&Math.hypot(a.x-b.x,a.y-b.y)<=ANA.together){mate=true;break}}
+      if(mate)s.group+=step;else s.alone+=step})});
+  /* relic carries and chasing */
+  var cur=null;
+  function endCarry(t1,res){var c0=cur;cur=null;if(!c0)return;var chasers={},chaseSec=0;
+    ts.forEach(function(t){if(t<c0.t0||t>t1)return;var g=byT[t],me=null;g.forEach(function(a){if(a.n===c0.n&&a.a)me=a});if(!me)return;
+      g.forEach(function(a){if(a===me||!a.a||Math.hypot(a.x-me.x,a.y-me.y)>ANA.chase)return;var s=r.players[a.n];if(!s)return;
+        if(a.t!==c0.team){s.chase+=step;chasers[a.n]=1;chaseSec+=step}else s.escort+=step})});
+    r.carries.push({n:c0.n,team:c0.team,t0:c0.t0,t1:t1,dur:Math.max(0,t1-c0.t0),res:res,chasers:Object.keys(chasers).length,chaseSec:chaseSec})}
+  (d.log||[]).forEach(function(e){
+    if(e.k==='relic'){
+      if(e.ty==='pickup'||e.ty==='repickup'){if(cur)endCarry(e.t,'dropped');cur={n:e.a,team:e.team,t0:e.t}}
+      else if(cur&&(e.ty==='dropped'||e.ty==='captured'))endCarry(e.t,e.ty)}
+    else if(e.k==='kill'&&cur&&e.b===cur.n)endCarry(e.t,'killed')});
+  if(cur)endCarry(Math.max(cur.t0,d.duration||cur.t0),'end');
+  /* fights: kills close in time and place */
+  var kills=(d.log||[]).filter(function(e){return e.k==='kill'&&(e.team===0||e.team===1)&&!(hideBots&&(isBot(e.a)||isBot(e.b)))}),f=null,all=[];
+  kills.forEach(function(e){
+    if(f&&e.t-f.t1<=ANA.fgap&&Math.hypot(e.x-f.cx,e.y-f.cy)<=ANA.frad){f.ks.push(e);f.t1=e.t}
+    else{f={ks:[e],t0:e.t,t1:e.t,cx:e.x,cy:e.y};all.push(f)}
+    var sx=0,sy=0;f.ks.forEach(function(k){sx+=k.x;sy+=k.y});f.cx=sx/f.ks.length;f.cy=sy/f.ks.length});
+  all.forEach(function(f){
+    if(f.ks.length<2){r.picks++;return}
+    var k=[0,0],who={};f.ks.forEach(function(e){k[e.team]++;who[e.a]=e.team;if(!(e.b in who))who[e.b]=1-e.team});
+    f.k=k;f.win=k[0]>k[1]?0:k[1]>k[0]?1:-1;f.who=who;f.zone=mapZone(f.cx,f.cy);f.n=Object.keys(who).length;
+    Object.keys(who).forEach(function(n){var s=r.players[n];if(!s)return;s.nf++;if(f.win>=0){if(who[n]===f.win)s.fw++;else s.fl++}});
+    r.fights.push(f)});
+  /* estimated assists: a living teammate near the victim who damaged them shortly before the kill */
+  var byName={};pl.forEach(function(p){byName[p.name]=p});r.assistMode='none';
+  kills.forEach(function(e){var v=byName[e.b];if(!v)return;e.as=[];
+    pl.forEach(function(p){if(p.name===e.a||p.team!==e.team)return;
+      var near=null;if(p.pos&&p.pos.length){var q=null,bd=1e9;p.pos.forEach(function(z){var dt=Math.abs(z[0]-e.t);if(dt<bd){bd=dt;q=z}});near=!!(q&&bd<=5&&q[3]&&Math.hypot(q[1]-e.x,q[2]-e.y)<=30)}
+      var hit=null;if(p.pb){var bs=p.pb.s,a0=Math.max(0,Math.floor((e.t-10)/bs)),a1=Math.floor(e.t/bs);hit=false;for(var i=a0;i<=a1;i++)if(p.pb.r[i]>0)hit=true}
+      else if(v.from){hit=v.from.some(function(f){return f[0]===p.name})}
+      var ok=hit!==null?(hit&&near!==false):near===true;
+      if(ok){e.as.push(p.name);r.players[p.name].ea++;r.assistMode=hit!==null?'damage':(r.assistMode==='damage'?'damage':'near')}})});
+  /* deaths by players */
+  (d.log||[]).forEach(function(e){if(e.k==='death'&&!(hideBots&&(isBot(e.b)||isBot(e.a))))r.deaths.push({t:e.t,x:e.x,y:e.y,team:e.team,b:e.b,a:e.a})});
+  /* comeback from the score timeline */
+  var tl=d.scoreTl;
+  if(tl&&tl.length>1){
+    var def=[0,0],defT=[0,0],lead=0,lc=0,fin=tl[tl.length-1],bigGain={pts:0,t:0,team:-1};
+    tl.forEach(function(e,i){var diff=e[1]-e[2];[0,1].forEach(function(f){var dd=f===0?-diff:diff;if(dd>def[f]){def[f]=dd;defT[f]=e[0]}});
+      var sg=diff>0?1:diff<0?-1:0;if(sg&&lead&&sg!==lead)lc++;if(sg)lead=sg;
+      for(var j=i-1;j>=0&&e[0]-tl[j][0]<=60;j--){[0,1].forEach(function(f){var g=(e[1+f]-tl[j][1+f])-(e[2-f]-tl[j][2-f]);if(g>bigGain.pts){bigGain={pts:g,t:e[0],team:f}}})}});
+    var w=d.result&&(d.result.winner===0||d.result.winner===1)?d.result.winner:(fin[1]>fin[2]?0:fin[2]>fin[1]?1:-1);
+    var thr=Math.max(10,0.08*(w>=0?fin[1+w]:0));
+    r.cb={winner:w,def:def,defT:defT,deficit:w>=0?def[w]:0,t:w>=0?defT[w]:0,leadChanges:lc,fin:[fin[1],fin[2]],big:bigGain,comeback:w>=0&&def[w]>=thr}}
+  return r;
+}
+/* one row per player with everything the accolades and position tables use */
+var ANA_SUM=['ea','score','k','d','dmg','taken','mit','heal','mob','boss','cp','rc','rp','ck','assists','alive','obj','alone','group','chase','escort','fw','fl','nf'];
+function anaFinish(a){a.objP=a.alive?100*a.obj/a.alive:0;a.aloneP=a.alive?100*a.alone/a.alive:0;a.groupP=a.alive?100*a.group/a.alive:0;a.kd=a.d?a.k/a.d:a.k;return a}
+function anaMatchRows(d){
+  var A=analyze(d),rows=(d.players||[]).filter(function(p){return !(hideBots&&isBot(p.name))}).map(function(p){var s=A.players[p.name]||{};
+    return anaFinish({name:p.name,team:p.team,cls:p.cls,main:p.cls,games:1,rate:perf(p,d).r,score:p.score||0,k:p.kills||0,d:p.deaths||0,dmg:p.dmg||0,taken:p.taken||0,mit:(p.absorbed||0)+(p.mit||0),heal:p.heal||0,mob:p.mobKills||0,boss:p.bossKills||0,cp:p.cpCaps||0,rc:p.relicCaps||0,rp:p.relicPickups||0,ck:p.carrierKills||0,assists:p.assists||0,
+      ea:s.ea||0,alive:s.alive||0,obj:s.obj||0,alone:s.alone||0,group:s.group||0,chase:s.chase||0,escort:s.escort||0,fw:s.fw||0,fl:s.fl||0,nf:s.nf||0,mvp:0})});
+  var best=null;rows.forEach(function(r){if(!best||r.rate>best.rate)best=r});if(best&&rows.length>1)best.mvp=1;
+  return rows;
+}
+function anaEventRows(ms){
+  var P={};
+  ms.forEach(function(m){anaMatchRows(m.doc).forEach(function(r){var a=P[r.name]||(P[r.name]={name:r.name,team:r.team,cl:{},games:0,rateSum:0,mvp:0});
+    a.team=r.team;a.games++;a.rateSum+=r.rate;a.mvp+=r.mvp;if(r.cls)a.cl[r.cls]=(a.cl[r.cls]||0)+1;ANA_SUM.forEach(function(k){a[k]=(a[k]||0)+(r[k]||0)})})});
+  return Object.keys(P).map(function(n){var a=P[n];a.rate=a.rateSum/a.games;a.main=Object.keys(a.cl).sort(function(x,y){return a.cl[y]-a.cl[x]})[0]||'';return anaFinish(a)});
+}
+var ACC=[
+  ['MVP','Highest performance rating','rate','rating',0],
+  ['Slayer','Most player kills','k','kills',0],
+  ['Damage Dealer','Most damage dealt','dmg','damage',0],
+  ['Iron Wall','Most damage mitigated, absorbed or blocked','mit','mitigated',0],
+  ['Punching Bag','Most damage taken','taken','taken',0],
+  ['Lifeline','Most healing done','heal','healing',0],
+  ['Playmaker','Most assists','assists','assists',0],
+  ['Best K/D','Highest kills per death, at least 3 kills','kd','K/D',2,'k3'],
+  ['Mob Hunter','Most mob kills','mob','mob kills',0],
+  ['Boss Slayer','Most boss kills','boss','boss kills',0],
+  ['Point Captor','Most control point captures','cp','captures',0],
+  ['Hill Guard','Most time at a control point, share of time alive','objP','% of time',0,'alive'],
+  ['Relic Runner','Most relic captures','rc','captures',0],
+  ['Carrier Hunter','Most kills on the relic carrier','ck','carrier kills',0],
+  ['Relic Chaser','Most time near the enemy relic carrier','chase','sec chasing',0],
+  ['Relic Escort','Most time near their own relic carrier','escort','sec escorting',0],
+  ['Fight Winner','Most teamfights won (2 or more kills)','fw','fights won',0],
+  ['Team Player','Most time within reach of a teammate','groupP','% of time',0,'alive'],
+  ['Lone Wolf','Most time with no teammate nearby','aloneP','% of time',0,'alive'],
+  ['Match MVPs','Most match MVPs across the event','mvp','match MVPs',0,'event']
+];
+function anaAwards(rows,isEvent){
+  var out=[];
+  ACC.forEach(function(a){
+    if(a[5]==='event'&&!isEvent)return;
+    var key=a[2]==='assists'&&!rows.some(function(r){return r.assists>0})?'ea':a[2];
+    var best=null;rows.forEach(function(r){var v=r[key];if(!(v>0))return;
+      if(a[5]==='alive'&&r.alive<(isEvent?120:60))return;if((a[0]==='Lone Wolf'||a[0]==='Team Player')&&rows.length<3)return;if(a[5]==='k3'&&r.k<3)return;
+      if(!best||v>best[key]||(v===best[key]&&r.rate>best.rate))best=r});
+    if(best)out.push({t:a[0],d:a[1]+(key==='ea'?' (estimated from damage and position, the game logged none)':''),r:best,v:num(best[key],a[4])+(a[3].charAt(0)==='%'?'':' ')+a[3]+(key==='ea'?' (est.)':'')})});
+  return out;
+}
+function accoladePanel(rows,isEvent,title){
+  var aw=anaAwards(rows,isEvent);if(!aw.length)return '';
+  return '<div class="panel"><h2>'+(title||'Accolades')+'</h2><div class="podium">'+aw.map(function(a){var r=a.r;
+    return '<a class="pcard" href="#player-'+slug(r.name)+'" title="'+esc(a.d)+'" style="--fc:'+(TEAMS[r.team]?TEAMS[r.team].col:'var(--accent)')+'"><span class="pn">'+esc(a.t)+'</span><strong>'+esc(r.name)+'</strong>'+(r.main?clsCell(r.main):'')+'<small>'+a.v+'</small></a>'}).join('')+'</div><p class="note">Hover an accolade for what it measures. Position based ones (Hill Guard, Team Player, Lone Wolf, Relic Chaser, Relic Escort, Fight Winner) need Match Ledger position data.</p></div>';
+}
+function plainTable(heads,rowsHtml){return '<div class="scroll"><table><thead><tr>'+heads.map(function(c){return '<th scope="col"><button type="button" disabled>'+c+'</button></th>'}).join('')+'</tr></thead><tbody>'+rowsHtml+'</tbody></table></div>'}
+function posPanel(rows,A,title){
+  rows=rows.filter(function(r){return r.alive>0});
+  if(!rows.length)return '';if(!sortState[title])sortState[title]={k:'alive',d:-1};
+  var h='<div class="panel"><h2>Player positions</h2><p class="note" style="margin-top:0">From position samples while alive. Near objective means within '+ANA.near+' m of a control point. With teammates means another living teammate within '+ANA.together+' m. Alone means none.</p>'+
+    table(title,[{k:'name',l:'Player',f:function(r){return '<a class="plink" href="#player-'+slug(r.name)+'">'+esc(r.name)+'</a>'}},{k:'team',l:'Team',f:function(r){return teamTag(r.team)}},{k:'main',l:'Class',f:function(r){return r.main?clsCell(r.main):'-'}},
+      {k:'alive',l:'Time alive',f:function(r){return dur(r.alive)}},{k:'objP',l:'Near objectives',f:function(r){return num(r.objP,0)+'%'}},{k:'groupP',l:'With teammates',f:function(r){return num(r.groupP,0)+'%'}},{k:'aloneP',l:'Alone',f:function(r){return num(r.aloneP,0)+'%'}},
+      {k:'chase',l:'Chasing relic carriers',f:function(r){return r.chase?dur(r.chase):'-'}},{k:'escort',l:'Escorting own carrier',f:function(r){return r.escort?dur(r.escort):'-'}}],rows)+'</div>';
+  return h;
+}
+function carriesPanel(list){
+  if(!list.length)return '';
+  var rows=list.map(function(c){return '<tr><td>'+esc(c.m)+'</td><td><a class="plink" href="#player-'+slug(c.n)+'">'+esc(c.n)+'</a></td><td>'+teamTag(c.team)+'</td><td>'+dur(c.t0)+'</td><td>'+dur(c.dur)+'</td><td>'+({captured:'Captured',dropped:'Dropped',killed:'Carrier killed',end:'Match ended'}[c.res]||esc(c.res))+'</td><td>'+c.chasers+'</td><td>'+(c.chaseSec?dur(c.chaseSec):'-')+'</td></tr>'}).join('');
+  return '<div class="panel"><h2>Relic carries and chasing</h2>'+plainTable(['Match','Carrier','Team','Picked up','Held','Ended','Enemies near','Time chased'],rows)+'<p class="note">Chased time adds up every enemy that was within '+ANA.chase+' m of the carrier, sampled every few seconds. The log has no per hit target, so this is time in range, not damage dealt to the carrier.</p></div>';
+}
+function fightsPanel(items,multi){
+  if(!items.length)return '<div class="panel"><h2>Fights</h2><p class="note">No fights found. A fight is 2 or more player kills within '+ANA.fgap+' seconds and '+ANA.frad+' m of each other.</p></div>';
+  var W=[0,0,0],picks=0;items.forEach(function(x){x.f.forEach(function(f){W[f.win<0?2:f.win]++});picks+=x.picks});
+  var top=[];items.forEach(function(x){x.f.forEach(function(f){top.push({m:x.m,id:x.id,f:f})})});
+  top.sort(function(a,b){return b.f.ks.length-a.f.ks.length||b.f.n-a.f.n});top=top.slice(0,multi?8:12);
+  if(!multi)top.sort(function(a,b){return a.f.t0-b.f.t0});
+  var rows=top.map(function(o,i){var f=o.f;return '<tr>'+(multi?'<td><a class="plink" href="#match-'+esc(o.id)+'">'+esc(o.m)+'</a></td>':'')+'<td>'+dur(f.t0)+(f.t1>f.t0?' to '+dur(f.t1):'')+'</td><td>'+esc(f.zone)+'</td><td><b style="color:'+TEAMS[0].col+'">'+f.k[0]+'</b> : <b style="color:'+TEAMS[1].col+'">'+f.k[1]+'</b></td><td>'+(f.win>=0?teamTag(f.win):'Even')+'</td><td>'+f.n+'</td><td style="text-align:left">'+Object.keys(f.who).map(function(n){return '<span style="color:'+(TEAMS[f.who[n]]?TEAMS[f.who[n]].col:'inherit')+'">'+esc(n)+'</span>'}).join(', ')+'</td></tr>'}).join('');
+  return '<div class="panel"><h2>Fights</h2><p style="margin:6px 0 10px"><span style="color:'+TEAMS[0].col+'">&#9632;</span> '+esc(teamName(0))+' won <strong>'+W[0]+'</strong> &nbsp; <span style="color:'+TEAMS[1].col+'">&#9632;</span> '+esc(teamName(1))+' won <strong>'+W[1]+'</strong> &nbsp; Even '+W[2]+' &nbsp; <span class="note" style="margin:0">'+picks+' single kill'+(picks===1?'':'s')+' not counted as fights</span></p>'+
+    plainTable((multi?['Match']:[]).concat(['When','Where','Kills','Won by','Players','Who']),rows)+'<p class="note">A fight is 2 or more player kills within '+ANA.fgap+' seconds and '+ANA.frad+' m of each other. The winner is the side with more kills in it.'+(multi?' Showing the biggest '+top.length+'.':'')+'</p></div>';
+}
+function comebackPanel(items){
+  var l=items.filter(function(x){return x.cb});
+  if(!l.length)return '<div class="panel"><h2>Comebacks</h2><p class="note">Needs a score timeline. Re-upload the Match Ledger to get it.</p></div>';
+  var n=l.filter(function(x){return x.cb.comeback}).length;
+  var rows=l.map(function(x){var c=x.cb;return '<tr><td><a class="plink" href="#match-'+esc(x.id)+'">'+esc(x.m)+'</a></td><td><b style="color:'+TEAMS[0].col+'">'+num(c.fin[0])+'</b> : <b style="color:'+TEAMS[1].col+'">'+num(c.fin[1])+'</b></td><td>'+(c.winner>=0?teamTag(c.winner):'-')+'</td><td>'+(c.winner>=0&&c.deficit>0?num(c.deficit)+' pts at '+dur(c.t):'led throughout')+'</td><td>'+c.leadChanges+'</td><td>'+(c.big.pts>0?teamTag(c.big.team)+' +'+num(c.big.pts)+' in 60s by '+dur(c.big.t):'-')+'</td><td>'+(c.comeback?'<span class="tag ok">Comeback</span>':'')+'</td></tr>'}).join('');
+  return '<div class="panel"><h2>Comebacks</h2><p style="margin:6px 0 10px"><strong>'+n+'</strong> of '+l.length+' match'+(l.length===1?'':'es')+' won after trailing by a clear margin.</p>'+
+    plainTable(['Match','Final','Winner','Biggest deficit overcome','Lead changes','Biggest swing','']  ,rows)+'<p class="note">A comeback is a win after trailing by at least 10 points and 8% of the final score. Biggest swing is the largest score gain over the other side inside any 60 seconds.</p></div>';
+}
+function deathMap(ms){
+  var pts=[],zones={};
+  ms.forEach(function(m){var d=m.doc;if(!anaHas(d))return;analyze(d).deaths.forEach(function(e){pts.push(e);var z=mapZone(e.x,e.y).replace(/^At /,'Near ');var o=zones[z]||(zones[z]={z:z,0:0,1:0,n:0});if(e.team===0||e.team===1)o[e.team]++;o.n++})});
+  if(!pts.length)return '<div class="panel"><h2>Death map</h2><p class="note">No player deaths with positions. Re-upload the Match Ledger files to get a death map.</p></div>';
+  var s='<svg viewBox="0 0 '+MAPW+' '+MAPH+'" width="100%" style="max-width:640px;display:block;margin:0 auto;border-radius:6px" role="img" aria-label="Where players died"><image href="/map/arena.jpg" x="0" y="0" width="'+MAPW+'" height="'+MAPH+'"/><rect width="'+MAPW+'" height="'+MAPH+'" fill="rgba(0,0,0,.25)"/>';
+  pts.forEach(function(e){s+='<circle cx="'+mpx(e.x).toFixed(0)+'" cy="'+mpy(e.y).toFixed(0)+'" r="46" fill="#ff2a2a" fill-opacity=".1"/>'});
+  pts.forEach(function(e){var x=mpx(e.x).toFixed(0),y=mpy(e.y).toFixed(0),c=TEAMS[e.team]?TEAMS[e.team].col:'#ddd';
+    s+='<g transform="translate('+x+' '+y+')"><title>'+esc(e.b)+' died at '+dur(e.t)+(e.a?', killed by '+esc(e.a):'')+'</title><path d="M-11-11L11 11M11-11L-11 11" stroke="#000" stroke-width="10" stroke-linecap="round"/><path d="M-11-11L11 11M11-11L-11 11" stroke="'+c+'" stroke-width="5.5" stroke-linecap="round"/></g>'});
+  s+='</svg>';
+  var zr=Object.keys(zones).map(function(k){return zones[k]}).sort(function(a,b){return b.n-a.n}).slice(0,6);
+  return '<div class="panel"><h2>Death map</h2><div class="cols"><div>'+s+'</div><div><p class="note" style="margin-top:0"><span style="color:'+TEAMS[0].col+'">&#9632;</span> '+esc(teamName(0))+' deaths &nbsp; <span style="color:'+TEAMS[1].col+'">&#9632;</span> '+esc(teamName(1))+' deaths. '+pts.length+' player death'+(pts.length===1?'':'s')+', each marker sits where the player fell. Red glow builds up where many died.</p>'+
+    plainTable(['Area','Total',esc(teamName(0)),esc(teamName(1))],zr.map(function(z){return '<tr><td>'+esc(z.z)+'</td><td>'+z.n+'</td><td>'+z[0]+'</td><td>'+z[1]+'</td></tr>'}).join(''))+'<p class="note">Area is the nearest control point or the center. Deaths to mobs are not in the log with a position.</p></div></div></div>';
+}
+function anaItems(ms){return ms.map(function(m){var d=m.doc,a=anaHas(d)?analyze(d):null;return {id:m.id,m:d.name,f:a?a.fights:[],picks:a?a.picks:0,cb:a?a.cb:null,carries:a?a.carries:[],has:!!a}})}
+function anaMatchSections(id,d){
+  var ms=[{id:id,doc:d}],it=anaItems(ms)[0],h='';
+  if(!it.has)return h;
+  h+=comebackPanel([it])+(d.scoreTl&&d.scoreTl.length>1?'<div class="panel"><h2>Score over time</h2><div class="evmini">'+evMiniChart(d)+'</div><p class="note"><span style="color:'+TEAMS[0].col+'">&#9632;</span> '+esc(teamName(0))+' <span style="color:'+TEAMS[1].col+'">&#9632;</span> '+esc(teamName(1))+'</p></div>':'');
+  h+=fightsPanel([it],false);
+  h+=posPanel(anaMatchRows(d),analyze(d),'anapos');
+  h+=carriesPanel(it.carries.map(function(c){return Object.assign({m:d.name},c)}));
+  h+=deathMap(ms);
+  return h;
+}
+function anaEventSections(ms){
+  var l=ms.filter(function(m){return anaHas(m.doc)});if(!l.length)return '';
+  var it=anaItems(l),car=[];it.forEach(function(x){x.carries.forEach(function(c){car.push(Object.assign({m:x.m},c))})});
+  return comebackPanel(it)+fightsPanel(it,true)+posPanel(anaEventRows(l),null,'anaevpos')+carriesPanel(car)+deathMap(l);
+}
 function viewSnapshot(id){
   var s=snaps[id];
   if(!s)return '<div><h1>Event not found</h1></div>'+empty(dbState==='loading'?'Loading':'No event with that id','It may have been deleted, or it is still loading.');
@@ -596,9 +781,10 @@ function viewSnapshot(id){
   h+='<div class="fac">'+[0,1].map(function(f){var a=F[f];return '<a class="fcard'+(a.w>a.l?' win':'')+'" href="#faction-'+f+'" style="--fc:'+TEAMS[f].col+'33;text-decoration:none;color:var(--fg)"><img alt="" src="'+TFLAG[f]+'"><div><b>'+esc(teamName(f))+'</b><p class="note" style="margin:6px 0 0"><strong style="font-size:22px;color:var(--fg)">'+a.w+'</strong> wins, '+a.l+' losses'+(a.dr?', '+a.dr+' draws':'')+(a.u?', '+a.u+' unrecorded':'')+'</p><p class="note" style="margin:2px 0 0">'+a.k+' kills, '+num(a.sc)+' points, '+num(a.mob)+' mob kills</p></div></a>'}).join('')+'</div>';
   h+='<div class="kpis"><div class="kpi"><b>'+ms.length+'</b><small>Matches</small></div><div class="kpi"><b>'+prow.length+'</b><small>Players</small></div><div class="kpi"><b>'+num(mins,0)+' min</b><small>Total match time</small></div><div class="kpi"><b>'+K+'</b><small>Player kills</small></div><div class="kpi"><b>'+(mvp?esc(mvp.name):'-')+'</b><small>Most points'+(mvp?' ('+num(mvp.score)+')':'')+'</small></div></div>';
   var hasMap=ms.some(function(m){return m.doc.ledger&&(m.doc.players||[]).some(function(p){return p.pos&&p.pos.length})});
+  h+=accoladePanel(anaEventRows(ms),true,'Event accolades');
   h+=evTopCards(prow);
   if(hasMap){mapScope=ms.map(function(m){return m.id});h+='<div class="panel"><h2>Event heat map</h2>'+mapBody('')+'</div>'}else h+='<div class="panel"><h2>Event heat map</h2><p class="note">No match in this event has position data. Re-upload its Match Ledger files to get a heat map.</p></div>';
-  h+=evScoreSources(ms)+evMatchTable(ms)+evProgress(ms)+evControl(ms);
+  h+=evScoreSources(ms)+evMatchTable(ms)+evProgress(ms)+evControl(ms)+anaEventSections(ms);
   h+='<div class="panel"><h2>Players across the event</h2>'+table('snplayers',[
     {k:'name',l:'Player',f:function(r){return '<a class="plink" href="#player-'+slug(r.name)+'">'+esc(r.name)+'</a>'}},
     {k:'main',l:'Class',f:function(r){return r.main?clsCell(r.main):'-'}},
@@ -777,7 +963,8 @@ function viewMatch(id){
   var m=allMatches().filter(function(x){return x.id===id})[0];
   if(!m)return '<div><h1>Match not found</h1></div>'+empty('No match with that id','It may have been removed, or it is still loading.');
   var d=m.doc;
-  var rows=(d.players||[]).filter(function(p){return !(hideBots&&isBot(p.name))}).map(function(p){var r=Object.assign({},p);r.kdr=p.deaths?p.kills/p.deaths:p.kills;r.crit=p.hits?100*p.crits/p.hits:0;r.dpm=d.duration?p.dmg/(d.duration/60):0;r.mob=p.mobKills;r.rating=perf(p,d).r;return r});
+  var AN=analyze(d);
+  var rows=(d.players||[]).filter(function(p){return !(hideBots&&isBot(p.name))}).map(function(p){var r=Object.assign({},p);r.kdr=p.deaths?p.kills/p.deaths:p.kills;r.crit=p.hits?100*p.crits/p.hits:0;r.dpm=d.duration?p.dmg/(d.duration/60):0;r.mob=p.mobKills;r.rating=perf(p,d).r;r.mitig=(p.absorbed||0)+(p.mit||0);r.ea=(AN.players[p.name]||{}).ea||0;return r});
   var h='<div class="bar"><div><h1>'+esc(d.name)+'</h1><p class="sub">'+dur(d.duration)+' long, '+num(d.rows)+' log rows, uploaded '+esc(new Date(d.uploadedAt||0).toLocaleString())+(isPractice(d)?' <span class="tag">Practice vs bots</span>':'')+(d.summary?' <span class="tag warn">Imported summary, '+(d.noDmg?'no damage data':'no hit data')+(d.partial?', roster may be incomplete':'')+'</span>':'')+(m.saved?'':' <span class="tag warn">Not saved</span>')+'</p></div>'+
     '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><label class="chk"><input type="checkbox" id="botsChk"'+(hideBots?' checked':'')+'> Hide bot players</label><a class="btn ghost" href="#matches" style="text-decoration:none">All matches</a>'+(canEdit&&m.saved?'<button class="btn ghost" type="button" data-del="'+esc(id)+'">Remove</button>':'')+'</div></div>';
   var ts=d.teams||{},tk=Object.keys(ts);
@@ -785,6 +972,7 @@ function viewMatch(id){
   var facs='<div class="fac">'+fk.map(function(k){var s=ts[k]||{kills:0,points:0,relics:0},w=hasResult(d)&&d.result.winner===k;return '<div class="fcard'+(w?' win':'')+'" style="--fc:'+(TEAMS[k]?TEAMS[k].col+'33':'transparent')+'">'+(TFLAG[k]?'<img alt="'+esc(teamName(k))+' banner" src="'+TFLAG[k]+'">':'')+'<div><b>'+esc(teamName(k))+'</b>'+(w?' <span class="tag ok">Winner</span>':'')+'<p class="note" style="margin:4px 0 0">'+s.kills+' kills, '+s.points+' points, '+s.relics+' relics</p></div></div>'}).join('')+'</div>';
   h+='<div class="panel"><h2>Result</h2><p style="margin:6px 0 10px">'+resultTag(d)+'</p>'+facs+
     (canEdit&&m.saved?'<div style="display:flex;gap:8px;flex-wrap:wrap"><span class="note" style="margin:0;align-self:center">Set winner</span>'+[0,1].map(function(k){return '<button class="btn" type="button" style="background:'+TEAMS[k].col+';color:#fff" data-res="'+esc(id)+':'+k+'">'+teamName(k)+' won</button>'}).join('')+'<button class="btn ghost" type="button" data-res="'+esc(id)+':draw">Draw</button><button class="btn ghost" type="button" data-res="'+esc(id)+':clear">Clear</button></div>':'<p class="note" style="margin:0">'+(m.saved?'The combat log has no match result row. An editor can set the winner here.':'Save the match first to set a winner.')+'</p>')+'</div>';
+  h+=accoladePanel(anaMatchRows(d),false,'Match accolades');
   h+='<div class="panel">'+table('match',[
     {k:'name',l:'Player',f:function(r){return '<a class="plink" href="#player-'+slug(r.name)+'">'+esc(r.name)+'</a>'}},
     {k:'team',l:'Team',f:function(r){return teamTag(r.team)}},
@@ -793,15 +981,18 @@ function viewMatch(id){
     {k:'score',l:'Score',f:function(r){return num(r.score)}},
     {k:'kills',l:'K',f:function(r){return num(r.kills)}},
     {k:'deaths',l:'D',f:function(r){return num(r.deaths)}},
+    {k:'ea',l:'Assists (est.)',f:function(r){return AN.assistMode==='none'&&!r.ea?'-':num(r.ea)}},
     {k:'dmg',l:'Damage',f:function(r){return num(r.dmg)}},
     {k:'dmgP',l:'To players',f:function(r){return num(r.dmgP)}},
     {k:'dmgM',l:'To mob bots',f:function(r){return num(r.dmgM)}},
     {k:'dmgB',l:'To boss',f:function(r){return num(r.dmgB)}},
     {k:'taken',l:'Taken',f:function(r){return num(r.taken)}},
+    {k:'mitig',l:'Mitigated',f:function(r){return num(r.mitig)}},
     {k:'dpm',l:'Dmg/min',f:function(r){return num(r.dpm)}}
   ],rows)+'</div>';
   h+=objPanel(d,(d.players||[]).filter(function(p){return !(hideBots&&isBot(p.name))}));
   if(d.ledger){mapScope=null;h+='<div class="panel"><h2>Heat map and event timeline</h2>'+mapBody(id)+'</div>'}
+  h+=anaMatchSections(id,d);
   h+='<div class="cols"><div class="panel"><h2>Damage dealt per 30 seconds</h2>'+chart(d)+'</div><div class="panel"><h2>Events</h2>'+
     ((d.events||[]).length?'<ul class="events">'+d.events.map(function(e){return '<li><time>'+dur(e.t)+'</time><span class="tag'+(e.k==='boss'?' warn':'')+'">'+esc(e.k==='kill'?'Kill':e.k==='boss'?'Boss':'Point')+'</span><span>'+esc(e.x)+'</span></li>'}).join('')+'</ul>':'<p class="note">No kills or captures in this log.</p>')+'</div></div>';
   return h;
@@ -955,7 +1146,7 @@ var MAPCAMPS=[[-86,131,"Hard"],[-74,-141,"Hard"],[-45,-47,"Hard"],[45,47,"Hard"]
 function mapCpPx(k){var z=MAPZONES[k];return z?[mpx(z[0]),mpy(z[1])]:null}
 function mobSpot(e){var bc=null,bd=60;MAPCAMPS.forEach(function(c){if(e.tier&&c[2]!==e.tier)return;var d=Math.hypot(c[0]-e.x,c[1]-e.y);if(d<bd){bd=d;bc=c}});return bc}
 function mapDots(ctx,sel,one){
-  var campN={},cpN={};
+  var campN={};
   var tier={Easy:6,Medium:8,Hard:10};
   sel.forEach(function(m){(m.doc.log||[]).forEach(function(e){
     if(!mapS.dot[e.k]||!mapPass(e))return;if(mapS.upto&&e.t>mapS.ph)return;
@@ -964,8 +1155,7 @@ function mapDots(ctx,sel,one){
       if(bc){var key=bc[0]+','+bc[1],i=campN[key]=(campN[key]||0)+1,a=i*2.4,rr=i>1?5*Math.sqrt(i):0;x=mpx(bc[0])+rr*Math.cos(a);y=mpy(bc[1])+rr*Math.sin(a)}}
     if(e.k==='cp'&&mapCpPx(e.cp)){x=mapCpPx(e.cp)[0];y=mapCpPx(e.cp)[1]}
     ctx.lineWidth=3;ctx.strokeStyle='rgba(0,0,0,.9)';
-    if(e.k==='cp'){var im=e.nt===0?mapImg.elysiant:e.nt===1?mapImg.zekar:mapImg.neutral;
-      if(one&&im){var ci=cpN[e.cp]=(cpN[e.cp]||0)+1,ix=x-30+(ci-1)*52,iy=y+78;ctx.drawImage(im,ix,iy,52,52);ctx.font='700 16px sans-serif';ctx.textAlign='center';ctx.lineWidth=4;ctx.strokeStyle='rgba(0,0,0,.9)';ctx.fillStyle='#fff';ctx.strokeText(dur(e.t),ix+26,iy+68);ctx.fillText(dur(e.t),ix+26,iy+68)}
+    if(e.k==='cp'){
       return}
     if(e.k==='relic'){ctx.beginPath();ctx.moveTo(x,y-11);ctx.lineTo(x+9,y);ctx.lineTo(x,y+11);ctx.lineTo(x-9,y);ctx.closePath();ctx.fillStyle=MAPDOT.relic[1];ctx.fill();ctx.stroke();return}
     var r=e.k==='boss'?17:e.k==='mob'?(tier[e.tier]||7):6;
@@ -1056,7 +1246,7 @@ function mapBody(mid){
       lab('Playhead <span id="mapPhv">'+dur(mapS.ph)+'</span>','<input type="range" id="mapPh" data-mapf="1" min="0" max="'+mx+'" value="'+mapS.ph+'">'))+
     '<div class="mchk"><label class="chk"><input type="checkbox" id="mapCp" data-mapf="1"'+(mapS.showCp?' checked':'')+'> Control points'+(full?' (owner at playhead)':'')+'</label>'+(full?'<label class="chk"><input type="checkbox" id="mapPl" data-mapf="1"'+(mapS.showPl?' checked':'')+'> Players at playhead</label>':'')+
     '<label class="chk"><input type="checkbox" id="mapUpto" data-mapf="1"'+(mapS.upto?' checked':'')+'> Build up to playhead</label><button class="btn ghost" type="button" data-mapplay="1">'+(mapS.timer?'Pause':'Play')+'</button>'+'<label class="chk"><input type="checkbox" id="botsChk"'+(hideBots?' checked':'')+'> Hide test bots</label></div>'+
-    '<div class="mchk"><b class="note" style="margin:0">Dots</b>'+Object.keys(MAPDOT).map(function(k){return '<label class="chk"><input type="checkbox" data-mapdot="'+k+'"'+(mapS.dot[k]?' checked':'')+'> <span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:'+MAPDOT[k][1]+';border:1px solid #000;vertical-align:-1px"></span> '+MAPDOT[k][0]+'</label>'}).join('')+'<span class="note" style="margin:0">'+(full?'Control point changes show the new owner icon where it happened.':'')+'</span></div>'+
+    '<div class="mchk"><b class="note" style="margin:0">Dots</b>'+Object.keys(MAPDOT).map(function(k){return '<label class="chk"><input type="checkbox" data-mapdot="'+k+'"'+(mapS.dot[k]?' checked':'')+'> <span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:'+MAPDOT[k][1]+';border:1px solid #000;vertical-align:-1px"></span> '+MAPDOT[k][0]+'</label>'}).join('')+'<span class="note" style="margin:0">'+(full?'The platform icon shows the owner at the playhead.':'')+'</span></div>'+
     (full?'<div class="mchk">'+Object.keys(MAPK).map(function(k){return '<label class="chk"><input type="checkbox" data-maptype="'+k+'"'+(mapS.types[k]?' checked':'')+'> '+MAPK[k]+'</label>'}).join('')+'<span class="note" style="margin:0">Types filter the time table.</span></div>':'')+'</div>';
   h+='<div class="'+(full?'mapgrid':'mapsolo')+'"><div class="mapwrap"><canvas id="mapCv" width="'+MAPW+'" height="'+MAPH+'" role="img" aria-label="Arena map with heat map overlay"></canvas></div><div id="mapDyn" class="mapside"></div></div>';
   if(!full)h+='<p class="note">Combined over '+all.length+' ledger match'+(all.length===1?'':'es')+(mapScope?' in this event':'')+'. Open a match for its own event time table and control point owners.</p>'+(mapScope?'':'<details class="panel"><summary>Map calibration</summary><p class="note">The log positions are game coordinates. This maps them onto the picture: pixel = origin + coordinate &times; scale, on a '+MAPW+' by '+MAPH+' image. The control point icons are drawn at the game coordinates of the four platforms, so adjust until they sit on the stone circles. Saved in this browser.</p><div class="mctl" style="padding:0;border:0">'+
