@@ -118,6 +118,42 @@ svg .grid{stroke:var(--line);stroke-width:1}
 <script>
 function parseCSV(text){const rows=[];let row=[],f='',q=false;for(let i=0;i<text.length;i++){const c=text[i];if(q){if(c==='"'){if(text[i+1]==='"'){f+='"';i++}else q=false}else f+=c}else if(c==='"')q=true;else if(c===','){row.push(f);f=''}else if(c==='\n'){row.push(f);rows.push(row);row=[];f=''}else if(c!=='\r')f+=c}if(f!==''||row.length){row.push(f);rows.push(row)}return rows}
 function hashText(s){let h1=0x811c9dc5,h2=5381;for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);h1^=c;h1=Math.imul(h1,16777619);h2=((h2<<5)+h2+c)|0}return 'm'+(h1>>>0).toString(16)+(h2>>>0).toString(16)+s.length.toString(16)}
+function parseMatchLedger(text,fileName){
+  var L;try{L=JSON.parse(text.replace(/^﻿/,''))}catch(e){throw new Error('Not a match ledger: invalid JSON.')}
+  if(!L||!Array.isArray(L.players)||L.teamPoints==null)throw new Error('Not a match ledger: no players or teamPoints.');
+  var BUCKET=30,r1=function(v){return Math.round((+v||0)*10)/10},TM={},tm=function(k){return TM[k]||(TM[k]={kills:0,points:0,relics:0,carrierKills:0})};
+  var byId={};L.players.forEach(function(p){byId[p.id]=p});
+  var dur=+L.durationSec||+L.durationSeconds||0;
+  Object.keys(L.teamPoints).forEach(function(k){tm(+k).points=+L.teamPoints[k]||0});
+  var ev=[],tiers={},bossK={};
+  (L.kills||[]).forEach(function(k){var a=byId[k.killer],v=byId[k.victim];if(a&&!k.selfKill)tm(a.team).kills++;
+    ev.push({t:r1(k.t),k:'kill',x:(a?a.name:'?')+' killed '+(v?v.name:'?')+(k.skill?' with '+k.skill.replace(/^Aeon\.Ability\./,''):'')})});
+  (L.mobKills||[]).forEach(function(m){var t=tiers[m.killer]||(tiers[m.killer]={Easy:0,Medium:0,Hard:0});if(t[m.tier]!==undefined)t[m.tier]++});
+  (L.bossKills||[]).forEach(function(b){bossK[b.killer]=(bossK[b.killer]||0)+1;var a=byId[b.killer];ev.push({t:r1(b.t),k:'boss',x:(a?a.name:'?')+' killed '+String(b.boss||'boss').replace(/_C$/,'')})});
+  var carriers={};
+  (L.relicEvents||[]).forEach(function(e){var a=byId[e.player];
+    if(e.type==='captured'){if(e.scoringTeam>=0)tm(e.scoringTeam).relics++;ev.push({t:r1(e.t),k:'point',x:(a?a.name:'?')+' captured the relic'})}});
+  (L.controlPointEvents||[]).forEach(function(e){if(e.type==='capture'){var n=(e.players||[]).map(function(i){return byId[i]&&byId[i].name}).filter(Boolean).join(', ');ev.push({t:r1(e.t),k:'point',x:(e.controlPoint||'Control point')+' captured'+(n?' by '+n:'')})}});
+  ev.sort(function(a,b){return a.t-b.t});
+  var n=Math.floor(dur/BUCKET)+1,series={};
+  var players=L.players.map(function(p){
+    var s=p.stats||{},hits=0;(p.skills||[]).forEach(function(k){hits+=((k.pvp||{}).hits||0)+((k.pve||{}).hits||0)});
+    var boss=+s.bossDamage||0,pveT=+s.pveDamage||0,pvp=+s.pvpDamage||0;
+    var t=tiers[p.id]||{Easy:0,Medium:0,Hard:0};
+    var tl=p.timeline,ci=tl&&tl.cols?{a:tl.cols.indexOf('pvpDmg'),b:tl.cols.indexOf('pveDmg')}:null;
+    if(ci&&tl.rows){var a=[],per=Math.max(1,Math.round(BUCKET/(tl.binSec||10)));for(var i=0;i<n;i++){var sum=0;for(var j=i*per;j<(i+1)*per&&j<tl.rows.length;j++)sum+=(tl.rows[j][ci.a]||0)+(tl.rows[j][ci.b]||0);a.push(r1(sum))}if(a.some(Boolean))series[p.name]=a}
+    return{name:p.name,uid:p.uid||'',cls:p.class||'',team:p.team==null?-1:p.team,
+      dmg:r1(pvp+pveT),dmgP:r1(pvp),dmgM:r1(Math.max(0,pveT-boss)),dmgB:r1(boss),taken:r1(s.damageTaken),heal:r1(s.pvpHeal),
+      kills:s.kills||0,deaths:s.deaths||0,assists:s.assists||0,mobKills:s.mobKills||0,bossKills:bossK[p.id]||0,score:s.points||0,
+      hits:hits,crits:s.crits||0,maxHit:0,
+      relicPickups:s.relicPickups||0,relicReturns:0,relicCaps:s.relicCaptures||0,carrierKills:s.carrierKills||0,
+      cpCaps:s.cpCaptures||0,cpTime:r1(s.cpSec),tiers:t}});
+  players.forEach(function(p){if(p.carrierKills&&p.team>=0)tm(p.team).carrierKills+=p.carrierKills});
+  var w=L.winningTeam,result=(w===0||w===1)?{winner:w,src:'log'}:null;
+  var types={};['kills','mobKills','bossKills','relicEvents','controlPointEvents','teamScoreEvents'].forEach(function(k){if((L[k]||[]).length)types[k]=L[k].length});
+  return{v:2,ledger:true,map:L.map||L.mapName||'',endReason:L.endReason||'',teams:TM,result:result,types:types,cols:[],name:fileName||'match ledger',uploadedAt:Date.now(),duration:r1(dur),rows:0,bucket:BUCKET,players:players,series:series,events:ev.slice(0,200)};
+}
+function parseAnyLog(text,fileName){return /^\s*﻿?\s*\{/.test(text)?parseMatchLedger(text,fileName):parseCombatLog(text,fileName)}
 function parseCombatLog(text,fileName){
   const BUCKET=30,CLS=/GE_(Assassin|Hunter|Mystic|Priest|Warrior)/;
   const isMob=n=>/^(BP_|Roshan|easy mob|medium mob|hard mob)/i.test(n||'')||/_C_\d+$/.test(n||'');
@@ -735,8 +771,8 @@ function viewPlayer(slugId){
   return out;
 }
 function viewUpload(){if(!canEdit)return '<div><h1>Upload</h1></div>'+empty('Admins only','Only admins can upload combat logs. Log in as an admin to upload.');
-  var h='<div><h1>Upload combat logs</h1><p class="sub">Drop one or more CombatLog_*.log files. They are read in your browser, then saved to the shared site when you press Save.</p></div>'+
-    '<label class="drop" id="drop" for="file"><strong>Drop combat logs here</strong>or click to choose files<input id="file" type="file" accept=".log,.csv,.txt" multiple hidden></label>';
+  var h='<div><h1>Upload combat logs</h1><p class="sub">Drop one or more Match_*.json ledger files (or older CombatLog_*.log files). They are read in your browser, then saved to the shared site when you press Save.</p></div>'+
+    '<label class="drop" id="drop" for="file"><strong>Drop match ledgers here</strong>or click to choose files<input id="file" type="file" accept=".json,.log,.csv,.txt" multiple hidden></label>';
   if(uploads.length)h+='<div><button class="btn" type="button" data-discardall="1" style="background:transparent;color:var(--fg);border:1px solid var(--line)">Clear list</button></div>';
   if(!canWrite)h+='<p class="note err">Your access level can read stats but not save new matches. Parsed files stay in this tab only.</p>';
   if(uploads.length){
@@ -791,7 +827,7 @@ function handleFiles(list){
   Array.prototype.slice.call(list).forEach(function(f){
     var u={name:f.name};uploads.unshift(u);
     f.text().then(function(txt){
-      try{u.id=hashText(txt);u.doc=parseCombatLog(txt,f.name.replace(/^[0-9a-f]{8}-/,''));
+      try{u.id=hashText(txt);u.doc=parseAnyLog(txt,f.name.replace(/^[0-9a-f]{8}-/,''));
         if(remote[u.id])u.dup=true;else local[u.id]=u.doc}catch(err){u.err=err.message}
       render()},function(){u.err='Could not read the file.';render()});
   });render();
