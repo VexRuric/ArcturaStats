@@ -178,7 +178,7 @@ function parseMatchLedger(text,fileName){
     var tl=p.timeline,ci=tl&&tl.cols?{a:tl.cols.indexOf('pvpDmg'),b:tl.cols.indexOf('pveDmg')}:null;
     if(ci&&tl.rows){var a=[],per=Math.max(1,Math.round(BUCKET/(tl.binSec||10)));for(var i=0;i<n;i++){var sum=0;for(var j=i*per;j<(i+1)*per&&j<tl.rows.length;j++)sum+=(tl.rows[j][ci.a]||0)+(tl.rows[j][ci.b]||0);a.push(r1(sum))}if(a.some(Boolean))series[p.name]=a}
     return{name:p.name,uid:p.uid||'',cls:p.class||'',team:p.team==null?-1:p.team,
-      dmg:r1(pvp+pveT),dmgP:r1(pvp),dmgM:r1(Math.max(0,pveT-boss)),dmgB:r1(boss),taken:r1(s.damageTaken),heal:r1(s.pvpHeal),
+      dmg:r1(pvp+pveT),dmgP:r1(pvp),dmgM:r1(Math.max(0,pveT-boss)),dmgB:r1(boss),taken:r1(s.damageTaken),absorbed:r1((s.shieldAbsorbed||0)+(s.damageBlocked||0)+(s.blockedDamage||0)+(s.blocked||0)),healRecv:r1(s.healReceived),heal:r1(s.pvpHeal),
       kills:s.kills||0,deaths:s.deaths||0,assists:s.assists||0,mobKills:s.mobKills||0,bossKills:bossK[p.id]||0,score:s.points||0,
       hits:hits,crits:s.crits||0,maxHit:0,
       relicPickups:s.relicPickups||0,relicReturns:0,relicCaps:s.relicCaptures||0,carrierKills:s.carrierKills||0,
@@ -271,16 +271,20 @@ function clsCell(c){var s='<span class="cls"><i class="dot" style="background:'+
 function allMatches(){var m={},k;for(k in local)m[k]=local[k];for(k in remote)m[k]=remote[k];return Object.keys(m).map(function(id){return {id:id,doc:m[id],saved:!!remote[id]}}).sort(function(a,b){return (b.doc.uploadedAt||0)-(a.doc.uploadedAt||0)})}
 
 /* ---- skill model ----
-   Rating 100 = the reference performance below. Per match: damage/min 35%, score/min 25%, kills/min 20%, survival 20%.
+   Rating 100 = the reference performance below. Per match, default weights: damage/min 35%, score/min 25%, kills/min 20%, survival 20%.
+   Warrior swaps in a tank component (below) and lighter damage and kill targets: damage 25%, score 25%, kills 15%, survival 15%, tanking 20%.
+   Tanking = (damage taken + damage absorbed or blocked) per minute against the class reference, scaled by how well the player stayed alive,
+   so soaking damage only counts while surviving it, and it is capped at 2 so standing in front of mobs cannot carry a rating.
    Survival is 1.5 with no deaths, 1.0 at the reference death rate, 0 at three times the reference.
    The rating line is an exponential moving average of match ratings (alpha 0.35), so it moves with form. */
-var REF={dpm:2000,spm:70,kpm:0.5,dth:0.1},REF_CLASS={Assassin:{},Hunter:{},Mystic:{},Priest:{},Warrior:{}},ALPHA=0.35,PROVISIONAL=5;
+var REF={dpm:2000,spm:70,kpm:0.5,dth:0.1,tpm:600,w:{dmg:0.35,score:0.25,kills:0.2,surv:0.2,tank:0}},REF_CLASS={Assassin:{},Hunter:{},Mystic:{},Priest:{},Warrior:{dpm:1400,spm:60,kpm:0.4,dth:0.12,tpm:600,w:{dmg:0.25,score:0.25,kills:0.15,surv:0.15,tank:0.2}}},ALPHA=0.35,PROVISIONAL=5;
 function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
-function refFor(c){return Object.assign({},REF,REF_CLASS[c]||{})}
+function refFor(c){var o=Object.assign({},REF,REF_CLASS[c]||{});o.w=Object.assign({},REF.w,(REF_CLASS[c]||{}).w||{});return o}
 function perf(p,d){
   var mins=Math.max((d.duration||0)/60,1),R=refFor(p.cls);
   var comp={dmg:clamp(p.dmg/mins/R.dpm,0,2),score:clamp(p.score/mins/R.spm,0,2),kills:clamp(p.kills/mins/R.kpm,0,2),surv:clamp(1.5-0.5*((p.deaths/mins)/R.dth),0,1.5)};
-  return {r:clamp(100*(0.35*comp.dmg+0.25*comp.score+0.2*comp.kills+0.2*comp.surv),0,200),comp:comp,mins:mins};
+  var W=R.w;comp.tank=clamp(((p.taken||0)+(p.absorbed||0))/mins/R.tpm,0,2)*clamp(comp.surv/1.5,0,1);
+  return {r:clamp(100*(W.dmg*comp.dmg+W.score*comp.score+W.kills*comp.kills+W.surv*comp.surv+W.tank*comp.tank),0,200),comp:comp,mins:mins};
 }
 function playedAt(d){var m=/(\d{4})-(\d\d)-(\d\d)[_ T](\d\d)-(\d\d)-(\d\d)/.exec(d.name||'');return m?new Date(+m[1],m[2]-1,+m[3],+m[4],+m[5],+m[6]).getTime():(d.uploadedAt||0)}
 function slug(n){return String(n).replace(/[^A-Za-z0-9]/g,function(c){return '-'+c.charCodeAt(0).toString(16)+'-'})}
@@ -831,7 +835,7 @@ function viewPlayer(slugId){
     {k:'k',l:'K'},{k:'d',l:'D'},{k:'dmg',l:'Damage',f:function(r){return num(r.dmg)}},{k:'score',l:'Score',f:function(r){return num(r.score)}},
     {k:'r',l:'Match',f:function(r){return num(r.r)}},{k:'ema',l:'Rating',f:function(r){return '<strong>'+num(r.ema)+'</strong>'}},
     {k:'delta',l:'Change',f:function(r){return '<span class="'+(r.delta>0.5?'ok':r.delta<-0.5?'err':'')+'">'+(r.delta>0.05?'+':'')+num(Math.abs(r.delta)<0.05?0:r.delta,1)+'</span>'}}],hr)+'</div>';
-  out+='<p class="note">Rating 100 is the reference of '+REF.dpm+' damage/min, '+REF.spm+' score/min, '+REF.kpm+' kills/min and '+REF.dth+' deaths/min, the same for every class for now. Priest and other support play is under-rated until the logs carry healing and ability names. Mobs (BP_MeatPuppets) and SpawnedPlayer test players are both bots. A match with no other human player is marked Practice, and Rated matches only leaves those out. Right now every saved match is practice, so the rating is a trend line and not a rank.</p>';
+  out+='<p class="note">Rating 100 is the reference of '+REF.dpm+' damage/min, '+REF.spm+' score/min, '+REF.kpm+' kills/min and '+REF.dth+' deaths/min, the same for every class except Warrior, which is scored against '+REF_CLASS.Warrior.dpm+' damage/min, '+REF_CLASS.Warrior.kpm+' kills/min and a tanking target of '+REF_CLASS.Warrior.tpm+' damage taken or blocked per minute (20% of its rating, only counted while it stays alive). Priest and other support play is under-rated until the logs carry healing and ability names. Mobs (BP_MeatPuppets) and SpawnedPlayer test players are both bots. A match with no other human player is marked Practice, and Rated matches only leaves those out. Right now every saved match is practice, so the rating is a trend line and not a rank.</p>';
   return out;
 }
 function viewUpload(){if(!canEdit)return '<div><h1>Upload</h1></div>'+empty('Admins only','Only admins can upload combat logs. Log in as an admin to upload.');
