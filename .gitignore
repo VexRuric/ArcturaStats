@@ -7,3 +7,5 @@ t_*.js
 dev.js
 .vercel
 .env*
+
+!public/map/*.png

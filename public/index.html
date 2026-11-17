@@ -136,7 +136,7 @@ a.fhero:hover{border-color:var(--fc)}a.fhero:focus-visible{outline:2px solid var
 <script>
 function parseCSV(text){const rows=[];let row=[],f='',q=false;for(let i=0;i<text.length;i++){const c=text[i];if(q){if(c==='"'){if(text[i+1]==='"'){f+='"';i++}else q=false}else f+=c}else if(c==='"')q=true;else if(c===','){row.push(f);f=''}else if(c==='\n'){row.push(f);rows.push(row);row=[];f=''}else if(c!=='\r')f+=c}if(f!==''||row.length){row.push(f);rows.push(row)}return rows}
 function hashText(s){let h1=0x811c9dc5,h2=5381;for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);h1^=c;h1=Math.imul(h1,16777619);h2=((h2<<5)+h2+c)|0}return 'm'+(h1>>>0).toString(16)+(h2>>>0).toString(16)+s.length.toString(16)}
-var CP_WORLD={North:[0,-150],South:[10,137],West:[-130,0],East:[130,0]};
+var CP_WORLD={North:[0,-150],South:[0,150],West:[-150,0],East:[150,0]};
 function posC(a){return (a||[]).map(function(q){return [Math.round(q[0]),Math.round(q[1]),Math.round(q[2]),q[3]?1:0]})}
 function parseMatchLedger(text,fileName){
   var L;try{L=JSON.parse(text.replace(/^﻿/,''))}catch(e){throw new Error('Not a match ledger: invalid JSON.')}
@@ -906,9 +906,9 @@ function viewUpload(){if(!canEdit)return '<div><h1>Upload</h1></div>'+empty('Adm
 /* ---- routing and render ---- */
 /* ---- map: heat map and event time table (needs Match Ledger uploads, which carry positions) ---- */
 var MAPW=1400,MAPH=1654;
-var MAPC=(function(){var d={x0:710,sx:3.99,y0:794,sy:3.65};try{var s=JSON.parse(localStorage.getItem('arctura-mapcal')||'null');if(s&&s.sx&&s.sy)d=s}catch(e){}return d})();
+var MAPC=(function(){var d={x0:711.5,sx:3.39,y0:787,sy:3.5};try{var s=JSON.parse(localStorage.getItem('arctura-mapcal2')||'null');if(s&&s.sx&&s.sy)d=s}catch(e){}return d})();
 function mpx(x){return MAPC.x0+x*MAPC.sx}function mpy(y){return MAPC.y0+y*MAPC.sy}
-var MAPZONES={North:[0,-150],South:[10,137],West:[-130,0],East:[130,0],Center:[0,0]};
+var MAPZONES={North:[0,-150],South:[0,150],West:[-150,0],East:[150,0],Center:[0,0]};
 var mapS={match:'all',mode:'pos',team:'all',player:'',types:{kill:1,mob:1,boss:1,relic:1,cp:1},t0:0,t1:99999,ph:0,showCp:true,showPl:false,upto:false,timer:0,dot:{mob:1,boss:1,relic:1,cp:1,kill:0},focus:null,radius:26,raf:0};
 var mapImg={},mapImgState=0;
 function mapLoad(){
@@ -933,7 +933,7 @@ function mapPoints(){
   mapSel().forEach(function(m){var d=m.doc;
     if(md==='pos'){(d.players||[]).forEach(function(p){if(hideBots&&isBot(p.name))return;if(mapS.team!=='all'&&p.team!==+mapS.team)return;if(mapS.player&&p.name!==mapS.player)return;
       (p.pos||[]).forEach(function(q){if(q[3]&&q[0]>=mapS.t0&&q[0]<=mapS.t1)out.push([q[1],q[2]])})});return}
-    (d.log||[]).forEach(function(e){var ok=md==='obj'?(e.k==='cp'||e.k==='relic'||e.k==='boss'):e.k===md;if(ok&&mapPass(e))out.push([e.x,e.y])})});
+    (d.log||[]).forEach(function(e){var ok=md==='obj'?(e.k==='cp'||e.k==='relic'||e.k==='boss'):e.k===md;if(!ok||!mapPass(e))return;var q=[e.x,e.y];if(e.k==='mob'){var bc=mobSpot(e);if(bc)q=[bc[0],bc[1]]}else if(e.k==='cp'&&MAPZONES[e.cp])q=MAPZONES[e.cp];out.push(q)})});
   return out;
 }
 function mapHeat(ctx,pts){
@@ -951,14 +951,21 @@ function mapHeat(ctx,pts){
 }
 function mapCpOwner(d,cp,t){var o=-1;(d.cpTl||[]).forEach(function(e){if(e.cp===cp&&e.t<=t)o=e.nt});return o}
 var MAPDOT={mob:['Mob kills','#ff8a00'],boss:['Boss kills','#ff2bd6'],relic:['Relic','#ffd400'],cp:['Control point changes','#ffffff'],kill:['Player kills','#38bdf8']};
+var MAPCAMPS=[[-86,131,"Hard"],[-74,-141,"Hard"],[-45,-47,"Hard"],[45,47,"Hard"],[74,141,"Hard"],[86,-131,"Hard"],[-109,105,"Medium"],[-68,-71,"Medium"],[-47,50,"Medium"],[-1,77,"Medium"],[1,-77,"Medium"],[47,-50,"Medium"],[68,71,"Medium"],[109,-105,"Medium"],[-101,-115,"Easy"],[101,115,"Easy"],[-53,21,"Easy"],[-53,-29,"Easy"],[-40,111,"Easy"],[-1,67,"Easy"],[0,-67,"Easy"],[40,-111,"Easy"],[53,29,"Easy"],[53,-21,"Easy"]];
+function mapCpPx(k){var z=MAPZONES[k];return z?[mpx(z[0]),mpy(z[1])]:null}
+function mobSpot(e){var bc=null,bd=60;MAPCAMPS.forEach(function(c){if(e.tier&&c[2]!==e.tier)return;var d=Math.hypot(c[0]-e.x,c[1]-e.y);if(d<bd){bd=d;bc=c}});return bc}
 function mapDots(ctx,sel,one){
-  var tier={Easy:6,Med:8,Hard:10};
+  var campN={},cpN={};
+  var tier={Easy:6,Medium:8,Hard:10};
   sel.forEach(function(m){(m.doc.log||[]).forEach(function(e){
     if(!mapS.dot[e.k]||!mapPass(e))return;if(one&&mapS.upto&&e.t>mapS.ph)return;
     var x=mpx(e.x),y=mpy(e.y),tc=TEAMS[e.team]?TEAMS[e.team].col:'#888';
+    if(e.k==='mob'){var bc=mobSpot(e);
+      if(bc){var key=bc[0]+','+bc[1],i=campN[key]=(campN[key]||0)+1,a=i*2.4,rr=i>1?5*Math.sqrt(i):0;x=mpx(bc[0])+rr*Math.cos(a);y=mpy(bc[1])+rr*Math.sin(a)}}
+    if(e.k==='cp'&&mapCpPx(e.cp)){x=mapCpPx(e.cp)[0];y=mapCpPx(e.cp)[1]}
     ctx.lineWidth=3;ctx.strokeStyle='rgba(0,0,0,.9)';
     if(e.k==='cp'){var im=e.nt===0?mapImg.elysiant:e.nt===1?mapImg.zekar:mapImg.neutral;
-      if(one&&im){ctx.drawImage(im,x-27,y-30,54,54);ctx.font='700 18px sans-serif';ctx.textAlign='center';ctx.lineWidth=4;ctx.strokeStyle='rgba(0,0,0,.9)';ctx.fillStyle='#fff';ctx.strokeText(dur(e.t),x,y+44);ctx.fillText(dur(e.t),x,y+44)}
+      if(one){var ci=cpN[e.cp]=(cpN[e.cp]||0)+1,oc=e.nt===0||e.nt===1?TEAMS[e.nt].col:'#ddd';ctx.beginPath();ctx.arc(x,y,40+ci*5,0,6.3);ctx.lineWidth=5;ctx.strokeStyle=oc;ctx.stroke();ctx.font='700 18px sans-serif';ctx.textAlign='center';ctx.lineWidth=4;ctx.strokeStyle='rgba(0,0,0,.9)';ctx.fillStyle='#fff';ctx.strokeText(dur(e.t),x,y+86+(ci-1)*20);ctx.fillText(dur(e.t),x,y+86+(ci-1)*20)}
       else{ctx.beginPath();ctx.arc(x,y,9,0,6.3);ctx.fillStyle=e.nt===0||e.nt===1?TEAMS[e.nt].col:'#ddd';ctx.fill();ctx.lineWidth=3;ctx.strokeStyle='#fff';ctx.stroke()}return}
     if(e.k==='relic'){ctx.beginPath();ctx.moveTo(x,y-11);ctx.lineTo(x+9,y);ctx.lineTo(x,y+11);ctx.lineTo(x-9,y);ctx.closePath();ctx.fillStyle=MAPDOT.relic[1];ctx.fill();ctx.stroke();return}
     var r=e.k==='boss'?17:e.k==='mob'?(tier[e.tier]||7):6;
@@ -975,8 +982,8 @@ function mapDraw(){
   var sel=mapSel(),one=mapS.match!=='all'&&sel.length===1?sel[0].doc:null;
   if(mapS.showCp)Object.keys(MAPZONES).forEach(function(k){if(k==='Center')return;var z=MAPZONES[k],o=one?mapCpOwner(one,k,mapS.ph):-1,im=o===0?mapImg.elysiant:o===1?mapImg.zekar:mapImg.neutral;
     if(one&&k==='East'&&!(one.cpTl||[]).some(function(e){return e.cp==='East'}))ctx.globalAlpha=.45;
-    if(im)ctx.drawImage(im,mpx(z[0])-44,mpy(z[1])-48,88,88);ctx.globalAlpha=1;
-    ctx.font='700 22px sans-serif';ctx.textAlign='center';ctx.lineWidth=4;ctx.strokeStyle='rgba(0,0,0,.8)';ctx.fillStyle='#fff';ctx.strokeText(k,mpx(z[0]),mpy(z[1])+62);ctx.fillText(k,mpx(z[0]),mpy(z[1])+62)});
+    var A=mapCpPx(k);if(im)ctx.drawImage(im,A[0]-44,A[1]-55,88,88);ctx.globalAlpha=1;
+    ctx.font='700 22px sans-serif';ctx.textAlign='center';ctx.lineWidth=4;ctx.strokeStyle='rgba(0,0,0,.8)';ctx.fillStyle='#fff';ctx.strokeText(k,A[0],A[1]+62);ctx.fillText(k,A[0],A[1]+62)});
   mapDots(ctx,sel,one);
   if(mapS.showPl&&one)(one.players||[]).forEach(function(p){if(hideBots&&isBot(p.name))return;var q=null;(p.pos||[]).forEach(function(s){if(s[0]<=mapS.ph)q=s});if(!q||!q[3])return;
     var c=TEAMS[p.team]?TEAMS[p.team].col:'#888';ctx.beginPath();ctx.arc(mpx(q[1]),mpy(q[2]),11,0,6.3);ctx.fillStyle=c;ctx.fill();ctx.lineWidth=3;ctx.strokeStyle='#fff';ctx.stroke();
@@ -1066,7 +1073,7 @@ document.addEventListener('input',function(e){var t=e.target;if(!t||!t.id)return
   else if(t.id==='mapT1'){mapS.t1=+t.value;if(mapS.t1<mapS.t0){mapS.t0=mapS.t1;document.getElementById('mapT0').value=mapS.t0}mapSched()}
   else if(t.id==='mapPh'){mapS.ph=+t.value;mapSched()}
   else if(t.id==='mapR'){mapS.radius=+t.value;mapSched()}
-  else if(t.dataset&&t.dataset.mapcal){var v=parseFloat(t.value);if(v>0||t.dataset.mapcal==='x0'||t.dataset.mapcal==='y0'){MAPC[t.dataset.mapcal]=v;try{localStorage.setItem('arctura-mapcal',JSON.stringify(MAPC))}catch(x){}mapSched()}}
+  else if(t.dataset&&t.dataset.mapcal){var v=parseFloat(t.value);if(v>0||t.dataset.mapcal==='x0'||t.dataset.mapcal==='y0'){MAPC[t.dataset.mapcal]=v;try{localStorage.setItem('arctura-mapcal2',JSON.stringify(MAPC))}catch(x){}mapSched()}}
 });
 document.addEventListener('change',function(e){var t=e.target;if(!t)return;
   if(t.id==='mapMatch'){mapS.match=t.value;mapS.t0=0;mapS.t1=99999;mapS.ph=0;mapS.focus=null;render()}
@@ -1091,7 +1098,7 @@ document.addEventListener('click',function(e){
     if(ev){mapS.focus={x:ev.x,y:ev.y};if(mapS.match!=='all'){mapS.ph=ev.t;var s=document.getElementById('mapPh');if(s)s.value=ev.t}mapUpdate();var cv=document.getElementById('mapCv');if(cv&&cv.scrollIntoView)cv.scrollIntoView({block:'nearest',behavior:'smooth'})}return}
   var tr=e.target.closest&&e.target.closest('.mtr');
   if(tr){var rc=tr.getBoundingClientRect(),T=+tr.dataset.dur||1;mapS.ph=Math.round(T*Math.max(0,Math.min(1,(e.clientX-rc.left)/rc.width)));var s2=document.getElementById('mapPh');if(s2)s2.value=mapS.ph;mapUpdate();return}
-  if(e.target.closest&&e.target.closest('[data-mapcalreset]')){MAPC.x0=710;MAPC.sx=3.99;MAPC.y0=794;MAPC.sy=3.65;try{localStorage.removeItem('arctura-mapcal')}catch(x){}render()}
+  if(e.target.closest&&e.target.closest('[data-mapcalreset]')){MAPC.x0=711.5;MAPC.sx=3.39;MAPC.y0=787;MAPC.sy=3.5;try{localStorage.removeItem('arctura-mapcal2')}catch(x){}render()}
 });
 document.addEventListener('keydown',function(e){if(e.key==='Enter'){var g=e.target.closest&&e.target.closest('tr[data-mapev]');if(g)g.click()}});
 
