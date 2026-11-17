@@ -1098,7 +1098,7 @@ function viewUpload(){if(!canEdit)return '<div><h1>Upload</h1></div>'+empty('Adm
 /* ---- routing and render ---- */
 /* ---- map: heat map and event time table (needs Match Ledger uploads, which carry positions) ---- */
 var MAPW=1400,MAPH=1654;
-var MAPC=(function(){var d={x0:711.5,sx:3.39,y0:787,sy:3.5};try{var s=JSON.parse(localStorage.getItem('arctura-mapcal2')||'null');if(s&&s.sx&&s.sy)d=s}catch(e){}return d})();
+var MAPC=(function(){var d={x0:710.6,sx:3.45,y0:798.5,sy:3.45};try{var s=JSON.parse(localStorage.getItem('arctura-mapcal3')||'null');if(s&&s.sx&&s.sy)d=s}catch(e){}return d})();
 function mpx(x){return MAPC.x0+x*MAPC.sx}function mpy(y){return MAPC.y0+y*MAPC.sy}
 var MAPZONES={North:[0,-150],South:[0,150],West:[-150,0],East:[150,0],Center:[0,0]};
 var mapS={match:'all',mode:'pos',team:'all',player:'',types:{kill:1,mob:1,boss:1,relic:1,cp:1},t0:0,t1:99999,ph:0,showCp:true,showPl:false,upto:false,timer:0,dot:{mob:1,boss:1,relic:1,cp:1,kill:0},focus:null,radius:26,raf:0};
@@ -1173,7 +1173,7 @@ function mapDraw(){
   var sel=mapSel(),one=mapS.match!=='all'&&sel.length===1?sel[0].doc:null;
   if(mapS.showCp)Object.keys(MAPZONES).forEach(function(k){if(k==='Center')return;var z=MAPZONES[k],o=one?mapCpOwner(one,k,mapS.ph):-1,im=o===0?mapImg.elysiant:o===1?mapImg.zekar:mapImg.neutral;
     if(one&&k==='East'&&!(one.cpTl||[]).some(function(e){return e.cp==='East'}))ctx.globalAlpha=.45;
-    var A=mapCpPx(k);if(im)ctx.drawImage(im,A[0]-44,A[1]-55,88,88);ctx.globalAlpha=1;
+    var A=mapCpPx(k);if(im)ctx.drawImage(im,A[0]-44,A[1]-48,88,88);ctx.globalAlpha=1;
     ctx.font='700 22px sans-serif';ctx.textAlign='center';ctx.lineWidth=4;ctx.strokeStyle='rgba(0,0,0,.8)';ctx.fillStyle='#fff';ctx.strokeText(k,A[0],A[1]+62);ctx.fillText(k,A[0],A[1]+62)});
   mapDots(ctx,sel,one);
   if(mapS.showPl&&one)(one.players||[]).forEach(function(p){if(hideBots&&isBot(p.name))return;var q=null;(p.pos||[]).forEach(function(s){if(s[0]<=mapS.ph)q=s});if(!q||!q[3])return;
@@ -1264,7 +1264,7 @@ document.addEventListener('input',function(e){var t=e.target;if(!t||!t.id)return
   else if(t.id==='mapT1'){mapS.t1=+t.value;if(mapS.t1<mapS.t0){mapS.t0=mapS.t1;document.getElementById('mapT0').value=mapS.t0}mapSched()}
   else if(t.id==='mapPh'){mapS.ph=+t.value;mapSched()}
   else if(t.id==='mapR'){mapS.radius=+t.value;mapSched()}
-  else if(t.dataset&&t.dataset.mapcal){var v=parseFloat(t.value);if(v>0||t.dataset.mapcal==='x0'||t.dataset.mapcal==='y0'){MAPC[t.dataset.mapcal]=v;try{localStorage.setItem('arctura-mapcal2',JSON.stringify(MAPC))}catch(x){}mapSched()}}
+  else if(t.dataset&&t.dataset.mapcal){var v=parseFloat(t.value);if(v>0||t.dataset.mapcal==='x0'||t.dataset.mapcal==='y0'){MAPC[t.dataset.mapcal]=v;try{localStorage.setItem('arctura-mapcal3',JSON.stringify(MAPC))}catch(x){}mapSched()}}
 });
 document.addEventListener('change',function(e){var t=e.target;if(!t)return;
   if(t.id==='mapMatch'){mapS.match=t.value;mapS.t0=0;mapS.t1=99999;mapS.ph=0;mapS.focus=null;render()}
@@ -1289,7 +1289,7 @@ document.addEventListener('click',function(e){
     if(ev){mapS.focus={x:ev.x,y:ev.y};if(mapS.match!=='all'){mapS.ph=ev.t;var s=document.getElementById('mapPh');if(s)s.value=ev.t}mapUpdate();var cv=document.getElementById('mapCv');if(cv&&cv.scrollIntoView)cv.scrollIntoView({block:'nearest',behavior:'smooth'})}return}
   var tr=e.target.closest&&e.target.closest('.mtr');
   if(tr){var rc=tr.getBoundingClientRect(),T=+tr.dataset.dur||1;mapS.ph=Math.round(T*Math.max(0,Math.min(1,(e.clientX-rc.left)/rc.width)));var s2=document.getElementById('mapPh');if(s2)s2.value=mapS.ph;mapUpdate();return}
-  if(e.target.closest&&e.target.closest('[data-mapcalreset]')){MAPC.x0=711.5;MAPC.sx=3.39;MAPC.y0=787;MAPC.sy=3.5;try{localStorage.removeItem('arctura-mapcal2')}catch(x){}render()}
+  if(e.target.closest&&e.target.closest('[data-mapcalreset]')){MAPC.x0=710.6;MAPC.sx=3.45;MAPC.y0=798.5;MAPC.sy=3.45;try{localStorage.removeItem('arctura-mapcal3')}catch(x){}render()}
 });
 document.addEventListener('keydown',function(e){if(e.key==='Enter'){var g=e.target.closest&&e.target.closest('tr[data-mapev]');if(g)g.click()}});
 
