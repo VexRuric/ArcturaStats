@@ -121,6 +121,7 @@ a.fhero:hover{border-color:var(--fc)}a.fhero:focus-visible{outline:2px solid var
 @media (max-width:980px){.mapgrid{grid-template-columns:minmax(0,1fr)}.mapwrap{position:static}}
 .selbox{display:flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;cursor:pointer}.selbox input{width:18px;height:18px;cursor:pointer}
 .mapsolo{margin-top:14px;max-width:760px}.mapsolo .mapwrap{position:static}.mapsolo .mapside:empty{display:none}
+.evmini{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}.evmini svg text{font-size:10px}
 </style>
 
 <div class="wrap">
@@ -154,6 +155,7 @@ function parseMatchLedger(text,fileName){
     if(e.type==='captured'){if(e.scoringTeam>=0)tm(e.scoringTeam).relics++;ev.push({t:r1(e.t),k:'point',x:(a?a.name:'?')+' captured the relic'})}});
   (L.controlPointEvents||[]).forEach(function(e){if(e.type==='capture'){var n=(e.players||[]).map(function(i){return byId[i]&&byId[i].name}).filter(Boolean).join(', ');ev.push({t:r1(e.t),k:'point',x:(e.controlPoint||'Control point')+' captured'+(n?' by '+n:'')})}});
   ev.sort(function(a,b){return a.t-b.t});
+  var scoreTl=[],lastTl=-99,rawTl=L.teamScoreTimeline||[];rawTl.forEach(function(e,i){if(e[0]-lastTl>=10||i===rawTl.length-1){scoreTl.push([Math.round(e[0]),e[1],e[2]]);lastTl=e[0]}});
   var posOf={};L.players.forEach(function(p){posOf[p.id]=p.positions||[]});
   function at(id,t,alive){var a=posOf[id]||[],b=null;for(var i=0;i<a.length;i++){if(a[i][0]<=t){if(!alive||a[i][3])b=a[i]}else break}return b||(alive?null:a[0])||null}
   var log=[],cpTl=[];
@@ -186,7 +188,7 @@ function parseMatchLedger(text,fileName){
   players.forEach(function(p){if(p.carrierKills&&p.team>=0)tm(p.team).carrierKills+=p.carrierKills});
   var w=L.winningTeam,result=(w===0||w===1)?{winner:w,src:'log'}:null;
   var types={};['kills','mobKills','bossKills','relicEvents','controlPointEvents','teamScoreEvents'].forEach(function(k){if((L[k]||[]).length)types[k]=L[k].length});
-  var bal=L.balance||{};return{v:2,ledger:true,map:L.map||L.mapName||'',endReason:L.endReason||'',teamPoints:L.teamPoints,scoreCheck:L.scoreCheck||null,meta:{schema:L.schemaVersion==null?L.version:L.schemaVersion,project:bal.projectVersion||'',engine:bal.engineVersion||'',build:bal.buildConfig||'',skillsHash:bal.skillsHash||'',skillsRows:bal.skillsRows==null?'':bal.skillsRows,endedAtUtc:L.endedAtUtc||'',startedLocal:L.startedLocal||''},teams:TM,result:result,types:types,cols:[],name:fileName||'match ledger',uploadedAt:Date.now(),duration:r1(dur),rows:0,bucket:BUCKET,players:players,series:series,log:log,cpTl:cpTl,events:ev.slice(0,200)};
+  var bal=L.balance||{};return{v:2,ledger:true,map:L.map||L.mapName||'',endReason:L.endReason||'',teamPoints:L.teamPoints,pointsByType:L.teamPointsByType||null,scoreTl:scoreTl,scoreCheck:L.scoreCheck||null,meta:{schema:L.schemaVersion==null?L.version:L.schemaVersion,project:bal.projectVersion||'',engine:bal.engineVersion||'',build:bal.buildConfig||'',skillsHash:bal.skillsHash||'',skillsRows:bal.skillsRows==null?'':bal.skillsRows,endedAtUtc:L.endedAtUtc||'',startedLocal:L.startedLocal||''},teams:TM,result:result,types:types,cols:[],name:fileName||'match ledger',uploadedAt:Date.now(),duration:r1(dur),rows:0,bucket:BUCKET,players:players,series:series,log:log,cpTl:cpTl,events:ev.slice(0,200)};
 }
 function parseAnyLog(text,fileName){return /^\s*﻿?\s*\{/.test(text)?parseMatchLedger(text,fileName):parseCombatLog(text,fileName)}
 function parseCombatLog(text,fileName){
@@ -525,6 +527,51 @@ function snapshotPanel(){
   h+='<div style="margin-top:12px"><button class="btn" type="button" data-snapcreate="1"'+(n&&db?'':' disabled')+'>Create event ('+n+' selected)</button></div></div>';
   return h;
 }
+var PT_GROUPS=[['Control points',['ControlPoint']],['Player kills',['DeathPoint']],['Relic captures',['RelicPoint']],['Boss',['RoshanPoint']],['Mob kills',['EasyMob','MedMob','HardMob']],['Camp clears',['EasyClear','MedClear','HardClear']]];
+function evTopCards(prow){
+  var defs=[['Most points','score',function(r){return num(r.score)}],['Most kills','k',function(r){return r.k}],['Most damage','dmg',function(r){return num(r.dmg)}],['Most mob kills','mob',function(r){return r.mob}],['Most control point captures','cp',function(r){return r.cp}],['Most relic captures','rc',function(r){return r.rc}],['Best K/D','kdr',function(r){return num(r.kdr,2)}]];
+  var cards=defs.map(function(d){var best=prow.slice().sort(function(a,b){return (b[d[1]]||0)-(a[d[1]]||0)})[0];if(!best||!(best[d[1]]>0))return '';
+    return '<a class="pcard" href="#player-'+slug(best.name)+'" style="--fc:'+(TEAMS[best.team]?TEAMS[best.team].col:'var(--accent)')+'"><span class="pn">'+d[0]+'</span><strong>'+esc(best.name)+'</strong>'+(best.main?clsCell(best.main):'')+'<small>'+d[2](best)+'</small></a>'}).join('');
+  return cards?'<div class="podium">'+cards+'</div>':'';
+}
+function evScoreSources(ms){
+  var T={0:{},1:{}},any=false,tot={0:0,1:0};
+  ms.forEach(function(m){var b=m.doc.pointsByType;if(!b)return;any=true;[0,1].forEach(function(t){var o=b[t]||{};Object.keys(o).forEach(function(k){T[t][k]=(T[t][k]||0)+o[k];tot[t]+=o[k]})})});
+  if(!any)return '<div class="panel"><h2>Score by source</h2><p class="note">Needs Match Ledger uploads. Re-upload ledgers stored before this was added.</p></div>';
+  var rows=PT_GROUPS.map(function(g){var a=0,b=0;g[1].forEach(function(k){a+=T[0][k]||0;b+=T[1][k]||0});return {n:g[0],a:a,b:b}}).filter(function(r){return r.a||r.b});
+  return '<div class="panel"><h2>Score by source</h2><div class="h2hkey"><span style="color:'+TEAMS[0].col+'">&#9632; '+esc(teamName(0))+' '+num(tot[0])+'</span><span style="color:'+TEAMS[1].col+'">'+esc(teamName(1))+' '+num(tot[1])+' &#9632;</span></div><div class="comps">'+rows.map(function(r){var t=(r.a+r.b)||1;return '<div class="h2h"><em'+(r.a>r.b?' class="lead"':'')+'>'+num(r.a)+'</em><div class="hb"><i style="width:'+(100*r.a/t)+'%;background:'+TEAMS[0].col+'"></i><i style="width:'+(100*r.b/t)+'%;background:'+TEAMS[1].col+'"></i></div><em'+(r.b>r.a?' class="lead"':'')+'>'+num(r.b)+'</em><span>'+r.n+'</span></div>'}).join('')+'</div></div>';
+}
+function evControl(ms){
+  var cp={},tmin=0;
+  ms.forEach(function(m){var d=m.doc,T=d.duration||0,ev=(d.cpTl||[]);if(!ev.length)return;tmin+=T;var names={};ev.forEach(function(e){names[e.cp]=1});
+    Object.keys(names).forEach(function(n){var o=cp[n]||(cp[n]={n:n,s:{0:0,1:0},neu:0,caps:{0:0,1:0}}),last=0,own=-1;
+      function add(a,b,w){var s=Math.max(0,b-a);if(w===0||w===1)o.s[w]+=s;else o.neu+=s}
+      ev.filter(function(e){return e.cp===n}).sort(function(a,b){return a.t-b.t}).forEach(function(e){add(last,e.t,own);last=e.t;own=e.nt;if(e.nt===0||e.nt===1)o.caps[e.nt]++});add(last,T,own)})});
+  var rows=Object.keys(cp).map(function(k){return cp[k]});if(!rows.length)return '';
+  return '<div class="panel"><h2>Objective control</h2><p class="note" style="margin-top:0">How long each team held each control point, from the ledger capture events.</p><div class="scroll"><table><thead><tr><th scope="col"><button type="button" disabled>Point</button></th><th scope="col"><button type="button" disabled>'+esc(teamName(0))+' held</button></th><th scope="col"><button type="button" disabled>'+esc(teamName(1))+' held</button></th><th scope="col"><button type="button" disabled>Neutral</button></th><th scope="col"><button type="button" disabled>Captures</button></th></tr></thead><tbody>'+
+    rows.map(function(r){var t=(r.s[0]+r.s[1]+r.neu)||1;function c(s){return dur(s)+' <span class="note" style="margin:0">('+Math.round(100*s/t)+'%)</span>'}return '<tr><td><strong>'+esc(r.n)+'</strong></td><td>'+c(r.s[0])+'</td><td>'+c(r.s[1])+'</td><td>'+c(r.neu)+'</td><td>'+r.caps[0]+' / '+r.caps[1]+'</td></tr>'}).join('')+'</tbody></table></div><p class="note">Captures are '+esc(teamName(0))+' / '+esc(teamName(1))+'.</p></div>';
+}
+function evMiniChart(d){
+  var tl=d.scoreTl;if(!tl||tl.length<2)return '<p class="note">No score timeline.</p>';
+  var W=300,H=110,L=34,R=6,T=8,B=18,mx=1,mt=Math.max(d.duration||0,tl[tl.length-1][0])||1;tl.forEach(function(e){mx=Math.max(mx,e[1],e[2])});
+  var X=function(t){return L+(W-L-R)*t/mt},Y=function(v){return T+(H-T-B)*(1-v/mx)};
+  function line(i){return '<polyline fill="none" stroke="'+TEAMS[i-1].col+'" stroke-width="2.2" stroke-linejoin="round" points="'+tl.map(function(e){return X(e[0]).toFixed(1)+','+Y(e[i]).toFixed(1)}).join(' ')+'"/>'}
+  return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Team score over time"><line class="grid" x1="'+L+'" x2="'+(W-R)+'" y1="'+Y(0)+'" y2="'+Y(0)+'"/><line class="grid" x1="'+L+'" x2="'+(W-R)+'" y1="'+Y(mx)+'" y2="'+Y(mx)+'"/><text x="'+(L-4)+'" y="'+(Y(mx)+4)+'" text-anchor="end">'+num(mx)+'</text><text x="'+(L-4)+'" y="'+(Y(0)+4)+'" text-anchor="end">0</text><text x="'+L+'" y="'+(H-4)+'">0:00</text><text x="'+(W-R)+'" y="'+(H-4)+'" text-anchor="end">'+dur(mt)+'</text>'+line(1)+line(2)+'</svg>';
+}
+function evMatchTable(ms){
+  var rows=ms.map(function(m){var d=m.doc,tp=d.teamPoints||{},k=0,boss=0,rel=0,cpc=0;(d.players||[]).forEach(function(p){if(hideBots&&isBot(p.name))return;k+=p.kills;boss+=p.bossKills||0;rel+=p.relicCaps||0;cpc+=p.cpCaps||0});
+    var s0=tp[0]!=null?tp[0]:((d.teams||{})[0]||{}).points,s1=tp[1]!=null?tp[1]:((d.teams||{})[1]||{}).points;
+    return '<tr class="click" tabindex="0" data-go="match-'+esc(m.id)+'"><td style="text-align:left"><strong>'+esc(d.name)+'</strong></td><td>'+dur(d.duration||0)+'</td><td>'+resultTag(d)+'</td><td><b style="color:'+TEAMS[0].col+'">'+num(s0||0)+'</b> : <b style="color:'+TEAMS[1].col+'">'+num(s1||0)+'</b></td><td>'+k+'</td><td>'+boss+'</td><td>'+cpc+'</td><td>'+rel+'</td></tr>'}).join('');
+  return '<div class="panel"><h2>Match by match</h2><div class="scroll"><table><thead><tr>'+['Match','Length','Result','Points','Kills','Boss kills','CP captures','Relic captures'].map(function(c){return '<th scope="col"><button type="button" disabled>'+c+'</button></th>'}).join('')+'</tr></thead><tbody>'+rows+'</tbody></table></div><p class="note">Points are '+esc(teamName(0))+' : '+esc(teamName(1))+'. Click a match to open it.</p></div>';
+}
+function evProgress(ms){
+  var l=ms.filter(function(m){return m.doc.scoreTl&&m.doc.scoreTl.length>1});if(!l.length)return '';
+  return '<div class="panel"><h2>Score progression</h2><div class="evmini">'+l.map(function(m){return '<div><a class="plink" href="#match-'+esc(m.id)+'">'+esc(m.doc.name)+'</a>'+evMiniChart(m.doc)+'</div>'}).join('')+'</div><p class="note"><span style="color:'+TEAMS[0].col+'">&#9632;</span> '+esc(teamName(0))+' <span style="color:'+TEAMS[1].col+'">&#9632;</span> '+esc(teamName(1))+'. Jumps are boss kills, relic captures and player kills.</p></div>';
+}
+function evClassTable(crow){
+  if(!crow.length)return '';if(!sortState.evcls)sortState.evcls={k:'picks',d:-1};
+  return '<div class="panel"><h2>Class breakdown</h2>'+table('evcls',[{k:'cls',l:'Class',f:function(r){return clsCell(r.cls)}},{k:'picks',l:'Picks'},{k:'dpm',l:'Dmg/min',f:function(r){return r.dpm<0?'-':num(r.dpm)}},{k:'avg',l:'Avg points',f:function(r){return num(r.avg)}},{k:'k',l:'Kills'},{k:'d',l:'Deaths'},{k:'kdr',l:'K/D',f:function(r){return num(r.kdr,2)}}],crow)+'</div>';
+}
 function viewSnapshot(id){
   var s=snaps[id];
   if(!s)return '<div><h1>Event not found</h1></div>'+empty(dbState==='loading'?'Loading':'No event with that id','It may have been deleted, or it is still loading.');
@@ -548,6 +595,10 @@ function viewSnapshot(id){
   var mvp=prow.slice().sort(function(a,b){return b.score-a.score})[0];
   h+='<div class="fac">'+[0,1].map(function(f){var a=F[f];return '<a class="fcard'+(a.w>a.l?' win':'')+'" href="#faction-'+f+'" style="--fc:'+TEAMS[f].col+'33;text-decoration:none;color:var(--fg)"><img alt="" src="'+TFLAG[f]+'"><div><b>'+esc(teamName(f))+'</b><p class="note" style="margin:6px 0 0"><strong style="font-size:22px;color:var(--fg)">'+a.w+'</strong> wins, '+a.l+' losses'+(a.dr?', '+a.dr+' draws':'')+(a.u?', '+a.u+' unrecorded':'')+'</p><p class="note" style="margin:2px 0 0">'+a.k+' kills, '+num(a.sc)+' points, '+num(a.mob)+' mob kills</p></div></a>'}).join('')+'</div>';
   h+='<div class="kpis"><div class="kpi"><b>'+ms.length+'</b><small>Matches</small></div><div class="kpi"><b>'+prow.length+'</b><small>Players</small></div><div class="kpi"><b>'+num(mins,0)+' min</b><small>Total match time</small></div><div class="kpi"><b>'+K+'</b><small>Player kills</small></div><div class="kpi"><b>'+(mvp?esc(mvp.name):'-')+'</b><small>Most points'+(mvp?' ('+num(mvp.score)+')':'')+'</small></div></div>';
+  var hasMap=ms.some(function(m){return m.doc.ledger&&(m.doc.players||[]).some(function(p){return p.pos&&p.pos.length})});
+  h+=evTopCards(prow);
+  if(hasMap){mapScope=ms.map(function(m){return m.id});h+='<div class="panel"><h2>Event heat map</h2>'+mapBody('')+'</div>'}else h+='<div class="panel"><h2>Event heat map</h2><p class="note">No match in this event has position data. Re-upload its Match Ledger files to get a heat map.</p></div>';
+  h+=evScoreSources(ms)+evMatchTable(ms)+evProgress(ms)+evControl(ms);
   h+='<div class="panel"><h2>Players across the event</h2>'+table('snplayers',[
     {k:'name',l:'Player',f:function(r){return '<a class="plink" href="#player-'+slug(r.name)+'">'+esc(r.name)+'</a>'}},
     {k:'main',l:'Class',f:function(r){return r.main?clsCell(r.main):'-'}},
@@ -560,6 +611,7 @@ function viewSnapshot(id){
   h+='<div class="cols"><div class="panel"><h2>Matches</h2>'+ms.map(function(m){var d=m.doc,pl=(d.players||[]).filter(function(p){return !(hideBots&&isBot(p.name))}).slice().sort(function(a,b){return b.score-a.score});
     return '<details class="cdet"'+(ms.length<=3?'':'')+'><summary><a class="plink" href="#match-'+esc(m.id)+'">'+esc(d.name)+'</a> '+resultTag(d)+' <span class="note" style="margin:0">'+dur(d.duration||0)+'</span></summary><div class="scroll"><table><thead><tr><th scope="col"><button type="button" disabled>Player</button></th><th scope="col"><button type="button" disabled>Team</button></th><th scope="col"><button type="button" disabled>Class</button></th><th scope="col"><button type="button" disabled>Pts</button></th><th scope="col"><button type="button" disabled>K/D</button></th><th scope="col"><button type="button" disabled>Mobs</button></th></tr></thead><tbody>'+pl.map(function(p){return '<tr><td><a class="plink" href="#player-'+slug(p.name)+'">'+esc(p.name)+'</a></td><td>'+teamTag(p.team)+'</td><td>'+(p.cls?clsCell(p.cls):'-')+'</td><td>'+num(p.score)+'</td><td>'+p.kills+'/'+p.deaths+'</td><td>'+p.mobKills+'</td></tr>'}).join('')+'</tbody></table></div>'+(d.partial?'<p class="note">Screenshot summary. The roster may be missing players cut off at the bottom of the screenshot.</p>':'')+'</details>'}).join('')+'</div>'+
     '<div class="panel"><h2>Classes</h2>'+(crow.length?crow.map(function(c){return '<div class="cb" style="grid-template-columns:90px 1fr 70px"><span>'+clsCell(c.cls)+'</span><div class="track"><i style="width:'+Math.round(100*c.picks/Math.max.apply(null,crow.map(function(x){return x.picks})))+'%;background:'+CCOL[c.cls]+'"></i></div><em>'+c.picks+' picks</em></div>'}).join(''):'<p class="note">No class data in these matches.</p>')+'</div></div>';
+  h+=evClassTable(crow);
   return h;
 }
 function delMatches(ids){
@@ -749,7 +801,7 @@ function viewMatch(id){
     {k:'dpm',l:'Dmg/min',f:function(r){return num(r.dpm)}}
   ],rows)+'</div>';
   h+=objPanel(d,(d.players||[]).filter(function(p){return !(hideBots&&isBot(p.name))}));
-  if(d.ledger)h+='<div class="panel"><h2>Heat map and event timeline</h2>'+mapBody(id)+'</div>';
+  if(d.ledger){mapScope=null;h+='<div class="panel"><h2>Heat map and event timeline</h2>'+mapBody(id)+'</div>'}
   h+='<div class="cols"><div class="panel"><h2>Damage dealt per 30 seconds</h2>'+chart(d)+'</div><div class="panel"><h2>Events</h2>'+
     ((d.events||[]).length?'<ul class="events">'+d.events.map(function(e){return '<li><time>'+dur(e.t)+'</time><span class="tag'+(e.k==='boss'?' warn':'')+'">'+esc(e.k==='kill'?'Kill':e.k==='boss'?'Boss':'Point')+'</span><span>'+esc(e.x)+'</span></li>'}).join('')+'</ul>':'<p class="note">No kills or captures in this log.</p>')+'</div></div>';
   return h;
@@ -857,14 +909,14 @@ var MAPW=1400,MAPH=1654;
 var MAPC=(function(){var d={x0:710,sx:3.99,y0:794,sy:3.65};try{var s=JSON.parse(localStorage.getItem('arctura-mapcal')||'null');if(s&&s.sx&&s.sy)d=s}catch(e){}return d})();
 function mpx(x){return MAPC.x0+x*MAPC.sx}function mpy(y){return MAPC.y0+y*MAPC.sy}
 var MAPZONES={North:[0,-150],South:[10,137],West:[-130,0],East:[130,0],Center:[0,0]};
-var mapS={match:'all',mode:'pos',team:'all',player:'',types:{kill:1,mob:1,boss:1,relic:1,cp:1},t0:0,t1:99999,ph:0,showCp:true,showPl:false,focus:null,radius:26,raf:0};
+var mapS={match:'all',mode:'pos',team:'all',player:'',types:{kill:1,mob:1,boss:1,relic:1,cp:1},t0:0,t1:99999,ph:0,showCp:true,showPl:false,upto:false,timer:0,dot:{mob:1,boss:1,relic:1,cp:1,kill:0},focus:null,radius:26,raf:0};
 var mapImg={},mapImgState=0;
 function mapLoad(){
   if(mapImgState)return;mapImgState=1;
   var names={arena:'arena.jpg',zekar:'cp-zekar.png',elysiant:'cp-elysiant.png',neutral:'cp-neutral.png'},ks=Object.keys(names),n=0;
   ks.forEach(function(k){var i=new Image();i.onload=i.onerror=function(){mapImg[k]=i.width?i:null;if(++n===ks.length){mapImgState=2;mapUpdate()}};i.src='/map/'+names[k]});
 }
-function mapMatches(){return allMatches().filter(function(m){var d=m.doc;return d.ledger&&(d.players||[]).some(function(p){return p.pos&&p.pos.length})}).sort(function(a,b){return playedAt(b.doc)-playedAt(a.doc)})}
+function mapMatches(){return allMatches().filter(function(m){var d=m.doc;return (!mapScope||mapScope.indexOf(m.id)>=0)&&d.ledger&&(d.players||[]).some(function(p){return p.pos&&p.pos.length})}).sort(function(a,b){return playedAt(b.doc)-playedAt(a.doc)})}
 function mapSel(){var all=mapMatches();return mapS.match==='all'?all:all.filter(function(m){return m.id===mapS.match})}
 function mapZone(x,y){var best='',bd=1e9;Object.keys(MAPZONES).forEach(function(k){var z=MAPZONES[k],d=Math.hypot(x-z[0],y-z[1]);if(d<bd){bd=d;best=k}});return (bd<45?'At ':'Near ')+best}
 var MAPMODES=[['pos','Player presence (time spent)'],['kill','Kills (where the victim fell)'],['death','Deaths'],['mob','Mob kills'],['obj','Objectives (control points, relic, boss)']];
@@ -898,6 +950,23 @@ function mapHeat(ctx,pts){
   c2.putImageData(im,0,0);ctx.imageSmoothingEnabled=true;ctx.drawImage(cv,0,0,MAPW,MAPH);
 }
 function mapCpOwner(d,cp,t){var o=-1;(d.cpTl||[]).forEach(function(e){if(e.cp===cp&&e.t<=t)o=e.nt});return o}
+var MAPDOT={mob:['Mob kills','#ff8a00'],boss:['Boss kills','#ff2bd6'],relic:['Relic','#ffd400'],cp:['Control point changes','#ffffff'],kill:['Player kills','#38bdf8']};
+function mapDots(ctx,sel,one){
+  var tier={Easy:6,Med:8,Hard:10};
+  sel.forEach(function(m){(m.doc.log||[]).forEach(function(e){
+    if(!mapS.dot[e.k]||!mapPass(e))return;if(one&&mapS.upto&&e.t>mapS.ph)return;
+    var x=mpx(e.x),y=mpy(e.y),tc=TEAMS[e.team]?TEAMS[e.team].col:'#888';
+    ctx.lineWidth=3;ctx.strokeStyle='rgba(0,0,0,.9)';
+    if(e.k==='cp'){var im=e.nt===0?mapImg.elysiant:e.nt===1?mapImg.zekar:mapImg.neutral;
+      if(one&&im){ctx.drawImage(im,x-27,y-30,54,54);ctx.font='700 18px sans-serif';ctx.textAlign='center';ctx.lineWidth=4;ctx.strokeStyle='rgba(0,0,0,.9)';ctx.fillStyle='#fff';ctx.strokeText(dur(e.t),x,y+44);ctx.fillText(dur(e.t),x,y+44)}
+      else{ctx.beginPath();ctx.arc(x,y,9,0,6.3);ctx.fillStyle=e.nt===0||e.nt===1?TEAMS[e.nt].col:'#ddd';ctx.fill();ctx.lineWidth=3;ctx.strokeStyle='#fff';ctx.stroke()}return}
+    if(e.k==='relic'){ctx.beginPath();ctx.moveTo(x,y-11);ctx.lineTo(x+9,y);ctx.lineTo(x,y+11);ctx.lineTo(x-9,y);ctx.closePath();ctx.fillStyle=MAPDOT.relic[1];ctx.fill();ctx.stroke();return}
+    var r=e.k==='boss'?17:e.k==='mob'?(tier[e.tier]||7):6;
+    ctx.beginPath();ctx.arc(x,y,r,0,6.3);ctx.fillStyle=MAPDOT[e.k][1];ctx.fill();ctx.stroke();
+    if(e.k==='boss'){ctx.beginPath();ctx.arc(x,y,r+5,0,6.3);ctx.lineWidth=3;ctx.strokeStyle='#fff';ctx.stroke()}
+    else if(e.k==='kill'){ctx.beginPath();ctx.arc(x,y,r-2.5,0,6.3);ctx.fillStyle=tc;ctx.fill()}
+  })});
+}
 function mapDraw(){
   var cv=document.getElementById('mapCv');if(!cv)return;cv.width=MAPW;cv.height=MAPH;var ctx=cv.getContext('2d');
   if(mapImg.arena)ctx.drawImage(mapImg.arena,0,0,MAPW,MAPH);else{ctx.fillStyle='#2a3a2a';ctx.fillRect(0,0,MAPW,MAPH)}
@@ -908,6 +977,7 @@ function mapDraw(){
     if(one&&k==='East'&&!(one.cpTl||[]).some(function(e){return e.cp==='East'}))ctx.globalAlpha=.45;
     if(im)ctx.drawImage(im,mpx(z[0])-44,mpy(z[1])-48,88,88);ctx.globalAlpha=1;
     ctx.font='700 22px sans-serif';ctx.textAlign='center';ctx.lineWidth=4;ctx.strokeStyle='rgba(0,0,0,.8)';ctx.fillStyle='#fff';ctx.strokeText(k,mpx(z[0]),mpy(z[1])+62);ctx.fillText(k,mpx(z[0]),mpy(z[1])+62)});
+  mapDots(ctx,sel,one);
   if(mapS.showPl&&one)(one.players||[]).forEach(function(p){if(hideBots&&isBot(p.name))return;var q=null;(p.pos||[]).forEach(function(s){if(s[0]<=mapS.ph)q=s});if(!q||!q[3])return;
     var c=TEAMS[p.team]?TEAMS[p.team].col:'#888';ctx.beginPath();ctx.arc(mpx(q[1]),mpy(q[2]),11,0,6.3);ctx.fillStyle=c;ctx.fill();ctx.lineWidth=3;ctx.strokeStyle='#fff';ctx.stroke();
     ctx.font='700 20px sans-serif';ctx.textAlign='left';ctx.lineWidth=4;ctx.strokeStyle='rgba(0,0,0,.85)';ctx.strokeText(p.name,mpx(q[1])+15,mpy(q[2])+6);ctx.fillStyle='#fff';ctx.fillText(p.name,mpx(q[1])+15,mpy(q[2])+6)});
@@ -956,10 +1026,10 @@ function mapUpdate(){
 }
 function mapSched(){if(mapS.raf)return;mapS.raf=requestAnimationFrame(function(){mapS.raf=0;mapUpdate()})}
 function mapMax(){var mx=0;mapSel().forEach(function(m){if((m.doc.duration||0)>mx)mx=m.doc.duration});return Math.ceil(mx)||1}
-var mapCtx='',mapFull=false;
+var mapCtx='',mapFull=false,mapScope=null;
 function mapBody(mid){
-  var all=mapMatches(),full=!!mid,ctx=mid||'all';
-  if(ctx!==mapCtx){mapCtx=ctx;mapS.t0=0;mapS.t1=99999;mapS.ph=0;mapS.focus=null;mapS.team='all';mapS.player='';mapS.mode='pos'}
+  var all=mapMatches(),full=!!mid,ctx=(mid||'all')+'|'+(mapScope?mapScope.join(','):'');
+  if(ctx!==mapCtx){mapCtx=ctx;mapS.t0=0;mapS.t1=99999;mapS.ph=0;mapS.focus=null;mapS.team='all';mapS.player='';mapS.mode='pos';mapS.upto=false;if(mapS.timer){clearInterval(mapS.timer);mapS.timer=0}}
   mapFull=full;mapS.match=full?mid:'all';
   if(full&&!all.some(function(m){return m.id===mid}))return '<p class="note">This match has no position data. It was stored from a CSV combat log, or from a Match Ledger uploaded before positions were kept. Re-upload the ledger to get its heat map.</p>';
   if(!all.length)return empty('No ledger matches with positions yet','Upload Match Ledger .json files on the Upload tab. Matches stored from older CSV combat logs, or from ledgers uploaded before the map existed, have no position data. Re-upload them.');
@@ -978,16 +1048,17 @@ function mapBody(mid){
       lab('To <span id="mapT1v">'+dur(mapS.t1)+'</span>','<input type="range" id="mapT1" data-mapf="1" min="0" max="'+mx+'" value="'+mapS.t1+'">')+
       lab('Playhead <span id="mapPhv">'+dur(mapS.ph)+'</span>','<input type="range" id="mapPh" data-mapf="1" min="0" max="'+mx+'" value="'+mapS.ph+'">'):'')+
     '<div class="mchk"><label class="chk"><input type="checkbox" id="mapCp" data-mapf="1"'+(mapS.showCp?' checked':'')+'> Control points'+(full?' (owner at playhead)':'')+'</label>'+(full?'<label class="chk"><input type="checkbox" id="mapPl" data-mapf="1"'+(mapS.showPl?' checked':'')+'> Players at playhead</label>':'')+
-    '<label class="chk"><input type="checkbox" id="botsChk"'+(hideBots?' checked':'')+'> Hide test bots</label></div>'+
+    (full?'<label class="chk"><input type="checkbox" id="mapUpto" data-mapf="1"'+(mapS.upto?' checked':'')+'> Reveal events up to playhead</label><button class="btn ghost" type="button" data-mapplay="1">'+(mapS.timer?'Pause':'Play')+'</button>':'')+'<label class="chk"><input type="checkbox" id="botsChk"'+(hideBots?' checked':'')+'> Hide test bots</label></div>'+
+    '<div class="mchk"><b class="note" style="margin:0">Dots</b>'+Object.keys(MAPDOT).map(function(k){return '<label class="chk"><input type="checkbox" data-mapdot="'+k+'"'+(mapS.dot[k]?' checked':'')+'> <span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:'+MAPDOT[k][1]+';border:1px solid #000;vertical-align:-1px"></span> '+MAPDOT[k][0]+'</label>'}).join('')+'<span class="note" style="margin:0">'+(full?'Control point changes show the new owner icon where it happened.':'')+'</span></div>'+
     (full?'<div class="mchk">'+Object.keys(MAPK).map(function(k){return '<label class="chk"><input type="checkbox" data-maptype="'+k+'"'+(mapS.types[k]?' checked':'')+'> '+MAPK[k]+'</label>'}).join('')+'<span class="note" style="margin:0">Types filter the time table.</span></div>':'')+'</div>';
   h+='<div class="'+(full?'mapgrid':'mapsolo')+'"><div class="mapwrap"><canvas id="mapCv" width="'+MAPW+'" height="'+MAPH+'" role="img" aria-label="Arena map with heat map overlay"></canvas></div><div id="mapDyn" class="mapside"></div></div>';
-  if(!full)h+='<p class="note">Combined over '+all.length+' ledger match'+(all.length===1?'':'es')+'. Open a match from the Matches tab for its own heat map, event time table and playhead.</p>'+
-    '<details class="panel"><summary>Map calibration</summary><p class="note">The log positions are game coordinates. This maps them onto the picture: pixel = origin + coordinate &times; scale, on a '+MAPW+' by '+MAPH+' image. The control point icons are drawn at the game coordinates of the four platforms, so adjust until they sit on the stone circles. Saved in this browser.</p><div class="mctl" style="padding:0;border:0">'+
-    [['x0','X origin'],['sx','X scale'],['y0','Y origin'],['sy','Y scale']].map(function(f){return lab(f[1],'<input type="number" step="0.05" data-mapcal="'+f[0]+'" value="'+MAPC[f[0]]+'">')}).join('')+'<button class="btn ghost" type="button" data-mapcalreset="1">Reset</button></div></details>';
+  if(!full)h+='<p class="note">Combined over '+all.length+' ledger match'+(all.length===1?'':'es')+(mapScope?' in this event':'')+'. Open a match for its own heat map, event time table and playhead.</p>'+(mapScope?'':'<details class="panel"><summary>Map calibration</summary><p class="note">The log positions are game coordinates. This maps them onto the picture: pixel = origin + coordinate &times; scale, on a '+MAPW+' by '+MAPH+' image. The control point icons are drawn at the game coordinates of the four platforms, so adjust until they sit on the stone circles. Saved in this browser.</p><div class="mctl" style="padding:0;border:0">'+
+    [['x0','X origin'],['sx','X scale'],['y0','Y origin'],['sy','Y scale']].map(function(f){return lab(f[1],'<input type="number" step="0.05" data-mapcal="'+f[0]+'" value="'+MAPC[f[0]]+'">')}).join('')+'<button class="btn ghost" type="button" data-mapcalreset="1">Reset</button></div></details>');
   setTimeout(function(){mapLoad();mapUpdate()},0);
   return h;
 }
 function viewMap(){
+  mapScope=null;
   return '<div><h1>Heat map</h1><p class="sub">Where players spent time, got kills and died, across every saved Match Ledger '+statusLine()+'</p></div>'+mapBody('');
 }
 document.addEventListener('input',function(e){var t=e.target;if(!t||!t.id)return;
@@ -1004,9 +1075,17 @@ document.addEventListener('change',function(e){var t=e.target;if(!t)return;
   else if(t.id==='mapPlayer'){mapS.player=t.value;mapSched()}
   else if(t.id==='mapCp'){mapS.showCp=t.checked;mapSched()}
   else if(t.id==='mapPl'){mapS.showPl=t.checked;mapSched()}
+  else if(t.id==='mapUpto'){mapS.upto=t.checked;mapSched()}
+  else if(t.dataset&&t.dataset.mapdot){mapS.dot[t.dataset.mapdot]=t.checked?1:0;mapSched()}
   else if(t.dataset&&t.dataset.maptype){mapS.types[t.dataset.maptype]=t.checked?1:0;mapSched()}
 });
 document.addEventListener('click',function(e){
+  var pb=e.target.closest&&e.target.closest('[data-mapplay]');
+  if(pb){if(mapS.timer){clearInterval(mapS.timer);mapS.timer=0;pb.textContent='Play';return}
+    var mx=mapMax(),st=Math.max(1,Math.round(mx/90));mapS.upto=true;var uc=document.getElementById('mapUpto');if(uc)uc.checked=true;if(mapS.ph>=mx)mapS.ph=0;pb.textContent='Pause';
+    mapS.timer=setInterval(function(){var cv=document.getElementById('mapCv');if(!cv){clearInterval(mapS.timer);mapS.timer=0;return}
+      mapS.ph=Math.min(mx,mapS.ph+st);var sl=document.getElementById('mapPh');if(sl)sl.value=mapS.ph;mapSched();
+      if(mapS.ph>=mx){clearInterval(mapS.timer);mapS.timer=0;var b=document.querySelector('[data-mapplay]');if(b)b.textContent='Play'}},120);return}
   var r=e.target.closest&&e.target.closest('[data-mapev]');
   if(r){var p=r.dataset.mapev.split(':'),m=allMatches().filter(function(x){return x.id===p[0]})[0],ev=m&&m.doc.log&&m.doc.log[+p[1]];
     if(ev){mapS.focus={x:ev.x,y:ev.y};if(mapS.match!=='all'){mapS.ph=ev.t;var s=document.getElementById('mapPh');if(s)s.value=ev.t}mapUpdate();var cv=document.getElementById('mapCv');if(cv&&cv.scrollIntoView)cv.scrollIntoView({block:'nearest',behavior:'smooth'})}return}
