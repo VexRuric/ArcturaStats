@@ -120,6 +120,7 @@ a.fhero:hover{border-color:var(--fc)}a.fhero:focus-visible{outline:2px solid var
 .mstrip{display:grid;grid-template-columns:60px 1fr;gap:10px;align-items:center;margin:8px 0}.mtr{position:relative;height:18px;background:var(--panel2);border-radius:4px;overflow:hidden;cursor:pointer;border:1px solid var(--line)}.mtr i{position:absolute;top:0;bottom:0}.mtr b{position:absolute;top:-2px;bottom:-2px;width:2px;background:#fff;box-shadow:0 0 0 1px #000}
 @media (max-width:980px){.mapgrid{grid-template-columns:minmax(0,1fr)}.mapwrap{position:static}}
 .selbox{display:flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;cursor:pointer}.selbox input{width:18px;height:18px;cursor:pointer}
+.mapsolo{margin-top:14px;max-width:760px}.mapsolo .mapwrap{position:static}.mapsolo .mapside:empty{display:none}
 </style>
 
 <div class="wrap">
@@ -256,7 +257,7 @@ function teamName(n){return TEAMS[n]?TEAMS[n].name:'Team '+n}
 function teamTag(n){if(!(n>=0))return '-';var c=TEAMS[n]?TEAMS[n].col:'#555';return '<a class="team" href="#faction-'+n+'" style="background:'+c+';text-decoration:none">'+(TFLAG[n]?'<img class="tflag" alt="" src="'+TFLAG[n]+'">':'')+esc(teamName(n))+'</a>'}
 var CCOL={Assassin:'var(--c-assassin)',Hunter:'var(--c-hunter)',Mystic:'var(--c-mystic)',Priest:'var(--c-priest)',Warrior:'var(--c-warrior)'};
 var SERIES=['var(--c-assassin)','var(--c-hunter)','var(--c-mystic)','var(--c-priest)','var(--c-warrior)','var(--accent)'];
-var TABS=[['players','Players'],['classes','Classes'],['factions','Factions'],['map','Map'],['matches','Matches'],['events','Events'],['upload','Upload']];
+var TABS=[['players','Players'],['classes','Classes'],['factions','Factions'],['map','Heat map'],['matches','Matches'],['events','Events'],['upload','Upload']];
 var $view=document.getElementById('view'),$nav=document.getElementById('nav');
 var remote={},local={},snaps={},snapDraft={name:'',sel:{}},evEdit={id:'',v:''},evMsg='',delSel={},confirmKey='',db=null,user=null,canWrite=true,canEdit=false,loaded=false,dbState='loading';
 var sortState={objs:{k:'mobT',d:-1},snplayers:{k:'score',d:-1},snfac:{k:'team',d:1},fplayers:{k:'rating',d:-1},cboard:{k:'rating',d:-1},pside:{k:'name',d:1},adteam:{k:'team',d:1},adcls:{k:'dpm',d:-1},admatch:{k:'t',d:-1},players:{k:'rating',d:-1},match:{k:'dmg',d:-1},classes:{k:'avgDmg',d:-1},pclass:{k:'rating',d:-1},phist:{k:'t',d:-1}};
@@ -744,6 +745,7 @@ function viewMatch(id){
     {k:'dpm',l:'Dmg/min',f:function(r){return num(r.dpm)}}
   ],rows)+'</div>';
   h+=objPanel(d,(d.players||[]).filter(function(p){return !(hideBots&&isBot(p.name))}));
+  if(d.ledger)h+='<div class="panel"><h2>Heat map and event timeline</h2>'+mapBody(id)+'</div>';
   h+='<div class="cols"><div class="panel"><h2>Damage dealt per 30 seconds</h2>'+chart(d)+'</div><div class="panel"><h2>Events</h2>'+
     ((d.events||[]).length?'<ul class="events">'+d.events.map(function(e){return '<li><time>'+dur(e.t)+'</time><span class="tag'+(e.k==='boss'?' warn':'')+'">'+esc(e.k==='kill'?'Kill':e.k==='boss'?'Boss':'Point')+'</span><span>'+esc(e.x)+'</span></li>'}).join('')+'</ul>':'<p class="note">No kills or captures in this log.</p>')+'</div></div>';
   return h;
@@ -932,6 +934,7 @@ function mapStrips(d){
     return '<div class="mstrip" data-mapstrip="1"><span>'+esc(cp)+'</span><div class="mtr" data-dur="'+T+'">'+segs+'<b style="left:'+(100*Math.min(mapS.ph,T)/T)+'%"></b></div></div>'}).join('');
 }
 function mapDyn(){
+  if(!mapFull)return '';
   var sel=mapSel(),one=mapS.match!=='all'&&sel.length===1?sel[0].doc:null,rows=mapRows();
   var cnt={kill:0,mob:0,boss:0,relic:0,cp:0};rows.forEach(function(r){cnt[r.e.k]++});
   var h='<div class="kpis"><div class="kpi"><b>'+sel.length+'</b><small>Match'+(sel.length===1?'':'es')+'</small></div><div class="kpi"><b>'+cnt.kill+'</b><small>Kills</small></div><div class="kpi"><b>'+cnt.mob+'</b><small>Mob kills</small></div><div class="kpi"><b>'+cnt.boss+'</b><small>Boss kills</small></div><div class="kpi"><b>'+cnt.cp+'</b><small>Control point changes</small></div><div class="kpi"><b>'+cnt.relic+'</b><small>Relic events</small></div></div>';
@@ -949,33 +952,39 @@ function mapUpdate(){
 }
 function mapSched(){if(mapS.raf)return;mapS.raf=requestAnimationFrame(function(){mapS.raf=0;mapUpdate()})}
 function mapMax(){var mx=0;mapSel().forEach(function(m){if((m.doc.duration||0)>mx)mx=m.doc.duration});return Math.ceil(mx)||1}
-function viewMap(){
-  var all=mapMatches(),h='<div><h1>Map</h1><p class="sub">Heat map and event time table built from Match Ledger positions and events '+statusLine()+'</p></div>';
-  if(!all.length)return h+empty('No ledger matches with positions yet','Upload Match Ledger .json files on the Upload tab. Matches stored from older CSV combat logs, or from ledgers uploaded before this tab existed, have no position data. Re-upload them.');
-  if(mapS.match!=='all'&&!all.some(function(m){return m.id===mapS.match}))mapS.match='all';
+var mapCtx='',mapFull=false;
+function mapBody(mid){
+  var all=mapMatches(),full=!!mid,ctx=mid||'all';
+  if(ctx!==mapCtx){mapCtx=ctx;mapS.t0=0;mapS.t1=99999;mapS.ph=0;mapS.focus=null;mapS.team='all';mapS.player='';mapS.mode='pos'}
+  mapFull=full;mapS.match=full?mid:'all';
+  if(full&&!all.some(function(m){return m.id===mid}))return '<p class="note">This match has no position data. It was stored from a CSV combat log, or from a Match Ledger uploaded before positions were kept. Re-upload the ledger to get its heat map.</p>';
+  if(!all.length)return empty('No ledger matches with positions yet','Upload Match Ledger .json files on the Upload tab. Matches stored from older CSV combat logs, or from ledgers uploaded before the map existed, have no position data. Re-upload them.');
   var mx=mapMax();if(mapS.t1>mx)mapS.t1=mx;if(mapS.t0>mapS.t1)mapS.t0=0;if(mapS.ph>mx)mapS.ph=mx;
   var names={};mapSel().forEach(function(m){(m.doc.players||[]).forEach(function(p){if(!(hideBots&&isBot(p.name)))names[p.name]=1})});
   if(mapS.player&&!names[mapS.player])mapS.player='';
-  var one=mapS.match!=='all';
   function sel(id,opts,v){return '<select id="'+id+'" data-mapf="1">'+opts.map(function(o){return '<option value="'+esc(o[0])+'"'+(String(o[0])===String(v)?' selected':'')+'>'+esc(o[1])+'</option>'}).join('')+'</select>'}
   function lab(t,inner){return '<label class="mfld"><span>'+t+'</span>'+inner+'</label>'}
-  h+='<div class="panel mctl">'+
-    lab('Match',sel('mapMatch',[['all','All ledger matches ('+all.length+')']].concat(all.map(function(m){return [m.id,m.doc.name+(m.doc.map?' - '+m.doc.map.replace(/^Aeon_Battleground_/,''):'')]})),mapS.match))+
-    lab('Heat map of',sel('mapMode',MAPMODES,mapS.mode))+
+  var modes=full?MAPMODES:MAPMODES.filter(function(x){return x[0]!=='obj'||true});
+  var h='<div class="panel mctl">'+
+    lab('Heat map of',sel('mapMode',modes,mapS.mode))+
     lab('Team',sel('mapTeam',[['all','Both teams'],['0',teamName(0)],['1',teamName(1)]],mapS.team))+
     lab('Player',sel('mapPlayer',[['','Everyone']].concat(Object.keys(names).sort().map(function(n){return [n,n]})),mapS.player))+
-    lab('Heat size',' <input type="range" id="mapR" data-mapf="1" min="10" max="60" value="'+mapS.radius+'">')+
-    lab('From <span id="mapT0v">'+dur(mapS.t0)+'</span>','<input type="range" id="mapT0" data-mapf="1" min="0" max="'+mx+'" value="'+mapS.t0+'">')+
-    lab('To <span id="mapT1v">'+dur(mapS.t1)+'</span>','<input type="range" id="mapT1" data-mapf="1" min="0" max="'+mx+'" value="'+mapS.t1+'">')+
-    (one?lab('Playhead <span id="mapPhv">'+dur(mapS.ph)+'</span>','<input type="range" id="mapPh" data-mapf="1" min="0" max="'+mx+'" value="'+mapS.ph+'">'):'')+
-    '<div class="mchk"><label class="chk"><input type="checkbox" id="mapCp" data-mapf="1"'+(mapS.showCp?' checked':'')+'> Control points'+(one?' (owner at playhead)':'')+'</label>'+(one?'<label class="chk"><input type="checkbox" id="mapPl" data-mapf="1"'+(mapS.showPl?' checked':'')+'> Players at playhead</label>':'')+
+    lab('Heat size','<input type="range" id="mapR" data-mapf="1" min="10" max="60" value="'+mapS.radius+'">')+
+    (full?lab('From <span id="mapT0v">'+dur(mapS.t0)+'</span>','<input type="range" id="mapT0" data-mapf="1" min="0" max="'+mx+'" value="'+mapS.t0+'">')+
+      lab('To <span id="mapT1v">'+dur(mapS.t1)+'</span>','<input type="range" id="mapT1" data-mapf="1" min="0" max="'+mx+'" value="'+mapS.t1+'">')+
+      lab('Playhead <span id="mapPhv">'+dur(mapS.ph)+'</span>','<input type="range" id="mapPh" data-mapf="1" min="0" max="'+mx+'" value="'+mapS.ph+'">'):'')+
+    '<div class="mchk"><label class="chk"><input type="checkbox" id="mapCp" data-mapf="1"'+(mapS.showCp?' checked':'')+'> Control points'+(full?' (owner at playhead)':'')+'</label>'+(full?'<label class="chk"><input type="checkbox" id="mapPl" data-mapf="1"'+(mapS.showPl?' checked':'')+'> Players at playhead</label>':'')+
     '<label class="chk"><input type="checkbox" id="botsChk"'+(hideBots?' checked':'')+'> Hide test bots</label></div>'+
-    '<div class="mchk">'+Object.keys(MAPK).map(function(k){return '<label class="chk"><input type="checkbox" data-maptype="'+k+'"'+(mapS.types[k]?' checked':'')+'> '+MAPK[k]+'</label>'}).join('')+'<span class="note" style="margin:0">Types filter the time table.</span></div></div>';
-  h+='<div class="mapgrid"><div class="mapwrap"><canvas id="mapCv" width="'+MAPW+'" height="'+MAPH+'" role="img" aria-label="Arena map with heat map overlay"></canvas></div><div id="mapDyn" class="mapside"></div></div>';
-  h+='<details class="panel"><summary>Map calibration</summary><p class="note">The log positions are game coordinates. This maps them onto the picture: pixel = origin + coordinate &times; scale, on a '+MAPW+' by '+MAPH+' image. The control point icons are drawn at the game coordinates of the four platforms, so adjust until they sit on the stone circles. Saved in this browser.</p><div class="mctl" style="padding:0;border:0">'+
+    (full?'<div class="mchk">'+Object.keys(MAPK).map(function(k){return '<label class="chk"><input type="checkbox" data-maptype="'+k+'"'+(mapS.types[k]?' checked':'')+'> '+MAPK[k]+'</label>'}).join('')+'<span class="note" style="margin:0">Types filter the time table.</span></div>':'')+'</div>';
+  h+='<div class="'+(full?'mapgrid':'mapsolo')+'"><div class="mapwrap"><canvas id="mapCv" width="'+MAPW+'" height="'+MAPH+'" role="img" aria-label="Arena map with heat map overlay"></canvas></div><div id="mapDyn" class="mapside"></div></div>';
+  if(!full)h+='<p class="note">Combined over '+all.length+' ledger match'+(all.length===1?'':'es')+'. Open a match from the Matches tab for its own heat map, event time table and playhead.</p>'+
+    '<details class="panel"><summary>Map calibration</summary><p class="note">The log positions are game coordinates. This maps them onto the picture: pixel = origin + coordinate &times; scale, on a '+MAPW+' by '+MAPH+' image. The control point icons are drawn at the game coordinates of the four platforms, so adjust until they sit on the stone circles. Saved in this browser.</p><div class="mctl" style="padding:0;border:0">'+
     [['x0','X origin'],['sx','X scale'],['y0','Y origin'],['sy','Y scale']].map(function(f){return lab(f[1],'<input type="number" step="0.05" data-mapcal="'+f[0]+'" value="'+MAPC[f[0]]+'">')}).join('')+'<button class="btn ghost" type="button" data-mapcalreset="1">Reset</button></div></details>';
   setTimeout(function(){mapLoad();mapUpdate()},0);
   return h;
+}
+function viewMap(){
+  return '<div><h1>Heat map</h1><p class="sub">Where players spent time, got kills and died, across every saved Match Ledger '+statusLine()+'</p></div>'+mapBody('');
 }
 document.addEventListener('input',function(e){var t=e.target;if(!t||!t.id)return;
   if(t.id==='mapT0'){mapS.t0=+t.value;if(mapS.t0>mapS.t1){mapS.t1=mapS.t0;document.getElementById('mapT1').value=mapS.t1}mapSched()}
