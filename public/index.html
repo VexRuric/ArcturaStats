@@ -271,6 +271,7 @@ function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){retur
 function num(v,d){if(v==null||isNaN(v))return '-';return Number(v).toLocaleString(undefined,{maximumFractionDigits:d||0,minimumFractionDigits:d||0})}
 function dur(s){s=Math.round(s);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
 function isBot(n){return /^SpawnedPlayer_\d+$/i.test(n)||/^(BP_|Roshan)/i.test(n)||/_C_\d+$/.test(n)}
+function clsPlain(c){return '<span class="cls"><i class="dot" style="background:'+(CCOL[c]||'var(--c-none)')+'"></i>'+esc(c||'Unknown')+'</span>'}
 function clsCell(c){var s='<span class="cls"><i class="dot" style="background:'+(CCOL[c]||'var(--c-none)')+'"></i>'+esc(c||'Unknown')+'</span>';return CCOL[c]?'<a class="plink" href="#class-'+c+'" style="border:0">'+s+'</a>':s}
 function allMatches(){var m={},k;for(k in local)m[k]=local[k];for(k in remote)m[k]=remote[k];return Object.keys(m).map(function(id){return {id:id,doc:m[id],saved:!!remote[id]}}).sort(function(a,b){return (b.doc.uploadedAt||0)-(a.doc.uploadedAt||0)})}
 
@@ -533,7 +534,7 @@ var PT_GROUPS=[['Control points',['ControlPoint']],['Player kills',['DeathPoint'
 function evTopCards(prow){
   var defs=[['Most points','score',function(r){return num(r.score)}],['Most kills','k',function(r){return r.k}],['Most damage','dmg',function(r){return num(r.dmg)}],['Most mob kills','mob',function(r){return r.mob}],['Most control point captures','cp',function(r){return r.cp}],['Most relic captures','rc',function(r){return r.rc}],['Best K/D','kdr',function(r){return num(r.kdr,2)}]];
   var cards=defs.map(function(d){var best=prow.slice().sort(function(a,b){return (b[d[1]]||0)-(a[d[1]]||0)})[0];if(!best||!(best[d[1]]>0))return '';
-    return '<a class="pcard" href="#player-'+slug(best.name)+'" style="--fc:'+(TEAMS[best.team]?TEAMS[best.team].col:'var(--accent)')+'"><span class="pn">'+d[0]+'</span><strong>'+esc(best.name)+'</strong>'+(best.main?clsCell(best.main):'')+'<small>'+d[2](best)+'</small></a>'}).join('');
+    return '<div class="pcard" style="--fc:'+(TEAMS[best.team]?TEAMS[best.team].col:'var(--accent)')+'"><span class="pn">'+d[0]+'</span><strong><a class="plink" href="#player-'+slug(best.name)+'" style="border:0">'+esc(best.name)+'</a></strong>'+(best.main?clsPlain(best.main):'')+'<small>'+d[2](best)+'</small></div>'}).join('');
   return cards?'<div class="podium">'+cards+'</div>':'';
 }
 function evScoreSources(ms){
@@ -693,7 +694,7 @@ function anaAwards(rows,isEvent){
 function accoladePanel(rows,isEvent,title){
   var aw=anaAwards(rows,isEvent);if(!aw.length)return '';
   return '<div class="panel"><h2>'+(title||'Accolades')+'</h2><div class="podium">'+aw.map(function(a){var r=a.r;
-    return '<a class="pcard" href="#player-'+slug(r.name)+'" title="'+esc(a.d)+'" style="--fc:'+(TEAMS[r.team]?TEAMS[r.team].col:'var(--accent)')+'"><span class="pn">'+esc(a.t)+'</span><strong>'+esc(r.name)+'</strong>'+(r.main?clsCell(r.main):'')+'<small>'+a.v+'</small></a>'}).join('')+'</div><p class="note">Hover an accolade for what it measures. Position based ones (Hill Guard, Team Player, Lone Wolf, Relic Chaser, Relic Escort, Fight Winner) need Match Ledger position data.</p></div>';
+    return '<div class="pcard" title="'+esc(a.d)+'" style="--fc:'+(TEAMS[r.team]?TEAMS[r.team].col:'var(--accent)')+'"><span class="pn">'+esc(a.t)+'</span><strong><a class="plink" href="#player-'+slug(r.name)+'" style="border:0">'+esc(r.name)+'</a></strong>'+(r.main?clsPlain(r.main):'')+'<small>'+a.v+'</small></div>'}).join('')+'</div><p class="note">Hover an accolade for what it measures. Position based ones (Hill Guard, Team Player, Lone Wolf, Relic Chaser, Relic Escort, Fight Winner) need Match Ledger position data.</p></div>';
 }
 function plainTable(heads,rowsHtml){return '<div class="scroll"><table><thead><tr>'+heads.map(function(c){return '<th scope="col"><button type="button" disabled>'+c+'</button></th>'}).join('')+'</tr></thead><tbody>'+rowsHtml+'</tbody></table></div>'}
 function posPanel(rows,A,title){
@@ -1205,16 +1206,16 @@ function mapStrips(d){
     return '<div class="mstrip" data-mapstrip="1"><span>'+esc(cp)+'</span><div class="mtr" data-dur="'+T+'">'+segs+'<b style="left:'+(100*Math.min(mapS.ph,T)/T)+'%"></b></div></div>'}).join('');
 }
 function mapDyn(){
-  if(!mapFull)return '';
   var sel=mapSel(),one=mapS.match!=='all'&&sel.length===1?sel[0].doc:null,rows=mapRows();
   var cnt={kill:0,mob:0,boss:0,relic:0,cp:0};rows.forEach(function(r){cnt[r.e.k]++});
-  var h='<div class="kpis"><div class="kpi"><b>'+sel.length+'</b><small>Match'+(sel.length===1?'':'es')+'</small></div><div class="kpi"><b>'+cnt.kill+'</b><small>Kills</small></div><div class="kpi"><b>'+cnt.mob+'</b><small>Mob kills</small></div><div class="kpi"><b>'+cnt.boss+'</b><small>Boss kills</small></div><div class="kpi"><b>'+cnt.cp+'</b><small>Control point changes</small></div><div class="kpi"><b>'+cnt.relic+'</b><small>Relic events</small></div></div>';
-  if(one)h+='<div class="panel"><h2>Control point ownership</h2><p class="note" style="margin-top:0">Click a bar to move the playhead. Purple is Elysiant, green is Ze\'kar, dark is neutral.</p>'+mapStrips(one)+'</div>';
+  var h=!mapFull?'':'<div class="kpis"><div class="kpi"><b>'+sel.length+'</b><small>Match'+(sel.length===1?'':'es')+'</small></div><div class="kpi"><b>'+cnt.kill+'</b><small>Kills</small></div><div class="kpi"><b>'+cnt.mob+'</b><small>Mob kills</small></div><div class="kpi"><b>'+cnt.boss+'</b><small>Boss kills</small></div><div class="kpi"><b>'+cnt.cp+'</b><small>Control point changes</small></div><div class="kpi"><b>'+cnt.relic+'</b><small>Relic events</small></div></div>';
+  if(one&&mapFull)h+='<div class="panel"><h2>Control point ownership</h2><p class="note" style="margin-top:0">Click a bar to move the playhead. Purple is Elysiant, green is Ze\'kar, dark is neutral.</p>'+mapStrips(one)+'</div>';
   var cap=400;
-  h+='<div class="panel"><h2>Event time table</h2>'+(rows.length?'<div class="scroll"><table><thead><tr><th scope="col"><button type="button" disabled>Time</button></th>'+(mapS.match==='all'?'<th scope="col"><button type="button" disabled>Match</button></th>':'')+'<th scope="col"><button type="button" disabled>Type</button></th><th scope="col"><button type="button" disabled>Event</button></th><th scope="col"><button type="button" disabled>Team</button></th><th scope="col"><button type="button" disabled>Where</button></th></tr></thead><tbody>'+
-    rows.slice(0,cap).map(function(r){var e=r.e;return '<tr class="click" tabindex="0" data-mapev="'+esc(r.m.id)+':'+r.i+'"><td>'+dur(e.t)+'</td>'+(mapS.match==='all'?'<td style="text-align:left">'+esc(r.m.doc.name)+'</td>':'')+'<td>'+MAPK[e.k]+'</td><td style="text-align:left;white-space:normal">'+mapText(e)+'</td><td>'+teamTag(e.team)+'</td><td>'+mapZone(e.x,e.y)+'</td></tr>'}).join('')+'</tbody></table></div>'+(rows.length>cap?'<p class="note">Showing the first '+cap+' of '+rows.length+' events. Narrow the time range or filters.</p>':'<p class="note">Click a row to mark it on the map.</p>'):'<p class="note">No events match these filters.</p>')+'</div>';
+  h+='<details class="panel" data-maplog="1"'+(mapS.logOpen?' open':'')+'><summary style="cursor:pointer"><strong>Event log</strong> <span class="note" style="margin:0">'+rows.length+' event'+(rows.length===1?'':'s')+'</span></summary>'+(rows.length?'<div class="scroll"><table><thead><tr><th scope="col"><button type="button" disabled>Time</button></th>'+(mapS.match==='all'?'<th scope="col"><button type="button" disabled>Match</button></th>':'')+'<th scope="col"><button type="button" disabled>Type</button></th><th scope="col"><button type="button" disabled>Event</button></th><th scope="col"><button type="button" disabled>Team</button></th><th scope="col"><button type="button" disabled>Where</button></th></tr></thead><tbody>'+
+    rows.slice(0,cap).map(function(r){var e=r.e;return '<tr class="click" tabindex="0" data-mapev="'+esc(r.m.id)+':'+r.i+'"><td>'+dur(e.t)+'</td>'+(mapS.match==='all'?'<td style="text-align:left">'+esc(r.m.doc.name)+'</td>':'')+'<td>'+MAPK[e.k]+'</td><td style="text-align:left;white-space:normal">'+mapText(e)+'</td><td>'+teamTag(e.team)+'</td><td>'+mapZone(e.x,e.y)+'</td></tr>'}).join('')+'</tbody></table></div>'+(rows.length>cap?'<p class="note">Showing the first '+cap+' of '+rows.length+' events. Narrow the time range or filters.</p>':'<p class="note">Click a row to mark it on the map.</p>'):'<p class="note">No events match these filters.</p>')+'</details>';
   return h;
 }
+document.addEventListener('toggle',function(e){var t=e.target;if(t&&t.dataset&&t.dataset.maplog)mapS.logOpen=t.open},true);
 function mapUpdate(){
   var el=document.getElementById('mapDyn');if(!el)return;
   el.innerHTML=mapDyn();mapDraw();
