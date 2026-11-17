@@ -151,7 +151,7 @@ function parseMatchLedger(text,fileName){
   players.forEach(function(p){if(p.carrierKills&&p.team>=0)tm(p.team).carrierKills+=p.carrierKills});
   var w=L.winningTeam,result=(w===0||w===1)?{winner:w,src:'log'}:null;
   var types={};['kills','mobKills','bossKills','relicEvents','controlPointEvents','teamScoreEvents'].forEach(function(k){if((L[k]||[]).length)types[k]=L[k].length});
-  return{v:2,ledger:true,map:L.map||L.mapName||'',endReason:L.endReason||'',teams:TM,result:result,types:types,cols:[],name:fileName||'match ledger',uploadedAt:Date.now(),duration:r1(dur),rows:0,bucket:BUCKET,players:players,series:series,events:ev.slice(0,200)};
+  var bal=L.balance||{};return{v:2,ledger:true,map:L.map||L.mapName||'',endReason:L.endReason||'',teamPoints:L.teamPoints,scoreCheck:L.scoreCheck||null,meta:{schema:L.schemaVersion==null?L.version:L.schemaVersion,project:bal.projectVersion||'',engine:bal.engineVersion||'',build:bal.buildConfig||'',skillsHash:bal.skillsHash||'',skillsRows:bal.skillsRows==null?'':bal.skillsRows,endedAtUtc:L.endedAtUtc||'',startedLocal:L.startedLocal||''},teams:TM,result:result,types:types,cols:[],name:fileName||'match ledger',uploadedAt:Date.now(),duration:r1(dur),rows:0,bucket:BUCKET,players:players,series:series,events:ev.slice(0,200)};
 }
 function parseAnyLog(text,fileName){return /^\s*﻿?\s*\{/.test(text)?parseMatchLedger(text,fileName):parseCombatLog(text,fileName)}
 function parseCombatLog(text,fileName){
@@ -525,7 +525,7 @@ var bugFilter='active',bugMsg='',lastBugs=[];
 function bugWho(a){var u=[];a.forEach(function(x){if(u.indexOf(x)<0)u.push(x)});return u.slice(0,6).join(', ')+(u.length>6?' and '+(u.length-6)+' more':'')}
 function copyBugs(){
   var L=lastBugs.filter(function(b){return b.s==='devs'});
-  var t='ArcturaStats combat log bugs ('+L.length+')\n\n'+L.map(function(b){return '- ['+b.sev+'] '+b.check+' | '+b.mn+(b.who.length?' | '+bugWho(b.who):'')+'\n  '+b.detail}).join('\n');
+  var t='ArcturaStats combat log bugs ('+L.length+')\n\n'+L.map(function(b){return '- ['+b.sev+'] '+b.check+' | '+b.mn+(b.who.length?' | '+bugWho(b.who):'')+'\n  '+b.detail+(b.ctx?'\n  Match: '+b.ctx:'')}).join('\n');
   function done(m){bugMsg=m;render()}
   try{navigator.clipboard.writeText(t).then(function(){done('Copied '+L.length+' bug'+(L.length===1?'':'s')+' for the devs.')},function(){done('Copy failed. Your browser blocked clipboard access.')})}catch(e){done('Copy failed. Your browser blocked clipboard access.')}
 }
@@ -539,13 +539,19 @@ function viewAdmin(){
   var EXPECT_COLS=['Time','Type','Source','Target','Message','Effective','TeamIndex','Killer','Victim','Ability','Critical','MobCampTier','PlayersPresent','ScoreAwarded'],
     CORE_TYPES=['DamageDealt','PlayerKill','Death'],OTHER_TYPES=['HealingDealt','ScoreAwarded','MobKill','BossKill','RelicTaken','RelicCaptured','RelicRunOutcome','ControlPointCaptured'],KNOWN_TYPES=CORE_TYPES.concat(OTHER_TYPES);
   var bugs=(adminData&&adminData.bugs)||{};
+  function matchCtx(id){var m=ms.filter(function(x){return x.id===id})[0];if(!m)return '';var d=m.doc,o=[],mt=d.meta||{},tp=d.teamPoints||{};
+    if(d.ledger)o.push('ledger');if(d.map)o.push('map '+d.map);if(d.endReason)o.push('ended: '+d.endReason);o.push(dur(d.duration||0));
+    if(tp[0]!=null||tp[1]!=null)o.push('points '+(tp[0]||0)+' to '+(tp[1]||0)+' (Elysiant to Ze\'kar)');
+    var hu=(d.players||[]).filter(function(p){return !isBot(p.name)}).length;o.push(hu+' human, '+((d.players||[]).length-hu)+' bot players');
+    if(mt.project||mt.engine)o.push('game '+(mt.project||'?')+(mt.build?' '+mt.build:'')+(mt.engine?', engine '+mt.engine:''));if(mt.skillsHash)o.push('skills '+mt.skillsHash+(mt.skillsRows!==''?' ('+mt.skillsRows+' rows)':''));
+    if(mt.startedLocal)o.push('started '+mt.startedLocal);o.push('id '+id);return o.join(' | ')}
   function addIssue(id,sev,check,items,detail){
-    var g={},o=[];items.forEach(function(x){var k=x.m||'all';if(!g[k]){g[k]={key:id+':'+k,id:id,sev:sev,check:check,detail:detail,m:x.m||null,mn:x.mn||'All matches',who:[]};o.push(g[k])}if(x.t)g[k].who.push(x.t)});
+    var g={},o=[];items.forEach(function(x){var k=x.m||'all';if(!g[k]){g[k]={key:id+':'+k,id:id,sev:sev,check:check,detail:detail,m:x.m||null,mn:x.mn||'All matches',ctx:x.m?matchCtx(x.m):'',who:[]};o.push(g[k])}if(x.t)g[k].who.push(x.t)});
     o.forEach(function(b){bl.push(b)})}
-  var noRes=[],oldFmt=[],noClass=[],noTeam=[],priest0=[],killNoDmg=[],short=[],bigDoc=[],hits=[],practice=[],noCols=[],noCore=[],noOther=[],oddType=[],blankType=[];
+  var scoreBad=[],noRes=[],oldFmt=[],noClass=[],noTeam=[],priest0=[],killNoDmg=[],short=[],bigDoc=[],hits=[],practice=[],noCols=[],noCore=[],noOther=[],oddType=[],blankType=[];
   ms.forEach(function(m){var d=m.doc;T.mins+=(d.duration||0)/60;T.rows+=d.rows||0;
     var sz=JSON.stringify(d).length;if(sz>sizeMax)sizeMax=sz;if(sz>DOC_WARN)bigDoc.push({m:m.id,mn:d.name});
-    if(!hasResult(d))noRes.push({m:m.id,mn:d.name});if(!d.v||d.v<2)oldFmt.push({m:m.id,mn:d.name});if((d.duration||0)<300)short.push({m:m.id,mn:d.name});if(isPractice(d))practice.push({m:m.id,mn:d.name});
+    if(!hasResult(d))noRes.push({m:m.id,mn:d.name,t:d.ledger?(d.endReason||'no end reason'):''});if(d.scoreCheck&&d.scoreCheck.ok===false)scoreBad.push({m:m.id,mn:d.name,t:'reported '+JSON.stringify(d.scoreCheck.reported)+' vs sum of types '+JSON.stringify(d.scoreCheck.sumOfTypes)});if(!d.v||d.v<2)oldFmt.push({m:m.id,mn:d.name});if((d.duration||0)<300)short.push({m:m.id,mn:d.name});if(isPractice(d))practice.push({m:m.id,mn:d.name});
     if(d.cols&&!d.summary)EXPECT_COLS.forEach(function(c){if(d.cols.indexOf(c)<0)noCols.push({m:m.id,mn:d.name,t:c})});
     if(d.types&&!d.summary&&(d.rows||0)>0){
       CORE_TYPES.forEach(function(t){if(!d.types[t]&&!(t==='DamageDealt'&&d.noDmg))noCore.push({m:m.id,mn:d.name,t:t})});
@@ -567,7 +573,8 @@ function viewAdmin(){
   var avg=crow.length?crow.reduce(function(s,c){return s+c.dpm},0)/crow.length:0;
   crow.forEach(function(c){c.vs=avg?100*(c.dpm/avg-1):0});
   var skew=crow.length>=2?crow.filter(function(c){return Math.abs(c.vs)>40}).map(function(c){return {m:null,mn:'All matches',t:c.cls+' '+(c.vs>0?'+':'')+num(c.vs)+'% damage/min vs class average'}}):[];
-  addIssue('noRes','High','Match winner is not recorded',noRes,'The combat log has no match result row, so team wins cannot be counted. Set the winner by hand on each match page, or add a match end row with the winning team to the log.');
+  addIssue('noRes','High','Match winner is not recorded',noRes,'The log has no winner (Match Ledgers store winningTeam as null, with the end reason shown under Affected; old CSV logs have no match end row). Team wins cannot be counted until one is set. Set the winner by hand on the match page, or have the game declare one at the time limit.');
+  addIssue('scoreBad','High','Ledger score check failed',scoreBad,'The game reported team points that do not equal the sum of its own score events, so points are lost or double counted in the game.');
   addIssue('oldFmt','High','Stored with the older parser',oldFmt,'These matches have no team or result fields. Re-upload the log to get them.');
   addIssue('noCols','High','Combat log is missing columns the parser reads',noCols,'The header has no such column, so every stat that depends on it is blank or wrong. The game needs to write it.');
   addIssue('noCore','Medium','Core event type missing from the log',noCore,'The log has no rows of this type at all. Damage, kills and deaths drive almost every stat.');
@@ -601,7 +608,7 @@ function viewAdmin(){
     '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'+[['active','Active ('+(cnt.open+cnt.devs)+')'],['open','Open ('+cnt.open+')'],['devs','With devs ('+cnt.devs+')'],['fixed','Fixed ('+cnt.fixed+')'],['ignored','Ignored ('+cnt.ignored+')'],['all','All ('+bl.length+')']].map(function(f){return '<button class="btn'+(bugFilter===f[0]?'':' ghost')+'" type="button" data-bugf="'+f[0]+'" aria-pressed="'+(bugFilter===f[0])+'">'+f[1]+'</button>'}).join('')+(cnt.devs?'<button class="btn ghost" type="button" data-bugcopy="1">Copy dev report</button>':'')+'</div>'+
     (bugMsg?'<p class="note" role="status">'+esc(bugMsg)+'</p>':'')+
     (shown.length?'<div class="scroll"><table><thead><tr>'+bth('Severity')+bth('Bug')+bth('Log')+bth('Affected')+bth('Status')+'<th scope="col"></th></tr></thead><tbody>'+
-      shown.map(function(b){return '<tr><td><span class="tag '+(b.sev==='High'?'err':b.sev==='Medium'?'warn':'')+'">'+b.sev+'</span></td><td style="white-space:normal;min-width:240px;text-align:left"><strong>'+esc(b.check)+'</strong><br><span class="note" style="margin:0">'+esc(b.detail)+'</span></td><td style="white-space:normal;text-align:left">'+(b.m?'<a class="plink" href="#match-'+esc(b.m)+'">'+esc(b.mn)+'</a>':esc(b.mn))+'</td><td style="white-space:normal;min-width:160px;text-align:left">'+esc(bugWho(b.who))+'</td><td><span class="tag '+(b.s==='fixed'?'ok':b.s==='devs'?'warn':'')+'">'+STL[b.s]+'</span></td><td style="text-align:right;white-space:nowrap">'+bugActs(b)+'</td></tr>'}).join('')+'</tbody></table></div>':'<p class="note">'+(bl.length?'Nothing in this view.':'No bugs found.')+'</p>')+'</div>';
+      shown.map(function(b){return '<tr><td><span class="tag '+(b.sev==='High'?'err':b.sev==='Medium'?'warn':'')+'">'+b.sev+'</span></td><td style="white-space:normal;min-width:240px;text-align:left"><strong>'+esc(b.check)+'</strong><br><span class="note" style="margin:0">'+esc(b.detail)+'</span>'+(b.ctx?'<br><span class="note" style="margin:4px 0 0;font-size:12px">'+esc(b.ctx)+'</span>':'')+'</td><td style="white-space:normal;text-align:left">'+(b.m?'<a class="plink" href="#match-'+esc(b.m)+'">'+esc(b.mn)+'</a>':esc(b.mn))+'</td><td style="white-space:normal;min-width:160px;text-align:left">'+esc(bugWho(b.who))+'</td><td><span class="tag '+(b.s==='fixed'?'ok':b.s==='devs'?'warn':'')+'">'+STL[b.s]+'</span></td><td style="text-align:right;white-space:nowrap">'+bugActs(b)+'</td></tr>'}).join('')+'</tbody></table></div>':'<p class="note">'+(bl.length?'Nothing in this view.':'No bugs found.')+'</p>')+'</div>';
   var trows=Object.keys(teams).map(function(k){var a=teams[k];a.sw=(a.w+a.l+a.dr)?100*a.w/(a.w+a.l+a.dr):null;return a});
   h+='<div class="panel"><h2>Team results, all matches</h2>'+(trows.length?table('adteam',[{k:'team',l:'Team',f:function(r){return teamTag(r.team)}},{k:'matches',l:'Matches'},{k:'w',l:'Wins'},{k:'l',l:'Losses'},{k:'dr',l:'Draws'},{k:'sw',l:'Win %',f:function(r){return r.sw==null?'-':num(r.sw)+'%'}},{k:'kills',l:'Kills'},{k:'points',l:'Points'},{k:'relics',l:'Relics'}],trows):'<p class="note">No team data yet.</p>')+'<p class="note">Wins stay at 0 until a winner is recorded. Only a team that appears in the log gets counted.</p></div>'+
     '<div class="panel"><h2>Class balance</h2>'+(crow.length?table('adcls',[{k:'cls',l:'Class',f:function(r){return clsCell(r.cls)}},{k:'picks',l:'Picks'},{k:'dpm',l:'Dmg/min',f:function(r){return num(r.dpm)}},{k:'vs',l:'vs avg',f:function(r){return '<span class="'+(Math.abs(r.vs)>40?'err':'')+'">'+(r.vs>0?'+':'')+num(r.vs)+'%</span>'}},{k:'tpm',l:'Taken/min',f:function(r){return num(r.tpm)}},{k:'hpm',l:'Heal/min',f:function(r){return num(r.hpm)}},{k:'kdr',l:'K/D',f:function(r){return num(r.kdr,2)}}],crow):'<p class="note">No class data yet.</p>')+'</div>';
