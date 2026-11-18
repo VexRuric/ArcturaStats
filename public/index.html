@@ -174,18 +174,20 @@ function parseMatchLedger(text,fileName){
   log.sort(function(a,b){return a.t-b.t});cpTl.sort(function(a,b){return a.t-b.t});
   var n=Math.floor(dur/BUCKET)+1,series={};
   var players=L.players.map(function(p){
-    var s=p.stats||{},hits=0;(p.skills||[]).forEach(function(k){hits+=((k.pvp||{}).hits||0)+((k.pve||{}).hits||0)});
+    var s=p.stats||{},hits=0,mp=0,mm=0;(p.skills||[]).forEach(function(k){hits+=((k.pvp||{}).hits||0)+((k.pve||{}).hits||0);mp+=(k.pvp||{}).mitigated||0;mm+=(k.pve||{}).mitigated||0});
     var boss=+s.bossDamage||0,pveT=+s.pveDamage||0,pvp=+s.pvpDamage||0;
     var t=tiers[p.id]||{Easy:0,Medium:0,Hard:0};
     var tl=p.timeline,ci=tl&&tl.cols?{a:tl.cols.indexOf('pvpDmg'),b:tl.cols.indexOf('pveDmg')}:null;
     if(ci&&tl.rows){var a=[],per=Math.max(1,Math.round(BUCKET/(tl.binSec||10)));for(var i=0;i<n;i++){var sum=0;for(var j=i*per;j<(i+1)*per&&j<tl.rows.length;j++)sum+=(tl.rows[j][ci.a]||0)+(tl.rows[j][ci.b]||0);a.push(r1(sum))}if(a.some(Boolean))series[p.name]=a}
     return{name:p.name,uid:p.uid||'',cls:p.class||'',team:p.team==null?-1:p.team,
-      dmg:r1(pvp+pveT),dmgP:r1(pvp),dmgM:r1(Math.max(0,pveT-boss)),dmgB:r1(boss),taken:r1(s.damageTaken),absorbed:r1((s.shieldAbsorbed||0)+(s.damageBlocked||0)+(s.blockedDamage||0)+(s.blocked||0)),mit:r1(s.damageMitigated||s.mitigated||s.mitigatedDamage||s.damageReduced||0),healRecv:r1(s.healReceived),heal:r1(s.pvpHeal),
+      dmg:r1(pvp+pveT),dmgP:r1(pvp),dmgM:r1(Math.max(0,pveT-boss)),dmgB:r1(boss),taken:r1(s.damageTaken),absorbed:r1((s.shieldAbsorbed||0)+(s.damageBlocked||0)+(s.blockedDamage||0)+(s.blocked||0)),mitP:r1(mp),mitM:r1(mm),mit:r1(s.damageMitigated||s.mitigated||s.mitigatedDamage||s.damageReduced||0),healRecv:r1(s.healReceived),heal:r1(s.pvpHeal),
       kills:s.kills||0,deaths:s.deaths||0,assists:s.assists||0,mobKills:s.mobKills||0,bossKills:bossK[p.id]||0,score:s.points||0,
       hits:hits,crits:s.crits||0,maxHit:0,
       relicPickups:s.relicPickups||0,relicReturns:0,relicCaps:s.relicCaptures||0,carrierKills:s.carrierKills||0,
       cpCaps:s.cpCaptures||0,cpTime:r1(s.cpSec),tiers:t,pos:posC(p.positions),
       pb:(function(){if(!(tl&&tl.rows&&ci&&ci.a>=0))return null;var r=tl.rows.map(function(x){return Math.round(x[ci.a]||0)});return r.some(Boolean)?{s:tl.binSec||10,r:r}:null})(),
+      stats:s,
+      skills:(p.skills||[]).filter(function(k){return k.casts||((k.pvp||{}).hits)||((k.pve||{}).hits)}).map(function(k){function q(o){o=o||{};return {hits:o.hits||0,crits:o.crits||0,kills:o.kills||0,base:r1(o.base),pre:r1(o.preMitigation),mit:r1(o.mitigated),crit:r1(o.critBonus),res:r1(o.resolved),abs:r1(o.absorbed),hl:r1(o.healthLost),over:r1(o.overkill)}}return {skill:String(k.skill||'').replace(/^Aeon\.Ability\./,''),casts:k.casts||0,pvp:q(k.pvp),pve:q(k.pve)}}),
       from:(p.damageTakenFrom||[]).filter(function(x){return x.player!=null&&byId[x.player]&&x.healthLost>0}).map(function(x){return [byId[x.player].name,Math.round(x.healthLost)]})}});
   players.forEach(function(p){if(p.carrierKills&&p.team>=0)tm(p.team).carrierKills+=p.carrierKills});
   var w=L.winningTeam,result=(w===0||w===1)?{winner:w,src:'log'}:null;
@@ -576,15 +578,18 @@ function evClassTable(crow){
   return '<div class="panel"><h2>Class breakdown</h2>'+table('evcls',[{k:'cls',l:'Class',f:function(r){return clsCell(r.cls)}},{k:'picks',l:'Picks'},{k:'dpm',l:'Dmg/min',f:function(r){return r.dpm<0?'-':num(r.dpm)}},{k:'avg',l:'Avg points',f:function(r){return num(r.avg)}},{k:'k',l:'Kills'},{k:'d',l:'Deaths'},{k:'kdr',l:'K/D',f:function(r){return num(r.kdr,2)}}],crow)+'</div>';
 }
 /* ---- match analysis: fights, comebacks, positioning, relic chase, death map and accolades ---- */
-var ANA={near:22,together:40,chase:25,fgap:12,frad:70};
+var ANA={near:22,together:40,chase:25,fgap:12,frad:70,cgap:20,pull:12};
+/* mobs per camp spawn. Camps respawn at each minute mark, so a camp pulled just before the mark holds two batches. Adjust these to the game's real batch sizes. */
+var MOB_BATCH={Easy:3,Medium:2,Hard:3};
 var anaCache=new WeakMap();
 function anaHas(d){return !!(d&&d.ledger&&(d.players||[]).some(function(p){return p.pos&&p.pos.length}))}
+function campLabel(c){var pre={Hard:'H',Medium:'MD',Easy:'MC'}[c[2]],i=0,n=0;MAPCAMPS.forEach(function(x){if(x[2]===c[2]){n++;if(x[0]===c[0]&&x[1]===c[1])i=n}});return pre+i}
 function analyze(d){
   var key=hideBots?1:0,c=anaCache.get(d);if(!c){c={};anaCache.set(d,c)}
   if(c[key])return c[key];
-  var r={players:{},fights:[],picks:0,carries:[],deaths:[],cb:null},out=c[key]=r;
+  var r={players:{},fights:[],picks:0,carries:[],deaths:[],stacks:[],cb:null},out=c[key]=r;
   var pl=(d.players||[]).filter(function(p){return !(hideBots&&isBot(p.name))});
-  pl.forEach(function(p){r.players[p.name]={name:p.name,team:p.team,ea:0,alive:0,obj:0,alone:0,group:0,chase:0,escort:0,fw:0,fl:0,nf:0}});
+  pl.forEach(function(p){r.players[p.name]={name:p.name,team:p.team,stk:0,ea:0,alive:0,obj:0,alone:0,group:0,chase:0,escort:0,fw:0,fl:0,nf:0}});
   var byT={},times={};
   pl.forEach(function(p){(p.pos||[]).forEach(function(q){var t=q[0];(byT[t]||(byT[t]=[])).push({n:p.name,t:p.team,x:q[1],y:q[2],a:q[3]});times[t]=1})});
   var ts=Object.keys(times).map(Number).sort(function(a,b){return a-b}),step=ts.length>1?Math.max(1,ts[1]-ts[0]):5;
@@ -628,6 +633,19 @@ function analyze(d){
       else if(v.from){hit=v.from.some(function(f){return f[0]===p.name})}
       var ok=hit!==null?(hit&&near!==false):near===true;
       if(ok){e.as.push(p.name);r.players[p.name].ea++;r.assistMode=hit!==null?'damage':(r.assistMode==='damage'?'damage':'near')}})});
+  /* camp stacking: more kills at one camp, in one go, than a single spawn holds */
+  (function(){var byCamp={};
+    (d.log||[]).forEach(function(e){if(e.k!=='mob'||!e.tier||!MOB_BATCH[e.tier]||(hideBots&&isBot(e.a)))return;var c=mobSpot(e);if(!c)return;var key=c[0]+','+c[1];(byCamp[key]||(byCamp[key]=[])).push({e:e,c:c})});
+    Object.keys(byCamp).forEach(function(key){var list=byCamp[key],B=MOB_BATCH[list[0].c[2]],cl=null,all=[];
+      list.forEach(function(o){if(cl&&o.e.t-cl.t1<=ANA.cgap){cl.ks.push(o.e);cl.t1=o.e.t}else{cl={ks:[o.e],t0:o.e.t,t1:o.e.t,c:o.c};all.push(cl)}});
+      all.forEach(function(g){var n=g.ks.length;if(n<=B)return;
+        /* match timer check: the camp respawns at each minute mark, so a stack needs a mark where the first batch was still alive (fewer than one batch dead) while kills were under way */
+        var mark=null;for(var m=Math.max(60,Math.ceil((g.t0-ANA.pull)/60)*60);m<=g.t1;m+=60){var kb=0;g.ks.forEach(function(e){if(e.t<m)kb++});if(kb<B){mark=m;break}}
+        if(mark===null)return;
+        var who={};g.ks.forEach(function(e){who[e.a]=(who[e.a]||0)+1});var top=Object.keys(who).sort(function(a,b){return who[b]-who[a]})[0],tm=g.ks[0].team,batches=Math.max(2,Math.round(n/B));
+        if(r.players[top])r.players[top].stk+=batches-1;
+        r.stacks.push({t0:g.t0,t1:g.t1,tier:g.c[2],camp:campLabel(g.c),n:n,batches:batches,part:n<2*B,mark:mark,top:top,team:tm,who:who})})});
+    r.stacks.sort(function(a,b){return a.t0-b.t0})})();
   /* deaths by players */
   (d.log||[]).forEach(function(e){if(e.k==='death'&&!(hideBots&&(isBot(e.b)||isBot(e.a))))r.deaths.push({t:e.t,x:e.x,y:e.y,team:e.team,b:e.b,a:e.a})});
   /* comeback from the score timeline */
@@ -643,12 +661,12 @@ function analyze(d){
   return r;
 }
 /* one row per player with everything the accolades and position tables use */
-var ANA_SUM=['ea','score','k','d','dmg','taken','mit','heal','mob','boss','cp','rc','rp','ck','assists','alive','obj','alone','group','chase','escort','fw','fl','nf'];
+var ANA_SUM=['stk','ea','score','k','d','dmg','taken','mit','heal','mob','boss','cp','rc','rp','ck','assists','alive','obj','alone','group','chase','escort','fw','fl','nf'];
 function anaFinish(a){a.objP=a.alive?100*a.obj/a.alive:0;a.aloneP=a.alive?100*a.alone/a.alive:0;a.groupP=a.alive?100*a.group/a.alive:0;a.kd=a.d?a.k/a.d:a.k;return a}
 function anaMatchRows(d){
   var A=analyze(d),rows=(d.players||[]).filter(function(p){return !(hideBots&&isBot(p.name))}).map(function(p){var s=A.players[p.name]||{};
     return anaFinish({name:p.name,team:p.team,cls:p.cls,main:p.cls,games:1,rate:perf(p,d).r,score:p.score||0,k:p.kills||0,d:p.deaths||0,dmg:p.dmg||0,taken:p.taken||0,mit:(p.absorbed||0)+(p.mit||0),heal:p.heal||0,mob:p.mobKills||0,boss:p.bossKills||0,cp:p.cpCaps||0,rc:p.relicCaps||0,rp:p.relicPickups||0,ck:p.carrierKills||0,assists:p.assists||0,
-      ea:s.ea||0,alive:s.alive||0,obj:s.obj||0,alone:s.alone||0,group:s.group||0,chase:s.chase||0,escort:s.escort||0,fw:s.fw||0,fl:s.fl||0,nf:s.nf||0,mvp:0})});
+      stk:s.stk||0,ea:s.ea||0,alive:s.alive||0,obj:s.obj||0,alone:s.alone||0,group:s.group||0,chase:s.chase||0,escort:s.escort||0,fw:s.fw||0,fl:s.fl||0,nf:s.nf||0,mvp:0})});
   var best=null;rows.forEach(function(r){if(!best||r.rate>best.rate)best=r});if(best&&rows.length>1)best.mvp=1;
   return rows;
 }
@@ -668,6 +686,7 @@ var ACC=[
   ['Playmaker','Most assists','assists','assists',0],
   ['Best K/D','Highest kills per death, at least 3 kills','kd','K/D',2,'k3'],
   ['Mob Hunter','Most mob kills','mob','mob kills',0],
+  ['Camp Stacker','Most extra camp batches from stacked pulls (estimated)','stk','extra batches',0],
   ['Boss Slayer','Most boss kills','boss','boss kills',0],
   ['Point Captor','Most control point captures','cp','captures',0],
   ['Hill Guard','Most time at a control point, share of time alive','objP','% of time',0,'alive'],
@@ -706,6 +725,16 @@ function posPanel(rows,A,title){
       {k:'chase',l:'Chasing relic carriers',f:function(r){return r.chase?dur(r.chase):'-'}},{k:'escort',l:'Escorting own carrier',f:function(r){return r.escort?dur(r.escort):'-'}}],rows)+'</div>';
   return h;
 }
+function stackPanel(items,multi){
+  var rows=[];items.forEach(function(x){(x.stacks||[]).forEach(function(g){rows.push({m:x.m,id:x.id,g:g})})});
+  if(!rows.length)return '<div class="panel"><h2>Camp stacking</h2><p class="note">No stacked camps found. A stack is more kills at one camp, within '+ANA.cgap+' seconds of each other, than one spawn holds ('+Object.keys(MOB_BATCH).map(function(k){return k+' '+MOB_BATCH[k]}).join(', ')+'), around a minute mark.</p></div>';
+  var by={};rows.forEach(function(o){var g=o.g;if(g.top)by[g.top]=(by[g.top]||0)+g.batches-1});
+  var tops=Object.keys(by).sort(function(a,b){return by[b]-by[a]}).slice(0,5);
+  var tb=rows.slice().sort(function(a,b){return b.g.batches-a.g.batches||b.g.n-a.g.n});if(multi)tb=tb.slice(0,12);else tb.sort(function(a,b){return a.g.t0-b.g.t0});
+  return '<div class="panel"><h2>Camp stacking</h2><p style="margin:6px 0 10px"><strong>'+rows.length+'</strong> stacked camp'+(rows.length===1?'':'s')+', '+rows.reduce(function(a,o){return a+o.g.batches-1},0)+' extra batch'+(rows.reduce(function(a,o){return a+o.g.batches-1},0)===1?'':'es')+' &nbsp; <span class="note" style="margin:0">Most: '+tops.map(function(n){return '<a class="plink" href="#player-'+slug(n)+'">'+esc(n)+'</a> '+by[n]}).join(', ')+'</span></p>'+
+    plainTable((multi?['Match']:[]).concat(['When','Camp','Kills','Batches','Respawn mark','Pulled by','Team']),tb.map(function(o){var g=o.g;return '<tr>'+(multi?'<td><a class="plink" href="#match-'+esc(o.id)+'">'+esc(o.m)+'</a></td>':'')+'<td>'+dur(g.t0)+(g.t1>g.t0?' to '+dur(g.t1):'')+'</td><td>'+esc(g.camp)+' <span class="note" style="margin:0">'+g.tier+'</span></td><td>'+g.n+'</td><td><strong>'+g.batches+'</strong>'+(g.part?' <span class="note" style="margin:0">partial</span>':'')+'</td><td>'+dur(g.mark)+' <span class="note" style="margin:0">(first kill '+(g.t0>=g.mark?'+':'-')+Math.abs(Math.round(g.t0-g.mark))+'s)</span></td><td><a class="plink" href="#player-'+slug(g.top)+'">'+esc(g.top)+'</a></td><td>'+teamTag(g.team)+'</td></tr>'}).join(''))+
+    '<p class="note">Estimated, checked against the match timer. Camps respawn at each minute mark, so a camp pulled just before the mark holds two batches. The log has no camp or mob id, so a stack is more kills at one camp, within '+ANA.cgap+' seconds, than one spawn holds ('+Object.keys(MOB_BATCH).map(function(k){return k+' '+MOB_BATCH[k]}).join(', ')+'), and it must straddle a minute mark where fewer than one batch was dead. That rules out a camp that was cleared, respawned and killed again. Partial means the camp was not fully cleared. Camp names match the mob camp map (H hard, MD medium, MC easy). The player with the most kills in it gets the credit.</p></div>';
+}
 function carriesPanel(list){
   if(!list.length)return '';
   var rows=list.map(function(c){return '<tr><td>'+esc(c.m)+'</td><td><a class="plink" href="#player-'+slug(c.n)+'">'+esc(c.n)+'</a></td><td>'+teamTag(c.team)+'</td><td>'+dur(c.t0)+'</td><td>'+dur(c.dur)+'</td><td>'+({captured:'Captured',dropped:'Dropped',killed:'Carrier killed',end:'Match ended'}[c.res]||esc(c.res))+'</td><td>'+c.chasers+'</td><td>'+(c.chaseSec?dur(c.chaseSec):'-')+'</td></tr>'}).join('');
@@ -742,12 +771,12 @@ function deathMap(ms){
   return '<div class="panel"><h2>Death map</h2><div class="cols"><div>'+s+'</div><div><p class="note" style="margin-top:0"><span style="color:'+TEAMS[0].col+'">&#9632;</span> '+esc(teamName(0))+' deaths &nbsp; <span style="color:'+TEAMS[1].col+'">&#9632;</span> '+esc(teamName(1))+' deaths. '+pts.length+' player death'+(pts.length===1?'':'s')+', each marker sits where the player fell. Red glow builds up where many died.</p>'+
     plainTable(['Area','Total',esc(teamName(0)),esc(teamName(1))],zr.map(function(z){return '<tr><td>'+esc(z.z)+'</td><td>'+z.n+'</td><td>'+z[0]+'</td><td>'+z[1]+'</td></tr>'}).join(''))+'<p class="note">Area is the nearest control point or the center. Deaths to mobs are not in the log with a position.</p></div></div></div>';
 }
-function anaItems(ms){return ms.map(function(m){var d=m.doc,a=anaHas(d)?analyze(d):null;return {id:m.id,m:d.name,f:a?a.fights:[],picks:a?a.picks:0,cb:a?a.cb:null,carries:a?a.carries:[],has:!!a}})}
+function anaItems(ms){return ms.map(function(m){var d=m.doc,a=anaHas(d)?analyze(d):null;return {id:m.id,m:d.name,f:a?a.fights:[],picks:a?a.picks:0,cb:a?a.cb:null,carries:a?a.carries:[],stacks:a?a.stacks:[],has:!!a}})}
 function anaMatchSections(id,d){
   var ms=[{id:id,doc:d}],it=anaItems(ms)[0],h='';
   if(!it.has)return h;
   h+=comebackPanel([it])+(d.scoreTl&&d.scoreTl.length>1?'<div class="panel"><h2>Score over time</h2><div class="evmini">'+evMiniChart(d)+'</div><p class="note"><span style="color:'+TEAMS[0].col+'">&#9632;</span> '+esc(teamName(0))+' <span style="color:'+TEAMS[1].col+'">&#9632;</span> '+esc(teamName(1))+'</p></div>':'');
-  h+=fightsPanel([it],false);
+  h+=fightsPanel([it],false)+stackPanel([it],false);
   h+=posPanel(anaMatchRows(d),analyze(d),'anapos');
   h+=carriesPanel(it.carries.map(function(c){return Object.assign({m:d.name},c)}));
   h+=deathMap(ms);
@@ -756,14 +785,14 @@ function anaMatchSections(id,d){
 function anaEventSections(ms){
   var l=ms.filter(function(m){return anaHas(m.doc)});if(!l.length)return '';
   var it=anaItems(l),car=[];it.forEach(function(x){x.carries.forEach(function(c){car.push(Object.assign({m:x.m},c))})});
-  return comebackPanel(it)+fightsPanel(it,true)+posPanel(anaEventRows(l),null,'anaevpos')+carriesPanel(car)+deathMap(l);
+  return comebackPanel(it)+fightsPanel(it,true)+stackPanel(it,true)+posPanel(anaEventRows(l),null,'anaevpos')+carriesPanel(car)+deathMap(l);
 }
 function viewSnapshot(id){
   var s=snaps[id];
   if(!s)return '<div><h1>Event not found</h1></div>'+empty(dbState==='loading'?'Loading':'No event with that id','It may have been deleted, or it is still loading.');
   var ms=(s.matchIds||[]).map(function(k){return allMatches().filter(function(m){return m.id===k})[0]}).filter(Boolean).sort(function(a,b){return playedAt(a.doc)-playedAt(b.doc)});
   var missing=(s.matchIds||[]).length-ms.length;
-  var h='<div class="bar"><div><p class="sub" style="margin:0">'+(canEdit?'<a class="plink" href="#admin">Admin</a>':'<a class="plink" href="#events">Events</a>')+' / Event '+pubTag(id)+'</p><h1>'+esc(s.name)+'</h1><p class="sub">'+ms.length+' match'+(ms.length===1?'':'es')+', created '+esc(new Date(s.createdAt||0).toLocaleDateString())+(missing?' <span class="tag warn">'+missing+' match'+(missing===1?'':'es')+' no longer stored</span>':'')+'</p></div><div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><label class="chk"><input type="checkbox" id="botsChk"'+(hideBots?' checked':'')+'> Hide bot players</label>'+(canEdit?pubBtn(id)+'<button class="btn ghost" type="button" data-snapdel="'+esc(id)+'">Delete event</button>':'')+'</div></div>';
+  var h='<div class="bar"><div><p class="sub" style="margin:0">'+(canEdit?'<a class="plink" href="#admin">Admin</a>':'<a class="plink" href="#events">Events</a>')+' / Event '+pubTag(id)+'</p><h1>'+esc(s.name)+'</h1><p class="sub">'+ms.length+' match'+(ms.length===1?'':'es')+', created '+esc(new Date(s.createdAt||0).toLocaleDateString())+(missing?' <span class="tag warn">'+missing+' match'+(missing===1?'':'es')+' no longer stored</span>':'')+'</p></div><div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><label class="chk"><input type="checkbox" id="botsChk"'+(hideBots?' checked':'')+'> Hide bot players</label>'+(canEdit?'<button class="btn ghost" type="button" data-expev="'+esc(id)+'">Export JSON</button>'+pubBtn(id)+'<button class="btn ghost" type="button" data-snapdel="'+esc(id)+'">Delete event</button>':'')+'</div></div>';
   if(canEdit)h+='<div class="panel" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><label for="evName" class="note" style="margin:0">Event name</label><input id="evName" type="text" maxlength="80" value="'+esc(evEdit.id===id?evEdit.v:s.name)+'" style="flex:1 1 260px;padding:8px 10px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--fg);font:inherit"><button class="btn" type="button" data-evrename="'+esc(id)+'">Save name</button>'+(evMsg?'<span class="note err" role="alert" style="margin:0">'+esc(evMsg)+'</span>':'')+'</div>';
   if(!ms.length)return h+empty('No matches','Every match in this event has been removed.');
   var F={0:{w:0,l:0,dr:0,u:0,k:0,sc:0,mob:0,m:0},1:{w:0,l:0,dr:0,u:0,k:0,sc:0,mob:0,m:0}},P={},C={},mins=0,K=0;
@@ -814,7 +843,7 @@ function confirmBtn(key,label,ids,danger){
 }
 function matchTools(ms){
   if(!canEdit)return '';
-  return '<div class="panel" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><span class="note" style="margin:0">Drop logs</span><button class="btn" type="button" data-delall="1" style="background:transparent;color:var(--fg);border:1px solid var(--line)">Select all</button><button class="btn" type="button" data-delall="0" style="background:transparent;color:var(--fg);border:1px solid var(--line)">Clear selection</button>'+confirmBtn('sel','Delete selected',bulkIds('sel'))+'</div>';
+  return '<div class="panel" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><span class="note" style="margin:0">Drop logs</span><button class="btn" type="button" data-delall="1" style="background:transparent;color:var(--fg);border:1px solid var(--line)">Select all</button><button class="btn" type="button" data-delall="0" style="background:transparent;color:var(--fg);border:1px solid var(--line)">Clear selection</button>'+confirmBtn('sel','Delete selected',bulkIds('sel'))+'<span style="flex:1"></span><label class="chk"><input type="checkbox" id="expPos"'+(exportPos?' checked':'')+'> Include positions</label><button class="btn ghost" type="button" data-expm="sel">Export selected (JSON)</button><button class="btn ghost" type="button" data-expm="all">Export all (JSON)</button></div>';
 }
 function dataPanel(){
   var pr=bulkIds('practice'),su=bulkIds('summary'),al=bulkIds('all');
@@ -967,7 +996,7 @@ function viewMatch(id){
   var AN=analyze(d);
   var rows=(d.players||[]).filter(function(p){return !(hideBots&&isBot(p.name))}).map(function(p){var r=Object.assign({},p);r.kdr=p.deaths?p.kills/p.deaths:p.kills;r.crit=p.hits?100*p.crits/p.hits:0;r.dpm=d.duration?p.dmg/(d.duration/60):0;r.mob=p.mobKills;r.rating=perf(p,d).r;r.mitig=(p.absorbed||0)+(p.mit||0);r.ea=(AN.players[p.name]||{}).ea||0;return r});
   var h='<div class="bar"><div><h1>'+esc(d.name)+'</h1><p class="sub">'+dur(d.duration)+' long, '+num(d.rows)+' log rows, uploaded '+esc(new Date(d.uploadedAt||0).toLocaleString())+(isPractice(d)?' <span class="tag">Practice vs bots</span>':'')+(d.summary?' <span class="tag warn">Imported summary, '+(d.noDmg?'no damage data':'no hit data')+(d.partial?', roster may be incomplete':'')+'</span>':'')+(m.saved?'':' <span class="tag warn">Not saved</span>')+'</p></div>'+
-    '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><label class="chk"><input type="checkbox" id="botsChk"'+(hideBots?' checked':'')+'> Hide bot players</label><a class="btn ghost" href="#matches" style="text-decoration:none">All matches</a>'+(canEdit&&m.saved?'<button class="btn ghost" type="button" data-del="'+esc(id)+'">Remove</button>':'')+'</div></div>';
+    '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><label class="chk"><input type="checkbox" id="botsChk"'+(hideBots?' checked':'')+'> Hide bot players</label><a class="btn ghost" href="#matches" style="text-decoration:none">All matches</a>'+(canEdit?'<button class="btn ghost" type="button" data-expone="'+esc(id)+'">Export JSON</button>':'')+(canEdit&&m.saved?'<button class="btn ghost" type="button" data-del="'+esc(id)+'">Remove</button>':'')+'</div></div>';
   var ts=d.teams||{},tk=Object.keys(ts);
   var fk=Object.keys(TEAMS).map(Number);Object.keys(ts).forEach(function(k){if(fk.indexOf(+k)<0)fk.push(+k)});
   var facs='<div class="fac">'+fk.map(function(k){var s=ts[k]||{kills:0,points:0,relics:0},w=hasResult(d)&&d.result.winner===k;return '<div class="fcard'+(w?' win':'')+'" style="--fc:'+(TEAMS[k]?TEAMS[k].col+'33':'transparent')+'">'+(TFLAG[k]?'<img alt="'+esc(teamName(k))+' banner" src="'+TFLAG[k]+'">':'')+'<div><b>'+esc(teamName(k))+'</b>'+(w?' <span class="tag ok">Winner</span>':'')+'<p class="note" style="margin:4px 0 0">'+s.kills+' kills, '+s.points+' points, '+s.relics+' relics</p></div></div>'}).join('')+'</div>';
@@ -988,7 +1017,8 @@ function viewMatch(id){
     {k:'dmgM',l:'To mob bots',f:function(r){return num(r.dmgM)}},
     {k:'dmgB',l:'To boss',f:function(r){return num(r.dmgB)}},
     {k:'taken',l:'Taken',f:function(r){return num(r.taken)}},
-    {k:'mitig',l:'Mitigated',f:function(r){return num(r.mitig)}},
+    {k:'mitig',l:'Absorbed',f:function(r){return num(r.mitig)}},
+    {k:'mitP',l:'PvP hits mitigated',f:function(r){return r.mitP==null?'-':num(r.mitP)}},
     {k:'dpm',l:'Dmg/min',f:function(r){return num(r.dpm)}}
   ],rows)+'</div>';
   h+=objPanel(d,(d.players||[]).filter(function(p){return !(hideBots&&isBot(p.name))}));
@@ -1085,11 +1115,11 @@ function viewPlayer(slugId){
 function viewUpload(){if(!canEdit)return '<div><h1>Upload</h1></div>'+empty('Admins only','Only admins can upload combat logs. Log in as an admin to upload.');
   var h='<div><h1>Upload combat logs</h1><p class="sub">Drop one or more Match_*.json ledger files (or older CombatLog_*.log files). They are read in your browser, then saved to the shared site when you press Save.</p></div>'+
     '<label class="drop" id="drop" for="file"><strong>Drop match ledgers here</strong>or click to choose files<input id="file" type="file" accept=".json,.log,.csv,.txt" multiple hidden></label>';
-  if(uploads.length)h+='<div><button class="btn" type="button" data-discardall="1" style="background:transparent;color:var(--fg);border:1px solid var(--line)">Clear list</button></div>';
+  if(uploads.length)h+='<div><button class="btn" type="button" data-discardall="1" style="background:transparent;color:var(--fg);border:1px solid var(--line)">Clear list</button> <button class="btn ghost" type="button" data-expupl="1">Export all uploads (JSON)</button></div>';
   if(!canWrite)h+='<p class="note err">Your access level can read stats but not save new matches. Parsed files stay in this tab only.</p>';
   if(uploads.length){
     h+='<div class="panel scroll"><table><thead><tr><th scope="col"><button type="button" disabled>File</button></th><th scope="col"><button type="button" disabled>Length</button></th><th scope="col"><button type="button" disabled>Players</button></th><th scope="col"><button type="button" disabled>Status</button></th><th scope="col"><button type="button" disabled></button></th></tr></thead><tbody>'+
-    uploads.map(function(u,i){return '<tr><td><strong>'+esc(u.name)+'</strong></td><td>'+(u.doc?dur(u.doc.duration):'-')+'</td><td>'+(u.doc?u.doc.players.length:'-')+'</td><td class="'+(u.err?'err':u.saved?'ok':'')+'">'+esc(u.err||(u.saved?'Saved':u.dup?'Already saved':'Ready'))+'</td><td>'+(u.doc&&!u.saved&&!u.dup&&db&&canWrite?'<button class="btn" type="button" data-save="'+i+'">Save</button> ':'')+'<button class="btn" type="button" data-discard="'+i+'" style="background:transparent;color:var(--fg);border:1px solid var(--line)">Drop</button></td></tr>'}).join('')+'</tbody></table></div>';
+    uploads.map(function(u,i){return '<tr><td><strong>'+esc(u.name)+'</strong></td><td>'+(u.doc?dur(u.doc.duration):'-')+'</td><td>'+(u.doc?u.doc.players.length:'-')+'</td><td class="'+(u.err?'err':u.saved?'ok':'')+'">'+esc(u.err||(u.saved?'Saved':u.dup?'Already saved':'Ready'))+'</td><td>'+(u.doc&&!u.saved&&!u.dup&&db&&canWrite?'<button class="btn" type="button" data-save="'+i+'">Save</button> ':'')+(u.doc&&u.raw&&/^\s*\ufeff?\s*\{/.test(u.raw)?'<button class="btn ghost" type="button" data-expraw="'+i+'" title="The file as you uploaded it, with every field">Original JSON</button> ':'')+(u.doc?'<button class="btn ghost" type="button" data-expdoc="'+i+'" title="What this site stores, plus per skill numbers">Parsed JSON</button> ':'')+'<button class="btn" type="button" data-discard="'+i+'" style="background:transparent;color:var(--fg);border:1px solid var(--line)">Drop</button></td></tr>'}).join('')+'</tbody></table></div>';
   }
   h+='<div class="panel"><h2>What the logs contain</h2><p class="note" style="margin:8px 0 0">Per player: damage (to players, mobs, boss), damage taken, kills, deaths, mob and boss kills, score, damage per 30 seconds, kill and capture events. Class is inferred from the vitals and regen effects. The log has no ability names (every hit is AeonResolvedDamageEffect) and no player to player healing yet, so ability and healing pages need those two fields added to the log.</p></div>';
   return h;
@@ -1125,7 +1155,7 @@ function mapPoints(){
   mapSel().forEach(function(m){var d=m.doc;
     if(md==='pos'){(d.players||[]).forEach(function(p){if(hideBots&&isBot(p.name))return;if(mapS.team!=='all'&&p.team!==+mapS.team)return;if(mapS.player&&p.name!==mapS.player)return;
       (p.pos||[]).forEach(function(q){if(q[3]&&q[0]>=mapS.t0&&q[0]<=mapS.t1&&(!mapS.upto||q[0]<=mapS.ph))out.push([q[1],q[2]])})});return}
-    (d.log||[]).forEach(function(e){var ok=md==='obj'?(e.k==='cp'||e.k==='relic'||e.k==='boss'):e.k===md;if(!ok||!mapPass(e)||(mapS.upto&&e.t>mapS.ph))return;var q=[e.x,e.y];if(e.k==='mob'){var bc=mobSpot(e);if(bc)q=[bc[0],bc[1]]}else if(e.k==='cp'&&MAPZONES[e.cp])q=MAPZONES[e.cp];out.push(q)})});
+    (d.log||[]).forEach(function(e){var ok=md==='obj'?(e.k==='cp'||e.k==='relic'||e.k==='boss'):e.k===md;if(!ok||!mapPass(e)||(mapS.upto&&e.t>mapS.ph))return;var q=[e.x,e.y];if(e.k==='mob'){var bc=mobSpot(e);if(bc)q=[bc[0],bc[1]]}else if(e.k==='boss')q=[0,0];else if(e.k==='cp'&&MAPZONES[e.cp])q=MAPZONES[e.cp];out.push(q)})});
   return out;
 }
 function mapHeat(ctx,pts){
@@ -1145,34 +1175,56 @@ function mapCpOwner(d,cp,t){var o=-1;(d.cpTl||[]).forEach(function(e){if(e.cp===
 var MAPDOT={mob:['Mob kills','#ff8a00'],boss:['Boss kills','#ff2bd6'],relic:['Relic','#ffd400'],cp:['Control point changes','#ffffff'],kill:['Player kills','#38bdf8']};
 var MAPCAMPS=[[-86,131,"Hard"],[-74,-141,"Hard"],[-45,-47,"Hard"],[45,47,"Hard"],[74,141,"Hard"],[86,-131,"Hard"],[-109,105,"Medium"],[-68,-71,"Medium"],[-47,50,"Medium"],[-1,77,"Medium"],[1,-77,"Medium"],[47,-50,"Medium"],[68,71,"Medium"],[109,-105,"Medium"],[-101,-115,"Easy"],[101,115,"Easy"],[-53,21,"Easy"],[-53,-29,"Easy"],[-40,111,"Easy"],[-1,67,"Easy"],[0,-67,"Easy"],[40,-111,"Easy"],[53,29,"Easy"],[53,-21,"Easy"]];
 function mapCpPx(k){var z=MAPZONES[k];return z?[mpx(z[0]),mpy(z[1])]:null}
-function mobSpot(e){var bc=null,bd=60;MAPCAMPS.forEach(function(c){if(e.tier&&c[2]!==e.tier)return;var d=Math.hypot(c[0]-e.x,c[1]-e.y);if(d<bd){bd=d;bc=c}});return bc}
-function mapDots(ctx,sel,one){
-  var campN={};
-  var tier={Easy:6,Medium:8,Hard:10};
+function mobSpot(e){var bc=null,bd=1e9;MAPCAMPS.forEach(function(c){if(e.tier&&c[2]!==e.tier)return;var d=Math.hypot(c[0]-e.x,c[1]-e.y);if(d<bd){bd=d;bc=c}});return bc}
+var MAPTIER={Easy:['#4ade80',9],Medium:['#fb923c',11],Hard:['#ef4444',14]};
+var RELIC_HOME={0:[132,-60],1:[-132,60]};
+function mapK(){return Math.max(0.35,1/mapZ().z)}
+function relicState(d,t){
+  var S={0:{st:'home'},1:{st:'home'}};
+  (d.log||[]).forEach(function(e){if(e.t>t)return;
+    if(e.k==='relic'){var rt=e.rt===0||e.rt===1?e.rt:(e.team===0||e.team===1?1-e.team:-1);if(rt<0)return;
+      if(e.ty==='pickup'||e.ty==='repickup')S[rt]={st:'carried',by:e.a,team:e.team};
+      else if(e.ty==='dropped')S[rt]={st:'ground',x:e.x,y:e.y};
+      else if(e.ty==='captured')S[rt]={st:'home'}}
+    else if(e.k==='kill'){[0,1].forEach(function(r){if(S[r].st==='carried'&&S[r].by===e.b)S[r]={st:'ground',x:e.x,y:e.y}})}});
+  return S;
+}
+function mapPlayerAt(d,name,t){var q=null;(d.players||[]).forEach(function(p){if(p.name!==name)return;(p.pos||[]).forEach(function(z){if(z[0]<=t)q=z})});return q}
+function mapDots(ctx,sel,one,k){
+  /* mob camps: each camp stays at its home spot and is marked when a mob there dies */
+  if(mapS.dot.mob){var cnt={};
+    sel.forEach(function(m){(m.doc.log||[]).forEach(function(e){if(e.k!=='mob'||!mapPass(e)||(mapS.upto&&e.t>mapS.ph))return;var c=mobSpot(e);if(c){var key=c[0]+','+c[1];cnt[key]=(cnt[key]||0)+1}})});
+    MAPCAMPS.forEach(function(c){var T=MAPTIER[c[2]],x=mpx(c[0]),y=mpy(c[1]),n=cnt[c[0]+','+c[1]]||0,r=T[1]*k;
+      ctx.beginPath();ctx.arc(x,y,r+4*k,0,6.3);ctx.lineWidth=2.5*k;ctx.strokeStyle='rgba(0,0,0,.7)';ctx.stroke();ctx.lineWidth=1.5*k;ctx.strokeStyle=T[0];ctx.globalAlpha=n?1:.6;ctx.stroke();ctx.globalAlpha=1;
+      if(n){ctx.beginPath();ctx.arc(x,y,r*.8,0,6.3);ctx.fillStyle=T[0];ctx.fill();ctx.lineWidth=2*k;ctx.strokeStyle='rgba(0,0,0,.9)';ctx.stroke();
+        if(n>1){ctx.font='700 '+(15*k)+'px sans-serif';ctx.textAlign='center';ctx.lineWidth=4*k;ctx.strokeStyle='rgba(0,0,0,.9)';ctx.fillStyle='#fff';ctx.strokeText(n,x,y+5*k);ctx.fillText(n,x,y+5*k)}}})}
   sel.forEach(function(m){(m.doc.log||[]).forEach(function(e){
-    if(!mapS.dot[e.k]||!mapPass(e))return;if(mapS.upto&&e.t>mapS.ph)return;
-    var x=mpx(e.x),y=mpy(e.y),tc=TEAMS[e.team]?TEAMS[e.team].col:'#888';
-    if(e.k==='mob'){var bc=mobSpot(e);
-      if(bc){var key=bc[0]+','+bc[1],i=campN[key]=(campN[key]||0)+1,a=i*2.4,rr=i>1?5*Math.sqrt(i):0;x=mpx(bc[0])+rr*Math.cos(a);y=mpy(bc[1])+rr*Math.sin(a)}}
-    if(e.k==='cp'&&mapCpPx(e.cp)){x=mapCpPx(e.cp)[0];y=mapCpPx(e.cp)[1]}
-    ctx.lineWidth=3;ctx.strokeStyle='rgba(0,0,0,.9)';
-    if(e.k==='cp'){
-      return}
-    if(e.k==='relic'){var rt=e.rt===0||e.rt===1?e.rt:(e.team===0||e.team===1?1-e.team:-1),ri=mapImg['relic'+rt];
-      if(ri){ctx.drawImage(ri,x-22,y-24,44,44);return}
-      ctx.beginPath();ctx.moveTo(x,y-11);ctx.lineTo(x+9,y);ctx.lineTo(x,y+11);ctx.lineTo(x-9,y);ctx.closePath();ctx.fillStyle=MAPDOT.relic[1];ctx.fill();ctx.stroke();return}
-    var r=e.k==='boss'?17:e.k==='mob'?(tier[e.tier]||7):6;
+    if(e.k==='mob'||e.k==='relic'||e.k==='cp'||!mapS.dot[e.k]||!mapPass(e))return;if(mapS.upto&&e.t>mapS.ph)return;
+    var x=e.k==='boss'?mpx(0):mpx(e.x),y=e.k==='boss'?mpy(0):mpy(e.y),tc=TEAMS[e.team]?TEAMS[e.team].col:'#888';
+    ctx.lineWidth=3*k;ctx.strokeStyle='rgba(0,0,0,.9)';
+    var r=(e.k==='boss'?17:6)*k;
     ctx.beginPath();ctx.arc(x,y,r,0,6.3);ctx.fillStyle=MAPDOT[e.k][1];ctx.fill();ctx.stroke();
-    if(e.k==='boss'){ctx.beginPath();ctx.arc(x,y,r+5,0,6.3);ctx.lineWidth=3;ctx.strokeStyle='#fff';ctx.stroke()}
-    else if(e.k==='kill'){ctx.beginPath();ctx.arc(x,y,r-2.5,0,6.3);ctx.fillStyle=tc;ctx.fill()}
+    if(e.k==='boss'){ctx.beginPath();ctx.arc(x,y,r+5*k,0,6.3);ctx.lineWidth=3*k;ctx.strokeStyle='#fff';ctx.stroke()}
+    else if(e.k==='kill'){ctx.beginPath();ctx.arc(x,y,r-2.5*k,0,6.3);ctx.fillStyle=tc;ctx.fill()}
   })});
+}
+/* relics rest at their base and travel with the carrier */
+function mapRelics(ctx,one,k){
+  if(!mapS.dot.relic)return;var S=one?relicState(one,mapS.ph):{0:{st:'home'},1:{st:'home'}};
+  [0,1].forEach(function(rt){var im=mapImg['relic'+rt],H=RELIC_HOME[rt],hx=mpx(H[0]),hy=mpy(H[1]),st=S[rt],x=hx,y=hy,sz=58*k;
+    if(st.st==='ground'){x=mpx(st.x);y=mpy(st.y)}
+    else if(st.st==='carried'){var q=mapPlayerAt(one,st.by,mapS.ph);if(q&&q[3]){x=mpx(q[1]);y=mpy(q[2])-40*k;sz=44*k}}
+    if(x!==hx||y!==hy){ctx.beginPath();ctx.arc(hx,hy,24*k,0,6.3);ctx.lineWidth=2.5*k;ctx.setLineDash([6*k,5*k]);ctx.strokeStyle=TEAMS[rt].col;ctx.stroke();ctx.setLineDash([])}
+    ctx.save();ctx.shadowColor=TEAMS[rt].col;ctx.shadowBlur=(st.st==='carried'?22:12)*k;
+    if(im)ctx.drawImage(im,x-sz/2,y-sz/2,sz,sz);else{ctx.beginPath();ctx.arc(x,y,12*k,0,6.3);ctx.fillStyle=TEAMS[rt].col;ctx.fill()}
+    ctx.restore()});
 }
 function mapZ(){return mapS.zm||(mapS.zm={z:1,x:0,y:0})}
 function mapZApply(){var cv=document.getElementById('mapCv');if(!cv)return;var Z=mapZ(),w=cv.clientWidth,h=cv.clientHeight;
   Z.x=Math.min(0,Math.max(w-w*Z.z,Z.x));Z.y=Math.min(0,Math.max(h-h*Z.z,Z.y));
   cv.style.transformOrigin='0 0';cv.style.transform=Z.z>1?'translate('+Z.x+'px,'+Z.y+'px) scale('+Z.z+')':'';
   cv.parentNode.style.cursor=Z.z>1?'grab':'';cv.parentNode.style.touchAction=Z.z>1?'none':''}
-function mapZoomAt(f,px,py){var Z=mapZ(),z2=Math.min(8,Math.max(1,Z.z*f));if(z2===Z.z)return;Z.x=px-(px-Z.x)*z2/Z.z;Z.y=py-(py-Z.y)*z2/Z.z;Z.z=z2;mapZApply()}
+function mapZoomAt(f,px,py){var Z=mapZ(),z2=Math.min(8,Math.max(1,Z.z*f));if(z2===Z.z)return;Z.x=px-(px-Z.x)*z2/Z.z;Z.y=py-(py-Z.y)*z2/Z.z;Z.z=z2;mapZApply();mapSched()}
 (function(){
   var drag=null;
   document.addEventListener('wheel',function(e){var w=e.target.closest&&e.target.closest('.mapwrap');if(!w)return;e.preventDefault();var r=w.getBoundingClientRect();mapZoomAt(e.deltaY<0?1.25:0.8,e.clientX-r.left,e.clientY-r.top)},{passive:false});
@@ -1180,9 +1232,9 @@ function mapZoomAt(f,px,py){var Z=mapZ(),z2=Math.min(8,Math.max(1,Z.z*f));if(z2=
   document.addEventListener('pointermove',function(e){if(!drag||e.pointerId!==drag.id)return;var Z=mapZ();Z.x=drag.ox+e.clientX-drag.x;Z.y=drag.oy+e.clientY-drag.y;mapZApply()});
   function end(e){if(drag&&e.pointerId===drag.id){drag.w.style.cursor='grab';drag=null}}
   document.addEventListener('pointerup',end);document.addEventListener('pointercancel',end);
-  document.addEventListener('dblclick',function(e){if(e.target.closest&&e.target.closest('.mapwrap')&&!e.target.closest('.mzoom')){var Z=mapZ();Z.z=1;Z.x=0;Z.y=0;mapZApply()}});
+  document.addEventListener('dblclick',function(e){if(e.target.closest&&e.target.closest('.mapwrap')&&!e.target.closest('.mzoom')){var Z=mapZ();Z.z=1;Z.x=0;Z.y=0;mapZApply();mapSched()}});
   document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('[data-mapzoom]');if(!b)return;var cv=document.getElementById('mapCv');if(!cv)return;var k=b.dataset.mapzoom,Z=mapZ();
-    if(k==='reset'){Z.z=1;Z.x=0;Z.y=0;mapZApply()}else mapZoomAt(k==='in'?1.5:1/1.5,cv.clientWidth/2,cv.clientHeight/2)});
+    if(k==='reset'){Z.z=1;Z.x=0;Z.y=0;mapZApply();mapSched()}else mapZoomAt(k==='in'?1.5:1/1.5,cv.clientWidth/2,cv.clientHeight/2)});
 })();
 function mapDraw(){
   var cv=document.getElementById('mapCv');if(!cv)return;cv.width=MAPW;cv.height=MAPH;var ctx=cv.getContext('2d');
@@ -1194,15 +1246,18 @@ function mapDraw(){
     if(one&&k==='East'&&!(one.cpTl||[]).some(function(e){return e.cp==='East'}))ctx.globalAlpha=.45;
     var A=mapCpPx(k);if(im)ctx.drawImage(im,A[0]-44,A[1]-48,88,88);ctx.globalAlpha=1;
     ctx.font='700 22px sans-serif';ctx.textAlign='center';ctx.lineWidth=4;ctx.strokeStyle='rgba(0,0,0,.8)';ctx.fillStyle='#fff';ctx.strokeText(k,A[0],A[1]+62);ctx.fillText(k,A[0],A[1]+62)});
-  mapDots(ctx,sel,one);
+  var K=mapK();
+  mapDots(ctx,sel,one,K);
+  var RS=one&&mapS.dot.relic?relicState(one,mapS.ph):null,carry={};if(RS)[0,1].forEach(function(r){if(RS[r].st==='carried')carry[RS[r].by]=r});
   if(mapS.showPl&&one)(one.players||[]).forEach(function(p){if(hideBots&&isBot(p.name))return;var q=null;(p.pos||[]).forEach(function(s){if(s[0]<=mapS.ph)q=s});if(!q||!q[3])return;
-    var c=TEAMS[p.team]?TEAMS[p.team].col:'#888',ci=mapImg[p.cls],px=mpx(q[1]),py=mpy(q[2]);
-    if(ci){ctx.beginPath();ctx.arc(px,py,27,0,6.3);ctx.fillStyle=c;ctx.fill();ctx.lineWidth=4;ctx.strokeStyle='#fff';ctx.stroke();ctx.drawImage(ci,px-21,py-21,42,42)}
-    else{ctx.beginPath();ctx.arc(px,py,11,0,6.3);ctx.fillStyle=c;ctx.fill();ctx.lineWidth=3;ctx.strokeStyle='#fff';ctx.stroke()}
-    
-    ctx.font='700 20px sans-serif';ctx.textAlign='left';ctx.lineWidth=4;ctx.strokeStyle='rgba(0,0,0,.85)';ctx.strokeText(p.name,px+(ci?32:15),py+6);ctx.fillStyle='#fff';ctx.fillText(p.name,px+(ci?32:15),py+6)});
+    var c=TEAMS[p.team]?TEAMS[p.team].col:'#888',ci=mapImg[p.cls],px=mpx(q[1]),py=mpy(q[2]),R=(ci?27:11)*K;
+    if(carry[p.name]!==undefined){var gc=TEAMS[carry[p.name]].col;ctx.save();ctx.shadowColor=gc;ctx.shadowBlur=34*K;ctx.lineWidth=7*K;ctx.strokeStyle=gc;for(var g=0;g<2;g++){ctx.beginPath();ctx.arc(px,py,R+7*K,0,6.3);ctx.stroke()}ctx.lineWidth=3*K;ctx.strokeStyle='#fff';ctx.beginPath();ctx.arc(px,py,R+7*K,0,6.3);ctx.stroke();ctx.restore()}
+    if(ci){ctx.beginPath();ctx.arc(px,py,R,0,6.3);ctx.fillStyle=c;ctx.fill();ctx.lineWidth=4*K;ctx.strokeStyle='#fff';ctx.stroke();ctx.drawImage(ci,px-21*K,py-21*K,42*K,42*K)}
+    else{ctx.beginPath();ctx.arc(px,py,R,0,6.3);ctx.fillStyle=c;ctx.fill();ctx.lineWidth=3*K;ctx.strokeStyle='#fff';ctx.stroke()}
+    ctx.font='700 '+(20*K)+'px sans-serif';ctx.textAlign='left';ctx.lineWidth=4*K;ctx.strokeStyle='rgba(0,0,0,.85)';var lx=px+R+5*K;ctx.strokeText(p.name,lx,py+6*K);ctx.fillStyle='#fff';ctx.fillText(p.name,lx,py+6*K)});
+  mapRelics(ctx,one,K);
   mapZApply();
-  if(mapS.focus){var f=mapS.focus,x=mpx(f.x),y=mpy(f.y);ctx.lineWidth=5;ctx.strokeStyle='#fff';ctx.beginPath();ctx.arc(x,y,26,0,6.3);ctx.stroke();ctx.strokeStyle='#e0a63a';ctx.beginPath();ctx.arc(x,y,34,0,6.3);ctx.stroke()}
+  if(mapS.focus){var f=mapS.focus,x=mpx(f.x),y=mpy(f.y);ctx.lineWidth=5*K;ctx.strokeStyle='#fff';ctx.beginPath();ctx.arc(x,y,26*K,0,6.3);ctx.stroke();ctx.strokeStyle='#e0a63a';ctx.beginPath();ctx.arc(x,y,34*K,0,6.3);ctx.stroke()}
 }
 var MAPK={kill:'Kill',mob:'Mob kill',boss:'Boss kill',relic:'Relic',cp:'Control point'};
 function mapText(e){
@@ -1332,6 +1387,12 @@ document.addEventListener('click',function(e){
   var t=e.target.closest('[data-sort]');if(t){var p=t.dataset.sort.split(':'),s=sortState[p[0]];s.d=s.k===p[1]?-s.d:(p[1]==='name'||p[1]==='main'||p[1]==='cls'?1:p[1]==='t'?-1:-1);s.k=p[1];render();return}
   var g=e.target.closest('[data-go]');if(g&&!e.target.closest('a,input,label,button')){location.hash=g.dataset.go;return}
   var sv=e.target.closest('[data-save]');if(sv){save(+sv.dataset.save);return}
+  var xr=e.target.closest('[data-expraw]');if(xr){var ur=uploads[+xr.dataset.expraw];if(ur&&ur.raw)dlJson(ur.name.replace(/^[0-9a-f]{8}-/,''),ur.raw);return}
+  var xd=e.target.closest('[data-expdoc]');if(xd){var ud=uploads[+xd.dataset.expdoc];if(ud&&ud.doc)exportMatches([{id:ud.id,doc:ud.doc}],(ud.doc.name||'match').replace(/\.[a-z]+$/i,''));return}
+  if(e.target.closest('[data-expupl]')){exportMatches(uploads.filter(function(u){return u.doc}).map(function(u){return {id:u.id,doc:u.doc}}),'uploads');return}
+  var xm=e.target.closest('[data-expm]');if(xm){exportMatches(allMatches().filter(function(m){return xm.dataset.expm==='all'||delSel[m.id]}),xm.dataset.expm==='all'?'all-matches':'selected-matches');return}
+  var xo=e.target.closest('[data-expone]');if(xo){var mo=allMatches().filter(function(m){return m.id===xo.dataset.expone});if(mo.length)exportMatches(mo,(mo[0].doc.name||'match').replace(/\.[a-z]+$/i,''));return}
+  var xe=e.target.closest('[data-expev]');if(xe){var sn=snaps[xe.dataset.expev];if(sn){var all=allMatches();exportMatches((sn.matchIds||[]).map(function(k){return all.filter(function(m){return m.id===k})[0]}).filter(Boolean),'event-'+(sn.name||'event').replace(/[^a-z0-9]+/gi,'-').toLowerCase(),{event:{id:xe.dataset.expev,name:sn.name,createdAt:sn.createdAt}})}return}
   var cf=e.target.closest('[data-confirm]');if(cf){var k=cf.dataset.confirm;if(confirmKey===k){delMatches(bulkIds(k))}else{confirmKey=k;render()}return}
   if(confirmKey){confirmKey='';render()}
   var da=e.target.closest('[data-delall]');if(da){var on2=da.dataset.delall==='1';allMatches().forEach(function(m){if(m.saved)delSel[m.id]=on2});render();return}
@@ -1359,10 +1420,21 @@ function handleFiles(list){
   Array.prototype.slice.call(list).forEach(function(f){
     var u={name:f.name};uploads.unshift(u);
     f.text().then(function(txt){
+      u.raw=txt;
       try{u.id=hashText(txt);u.doc=parseAnyLog(txt,f.name.replace(/^[0-9a-f]{8}-/,''));
         if(remote[u.id])u.dup=true;else local[u.id]=u.doc}catch(err){u.err=err.message}
       render()},function(){u.err='Could not read the file.';render()});
   });render();
+}
+var exportPos=true;
+function dlJson(name,obj){var t=typeof obj==='string'?obj:JSON.stringify(obj),b=new Blob([t],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},600)}
+function expDoc(d){if(exportPos)return d;var o=Object.assign({},d);o.players=(d.players||[]).map(function(p){var q=Object.assign({},p);delete q.pos;delete q.pb;return q});return o}
+function exportMatches(list,label,extra){
+  var c=document.getElementById('expPos');if(c)exportPos=c.checked;
+  if(!list.length)return;
+  var b=Object.assign({app:'ArcturaStats',format:1,exportedAt:new Date().toISOString(),positions:exportPos,count:list.length},extra||{});
+  b.matches=list.map(function(m){return {id:m.id,name:m.doc.name,playedAt:playedAt(m.doc),doc:expDoc(m.doc)}});
+  dlJson('arcturastats-'+label+'-'+new Date().toISOString().slice(0,10)+'.json',b);
 }
 function save(i){
   var u=uploads[i];if(!u||!u.doc||!db)return;
