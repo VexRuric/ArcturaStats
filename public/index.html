@@ -167,7 +167,7 @@ function parseMatchLedger(text,fileName){
     lg({t:k.t,k:'death',a:nm(k.killer),b:nm(k.victim),team:tmOf(k.victim)},q)});
   (L.mobKills||[]).forEach(function(m){lg({t:m.t,k:'mob',a:nm(m.killer),team:tmOf(m.killer),tier:m.tier},at(m.killer,m.t,false))});
   (L.bossKills||[]).forEach(function(b){lg({t:b.t,k:'boss',a:nm(b.killer),team:tmOf(b.killer)},at(b.killer,b.t,false))});
-  (L.relicEvents||[]).forEach(function(e){lg({t:e.t,k:'relic',a:nm(e.player),team:tmOf(e.player),ty:e.type},at(e.player,e.t,false))});
+  (L.relicEvents||[]).forEach(function(e){lg({t:e.t,k:'relic',a:nm(e.player),team:tmOf(e.player),ty:e.type,rt:e.relicTeam},at(e.player,e.t,false))});
   (L.controlPointEvents||[]).forEach(function(e){var w=CP_WORLD[e.controlPoint],f=(e.players||[])[0],q=w?[0,w[0],w[1]]:at(f,e.t,false);
     lg({t:e.t,k:'cp',a:(e.players||[]).map(nm).join(', '),team:e.type==='capture'?e.newTeam:tmOf(f),ty:e.type,cp:e.controlPoint,ot:e.oldTeam,nt:e.newTeam},q);
     cpTl.push({t:r1(e.t),cp:e.controlPoint,nt:e.newTeam})});
@@ -1101,11 +1101,11 @@ var MAPW=1400,MAPH=1654;
 var MAPC=(function(){var d={x0:710.6,sx:3.45,y0:798.5,sy:3.45};try{var s=JSON.parse(localStorage.getItem('arctura-mapcal3')||'null');if(s&&s.sx&&s.sy)d=s}catch(e){}return d})();
 function mpx(x){return MAPC.x0+x*MAPC.sx}function mpy(y){return MAPC.y0+y*MAPC.sy}
 var MAPZONES={North:[0,-150],South:[0,150],West:[-150,0],East:[150,0],Center:[0,0]};
-var mapS={match:'all',mode:'pos',team:'all',player:'',types:{kill:1,mob:1,boss:1,relic:1,cp:1},t0:0,t1:99999,ph:0,showCp:true,showPl:false,upto:false,timer:0,dot:{mob:1,boss:1,relic:1,cp:1,kill:0},focus:null,radius:26,raf:0};
+var mapS={match:'all',mode:'pos',team:'all',player:'',types:{kill:1,mob:1,boss:1,relic:1,cp:1},t0:0,t1:99999,ph:0,showCp:true,showPl:true,upto:false,timer:0,dot:{mob:1,boss:1,relic:1,cp:1,kill:0},focus:null,radius:26,raf:0};
 var mapImg={},mapImgState=0;
 function mapLoad(){
   if(mapImgState)return;mapImgState=1;
-  var names={arena:'arena.jpg',zekar:'cp-zekar.png',elysiant:'cp-elysiant.png',neutral:'cp-neutral.png'},ks=Object.keys(names),n=0;
+  var names={arena:'arena.jpg',zekar:'cp-zekar.png',elysiant:'cp-elysiant.png',neutral:'cp-neutral.png',relic0:'relic-elysiant.png',relic1:'relic-zekar.png',Hunter:'class-hunter.png',Priest:'class-priest.png',Mystic:'class-mystic.png',Assassin:'class-assassin.png',Warrior:'class-warrior.png'},ks=Object.keys(names),n=0;
   ks.forEach(function(k){var i=new Image();i.onload=i.onerror=function(){mapImg[k]=i.width?i:null;if(++n===ks.length){mapImgState=2;mapUpdate()}};i.src='/map/'+names[k]});
 }
 function mapMatches(){return allMatches().filter(function(m){var d=m.doc;return (!mapScope||mapScope.indexOf(m.id)>=0)&&d.ledger&&(d.players||[]).some(function(p){return p.pos&&p.pos.length})}).sort(function(a,b){return playedAt(b.doc)-playedAt(a.doc)})}
@@ -1158,7 +1158,9 @@ function mapDots(ctx,sel,one){
     ctx.lineWidth=3;ctx.strokeStyle='rgba(0,0,0,.9)';
     if(e.k==='cp'){
       return}
-    if(e.k==='relic'){ctx.beginPath();ctx.moveTo(x,y-11);ctx.lineTo(x+9,y);ctx.lineTo(x,y+11);ctx.lineTo(x-9,y);ctx.closePath();ctx.fillStyle=MAPDOT.relic[1];ctx.fill();ctx.stroke();return}
+    if(e.k==='relic'){var rt=e.rt===0||e.rt===1?e.rt:(e.team===0||e.team===1?1-e.team:-1),ri=mapImg['relic'+rt];
+      if(ri){ctx.drawImage(ri,x-22,y-24,44,44);return}
+      ctx.beginPath();ctx.moveTo(x,y-11);ctx.lineTo(x+9,y);ctx.lineTo(x,y+11);ctx.lineTo(x-9,y);ctx.closePath();ctx.fillStyle=MAPDOT.relic[1];ctx.fill();ctx.stroke();return}
     var r=e.k==='boss'?17:e.k==='mob'?(tier[e.tier]||7):6;
     ctx.beginPath();ctx.arc(x,y,r,0,6.3);ctx.fillStyle=MAPDOT[e.k][1];ctx.fill();ctx.stroke();
     if(e.k==='boss'){ctx.beginPath();ctx.arc(x,y,r+5,0,6.3);ctx.lineWidth=3;ctx.strokeStyle='#fff';ctx.stroke()}
@@ -1177,8 +1179,11 @@ function mapDraw(){
     ctx.font='700 22px sans-serif';ctx.textAlign='center';ctx.lineWidth=4;ctx.strokeStyle='rgba(0,0,0,.8)';ctx.fillStyle='#fff';ctx.strokeText(k,A[0],A[1]+62);ctx.fillText(k,A[0],A[1]+62)});
   mapDots(ctx,sel,one);
   if(mapS.showPl&&one)(one.players||[]).forEach(function(p){if(hideBots&&isBot(p.name))return;var q=null;(p.pos||[]).forEach(function(s){if(s[0]<=mapS.ph)q=s});if(!q||!q[3])return;
-    var c=TEAMS[p.team]?TEAMS[p.team].col:'#888';ctx.beginPath();ctx.arc(mpx(q[1]),mpy(q[2]),11,0,6.3);ctx.fillStyle=c;ctx.fill();ctx.lineWidth=3;ctx.strokeStyle='#fff';ctx.stroke();
-    ctx.font='700 20px sans-serif';ctx.textAlign='left';ctx.lineWidth=4;ctx.strokeStyle='rgba(0,0,0,.85)';ctx.strokeText(p.name,mpx(q[1])+15,mpy(q[2])+6);ctx.fillStyle='#fff';ctx.fillText(p.name,mpx(q[1])+15,mpy(q[2])+6)});
+    var c=TEAMS[p.team]?TEAMS[p.team].col:'#888',ci=mapImg[p.cls],px=mpx(q[1]),py=mpy(q[2]);
+    if(ci){ctx.beginPath();ctx.arc(px,py,27,0,6.3);ctx.fillStyle=c;ctx.fill();ctx.lineWidth=4;ctx.strokeStyle='#fff';ctx.stroke();ctx.drawImage(ci,px-21,py-21,42,42)}
+    else{ctx.beginPath();ctx.arc(px,py,11,0,6.3);ctx.fillStyle=c;ctx.fill();ctx.lineWidth=3;ctx.strokeStyle='#fff';ctx.stroke()}
+    
+    ctx.font='700 20px sans-serif';ctx.textAlign='left';ctx.lineWidth=4;ctx.strokeStyle='rgba(0,0,0,.85)';ctx.strokeText(p.name,px+(ci?32:15),py+6);ctx.fillStyle='#fff';ctx.fillText(p.name,px+(ci?32:15),py+6)});
   if(mapS.focus){var f=mapS.focus,x=mpx(f.x),y=mpy(f.y);ctx.lineWidth=5;ctx.strokeStyle='#fff';ctx.beginPath();ctx.arc(x,y,26,0,6.3);ctx.stroke();ctx.strokeStyle='#e0a63a';ctx.beginPath();ctx.arc(x,y,34,0,6.3);ctx.stroke()}
 }
 var MAPK={kill:'Kill',mob:'Mob kill',boss:'Boss kill',relic:'Relic',cp:'Control point'};
