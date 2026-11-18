@@ -118,9 +118,9 @@ a.fhero:hover{border-color:var(--fc)}a.fhero:focus-visible{outline:2px solid var
 .mctl{display:flex;flex-wrap:wrap;gap:12px 16px;align-items:end}.mfld{display:flex;flex-direction:column;gap:4px;min-width:150px;flex:1 1 150px;color:var(--muted);font-size:13px}.mfld select,.mfld input[type=number]{background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:7px;font:inherit}.mfld input[type=range]{width:100%}.mchk{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;flex:1 1 100%}
 .mapgrid{display:grid;grid-template-columns:minmax(0,520px) minmax(0,1fr);gap:18px;align-items:start;margin-top:14px}.mapwrap{position:sticky;top:8px;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:#000}.mapwrap canvas{display:block;width:100%;height:auto}.mapside{display:flex;flex-direction:column;gap:14px;min-width:0}
 .mstrip{display:grid;grid-template-columns:60px 1fr;gap:10px;align-items:center;margin:8px 0}.mtr{position:relative;height:18px;background:var(--panel2);border-radius:4px;overflow:hidden;cursor:pointer;border:1px solid var(--line)}.mtr i{position:absolute;top:0;bottom:0}.mtr b{position:absolute;top:-2px;bottom:-2px;width:2px;background:#fff;box-shadow:0 0 0 1px #000}
-@media (max-width:980px){.mapgrid{grid-template-columns:minmax(0,1fr)}.mapwrap{position:static}}
+@media (max-width:980px){.mapgrid{grid-template-columns:minmax(0,1fr)}.mapwrap{position:relative}}
 .selbox{display:flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;cursor:pointer}.selbox input{width:18px;height:18px;cursor:pointer}
-.mapsolo{margin-top:14px;max-width:760px}.mapsolo .mapwrap{position:static}.mapsolo .mapside:empty{display:none}
+.mapsolo{margin-top:14px;max-width:760px}.mapsolo .mapwrap{position:relative}.mzoom{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px;z-index:2}.mzoom button{width:34px;height:34px;border:1px solid var(--line);border-radius:4px;background:rgba(15,18,25,.85);color:#fff;font:700 18px var(--font-d);cursor:pointer;line-height:1}.mzoom button:hover{background:rgba(40,46,60,.95)}.mzoom button.rs{font-size:12px}.mapwrap canvas{will-change:transform}.mapsolo .mapside:empty{display:none}
 .evmini{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}.evmini svg text{font-size:10px}
 </style>
 
@@ -1167,6 +1167,23 @@ function mapDots(ctx,sel,one){
     else if(e.k==='kill'){ctx.beginPath();ctx.arc(x,y,r-2.5,0,6.3);ctx.fillStyle=tc;ctx.fill()}
   })});
 }
+function mapZ(){return mapS.zm||(mapS.zm={z:1,x:0,y:0})}
+function mapZApply(){var cv=document.getElementById('mapCv');if(!cv)return;var Z=mapZ(),w=cv.clientWidth,h=cv.clientHeight;
+  Z.x=Math.min(0,Math.max(w-w*Z.z,Z.x));Z.y=Math.min(0,Math.max(h-h*Z.z,Z.y));
+  cv.style.transformOrigin='0 0';cv.style.transform=Z.z>1?'translate('+Z.x+'px,'+Z.y+'px) scale('+Z.z+')':'';
+  cv.parentNode.style.cursor=Z.z>1?'grab':'';cv.parentNode.style.touchAction=Z.z>1?'none':''}
+function mapZoomAt(f,px,py){var Z=mapZ(),z2=Math.min(8,Math.max(1,Z.z*f));if(z2===Z.z)return;Z.x=px-(px-Z.x)*z2/Z.z;Z.y=py-(py-Z.y)*z2/Z.z;Z.z=z2;mapZApply()}
+(function(){
+  var drag=null;
+  document.addEventListener('wheel',function(e){var w=e.target.closest&&e.target.closest('.mapwrap');if(!w)return;e.preventDefault();var r=w.getBoundingClientRect();mapZoomAt(e.deltaY<0?1.25:0.8,e.clientX-r.left,e.clientY-r.top)},{passive:false});
+  document.addEventListener('pointerdown',function(e){var w=e.target.closest&&e.target.closest('.mapwrap');if(!w||e.target.closest('.mzoom')||mapZ().z<=1)return;drag={x:e.clientX,y:e.clientY,ox:mapZ().x,oy:mapZ().y,w:w,id:e.pointerId};try{w.setPointerCapture(e.pointerId)}catch(x){}w.style.cursor='grabbing'});
+  document.addEventListener('pointermove',function(e){if(!drag||e.pointerId!==drag.id)return;var Z=mapZ();Z.x=drag.ox+e.clientX-drag.x;Z.y=drag.oy+e.clientY-drag.y;mapZApply()});
+  function end(e){if(drag&&e.pointerId===drag.id){drag.w.style.cursor='grab';drag=null}}
+  document.addEventListener('pointerup',end);document.addEventListener('pointercancel',end);
+  document.addEventListener('dblclick',function(e){if(e.target.closest&&e.target.closest('.mapwrap')&&!e.target.closest('.mzoom')){var Z=mapZ();Z.z=1;Z.x=0;Z.y=0;mapZApply()}});
+  document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('[data-mapzoom]');if(!b)return;var cv=document.getElementById('mapCv');if(!cv)return;var k=b.dataset.mapzoom,Z=mapZ();
+    if(k==='reset'){Z.z=1;Z.x=0;Z.y=0;mapZApply()}else mapZoomAt(k==='in'?1.5:1/1.5,cv.clientWidth/2,cv.clientHeight/2)});
+})();
 function mapDraw(){
   var cv=document.getElementById('mapCv');if(!cv)return;cv.width=MAPW;cv.height=MAPH;var ctx=cv.getContext('2d');
   if(mapImg.arena)ctx.drawImage(mapImg.arena,0,0,MAPW,MAPH);else{ctx.fillStyle='#2a3a2a';ctx.fillRect(0,0,MAPW,MAPH)}
@@ -1184,6 +1201,7 @@ function mapDraw(){
     else{ctx.beginPath();ctx.arc(px,py,11,0,6.3);ctx.fillStyle=c;ctx.fill();ctx.lineWidth=3;ctx.strokeStyle='#fff';ctx.stroke()}
     
     ctx.font='700 20px sans-serif';ctx.textAlign='left';ctx.lineWidth=4;ctx.strokeStyle='rgba(0,0,0,.85)';ctx.strokeText(p.name,px+(ci?32:15),py+6);ctx.fillStyle='#fff';ctx.fillText(p.name,px+(ci?32:15),py+6)});
+  mapZApply();
   if(mapS.focus){var f=mapS.focus,x=mpx(f.x),y=mpy(f.y);ctx.lineWidth=5;ctx.strokeStyle='#fff';ctx.beginPath();ctx.arc(x,y,26,0,6.3);ctx.stroke();ctx.strokeStyle='#e0a63a';ctx.beginPath();ctx.arc(x,y,34,0,6.3);ctx.stroke()}
 }
 var MAPK={kill:'Kill',mob:'Mob kill',boss:'Boss kill',relic:'Relic',cp:'Control point'};
@@ -1232,7 +1250,7 @@ function mapMax(){var mx=0;mapSel().forEach(function(m){if((m.doc.duration||0)>m
 var mapCtx='',mapFull=false,mapScope=null;
 function mapBody(mid){
   var all=mapMatches(),full=!!mid,ctx=(mid||'all')+'|'+(mapScope?mapScope.join(','):'');
-  if(ctx!==mapCtx){mapCtx=ctx;mapS.t0=0;mapS.t1=99999;mapS.ph=0;mapS.focus=null;mapS.team='all';mapS.player='';mapS.mode='pos';mapS.upto=false;if(mapS.timer){clearInterval(mapS.timer);mapS.timer=0}}
+  if(ctx!==mapCtx){mapCtx=ctx;mapS.t0=0;mapS.t1=99999;mapS.ph=0;mapS.focus=null;mapS.team='all';mapS.player='';mapS.mode='pos';mapS.upto=false;mapS.zm=null;if(mapS.timer){clearInterval(mapS.timer);mapS.timer=0}}
   mapFull=full;mapS.match=full?mid:'all';
   if(full&&!all.some(function(m){return m.id===mid}))return '<p class="note">This match has no position data. It was stored from a CSV combat log, or from a Match Ledger uploaded before positions were kept. Re-upload the ledger to get its heat map.</p>';
   if(!all.length)return empty('No ledger matches with positions yet','Upload Match Ledger .json files on the Upload tab. Matches stored from older CSV combat logs, or from ledgers uploaded before the map existed, have no position data. Re-upload them.');
@@ -1254,7 +1272,7 @@ function mapBody(mid){
     '<label class="chk"><input type="checkbox" id="mapUpto" data-mapf="1"'+(mapS.upto?' checked':'')+'> Build up to playhead</label><button class="btn ghost" type="button" data-mapplay="1">'+(mapS.timer?'Pause':'Play')+'</button>'+'<label class="chk"><input type="checkbox" id="botsChk"'+(hideBots?' checked':'')+'> Hide test bots</label></div>'+
     '<div class="mchk"><b class="note" style="margin:0">Dots</b>'+Object.keys(MAPDOT).map(function(k){return '<label class="chk"><input type="checkbox" data-mapdot="'+k+'"'+(mapS.dot[k]?' checked':'')+'> <span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:'+MAPDOT[k][1]+';border:1px solid #000;vertical-align:-1px"></span> '+MAPDOT[k][0]+'</label>'}).join('')+'<span class="note" style="margin:0">'+(full?'The platform icon shows the owner at the playhead.':'')+'</span></div>'+
     (full?'<div class="mchk">'+Object.keys(MAPK).map(function(k){return '<label class="chk"><input type="checkbox" data-maptype="'+k+'"'+(mapS.types[k]?' checked':'')+'> '+MAPK[k]+'</label>'}).join('')+'<span class="note" style="margin:0">Types filter the time table.</span></div>':'')+'</div>';
-  h+='<div class="'+(full?'mapgrid':'mapsolo')+'"><div class="mapwrap"><canvas id="mapCv" width="'+MAPW+'" height="'+MAPH+'" role="img" aria-label="Arena map with heat map overlay"></canvas></div><div id="mapDyn" class="mapside"></div></div>';
+  h+='<div class="'+(full?'mapgrid':'mapsolo')+'"><div class="mapwrap"><canvas id="mapCv" width="'+MAPW+'" height="'+MAPH+'" role="img" aria-label="Arena map with heat map overlay"></canvas><div class="mzoom"><button type="button" data-mapzoom="in" aria-label="Zoom in">+</button><button type="button" data-mapzoom="out" aria-label="Zoom out">&minus;</button><button type="button" class="rs" data-mapzoom="reset" aria-label="Reset zoom">1:1</button></div></div><div id="mapDyn" class="mapside"></div></div>';
   if(!full)h+='<p class="note">Combined over '+all.length+' ledger match'+(all.length===1?'':'es')+(mapScope?' in this event':'')+'. Open a match for its own event time table and control point owners.</p>'+(mapScope?'':'<details class="panel"><summary>Map calibration</summary><p class="note">The log positions are game coordinates. This maps them onto the picture: pixel = origin + coordinate &times; scale, on a '+MAPW+' by '+MAPH+' image. The control point icons are drawn at the game coordinates of the four platforms, so adjust until they sit on the stone circles. Saved in this browser.</p><div class="mctl" style="padding:0;border:0">'+
     [['x0','X origin'],['sx','X scale'],['y0','Y origin'],['sy','Y scale']].map(function(f){return lab(f[1],'<input type="number" step="0.05" data-mapcal="'+f[0]+'" value="'+MAPC[f[0]]+'">')}).join('')+'<button class="btn ghost" type="button" data-mapcalreset="1">Reset</button></div></details>');
   setTimeout(function(){mapLoad();mapUpdate()},0);
