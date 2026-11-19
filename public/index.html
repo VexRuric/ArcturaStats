@@ -79,6 +79,15 @@ label.chk{display:inline-flex;gap:8px;align-items:center;color:var(--muted);curs
 .legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px;font-size:13px}
 .legend span{display:inline-flex;gap:6px;align-items:center}
 .legend i{width:14px;height:3px;border-radius:2px;display:inline-block}
+.vs{display:grid;gap:10px}
+.vsr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px 22px;background:var(--panel2);border-radius:8px;padding:12px 14px}
+.vsh{grid-column:1/-1;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:6px 14px}
+.vst{min-width:0;overflow-wrap:anywhere}
+.vsn{font:600 24px/1.2 var(--font-d);margin-top:4px}
+.vsn .note{font:12px var(--font-b)}
+.vsb{height:6px;border-radius:3px;background:var(--line);margin-top:6px;overflow:hidden}
+.vsb i{display:block;height:100%;border-radius:3px}
+@media (max-width:560px){.vsr{grid-template-columns:minmax(0,1fr)}}
 .cols{align-items:start;display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:18px}
 @media (max-width:820px){.cols{grid-template-columns:minmax(0,1fr)}}
 .note{color:var(--muted);font-size:13px}
@@ -1088,14 +1097,19 @@ function classVs(d){
   var cls={},al=aliveSecs(d),est=!al;
   pl.forEach(function(p){var c=p.cls||'Unknown',o=cls[c]||(cls[c]={0:{n:[],dmg:0,heal:0,sec:0},1:{n:[],dmg:0,heal:0,sec:0}});o[p.team].n.push(p.name);o[p.team].dmg+=dmgSum(d.series[p.name]);o[p.team].heal+=p.heal||0;o[p.team].sec+=est?(d.duration||0):(al[p.name]||0)});
   function rate(x){return x.n.length&&x.sec>0?(x.dmg+x.heal)/(x.sec/60):null}
-  var rows=Object.keys(cls).sort(function(a,b){return cls[b][0].dmg+cls[b][1].dmg-cls[a][0].dmg-cls[a][1].dmg}).map(function(c){var o=cls[c];
-    function cell(t){var x=o[t];if(!x.n.length)return '<td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>';
-      return '<td style="text-align:left">'+x.n.map(function(n){return '<a class="plink" href="#player-'+slug(n)+'">'+esc(n)+'</a>'}).join(', ')+'</td><td>'+num(x.dmg)+'</td><td>'+(x.heal>0?num(x.heal):'-')+'</td><td>'+(est?'-':dur(x.sec/x.n.length))+'</td><td>'+(rate(x)==null?'-':num(rate(x)))+'</td>'}
-    var a0=rate(o[0])||0,a1=rate(o[1])||0,edge='-';
-    if(o[0].n.length&&o[1].n.length&&(a0>0||a1>0)){var w=a0>=a1?0:1,lo=Math.min(a0,a1),hi=Math.max(a0,a1);edge='<span style="color:'+TEAMS[w].col+'">'+esc(teamName(w))+'</span> '+(lo>0?'+'+Math.round((hi-lo)/lo*100)+'%':'only')}
-    else if(o[0].n.length!==o[1].n.length)edge='<span class="note" style="margin:0">no '+esc(o[0].n.length?teamName(1):teamName(0))+' '+esc(c)+'</span>';
-    return '<tr><td>'+clsCell(c==='Unknown'?'':c)+'</td>'+cell(0)+cell(1)+'<td>'+edge+'</td></tr>'}).join('');
-  return '<div class="panel"><h2>Damage by class, team against team</h2>'+plainTable(['Class',esc(teamName(0)),'Damage','Healing','Alive each','Dmg + heal /min',esc(teamName(1)),'Damage','Healing','Alive each','Dmg + heal /min','Edge'],rows)+'<p class="note">Each class is lined up against the same class on the other team. Dmg + heal /min is damage plus healing divided by the minutes the players were alive (from position samples), so healers are not marked down for healing instead of hitting, dying early does not count against someone, and a team with two of a class is not ahead just for having more. Healing is effective healing from players, without passive regen, and a point of healing is counted the same as a point of damage, so read the Damage and Healing columns too. Edge compares the combined rate.'+(est?' This log has no position samples, so alive time is not known and the rate uses the whole match instead.':'')+'</p></div>';
+  var rows=Object.keys(cls).sort(function(a,b){return cls[b][0].dmg+cls[b][1].dmg-cls[a][0].dmg-cls[a][1].dmg}).map(function(c){var o=cls[c],r0=rate(o[0])||0,r1=rate(o[1])||0,mx=Math.max(r0,r1);
+    function side(t){var x=o[t],col=TEAMS[t].col,head='<div class="note" style="margin:0 0 4px"><span style="color:'+col+'">&#9632;</span> '+esc(teamName(t))+'</div>';
+      if(!x.n.length)return '<div class="vst">'+head+'<span class="note" style="margin:0">No '+esc(teamName(t))+' '+esc(c)+'</span></div>';
+      var r=rate(x),w=mx>0&&r?Math.max(2,r/mx*100):0;
+      return '<div class="vst">'+head+'<div>'+x.n.map(function(n){return '<a class="plink" href="#player-'+slug(n)+'">'+esc(n)+'</a>'}).join(', ')+'</div>'+
+        '<div class="vsn">'+(r==null?'-':num(r))+' <span class="note">damage + healing per min alive</span></div>'+
+        '<div class="vsb"><i style="width:'+w+'%;background:'+col+';background:color-mix(in srgb,'+col+' 60%,var(--fg))"></i></div>'+
+        '<div class="note" style="margin:4px 0 0">'+num(x.dmg)+' damage'+(x.heal>0?' &middot; '+num(x.heal)+' healing':'')+(est?'':' &middot; '+dur(x.sec/x.n.length)+' alive each')+'</div></div>'}
+    var edge='<span class="note" style="margin:0">-</span>';
+    if(o[0].n.length&&o[1].n.length&&(r0>0||r1>0)){var w=r0>=r1?0:1,lo=Math.min(r0,r1),hi=Math.max(r0,r1);edge='Edge: <strong style="color:color-mix(in srgb,'+TEAMS[w].col+' 55%,var(--fg))">'+esc(teamName(w))+'</strong> '+(lo>0?'+'+Math.round((hi-lo)/lo*100)+'%':'only')}
+    else if(o[0].n.length!==o[1].n.length)edge='<span class="note" style="margin:0">Only '+esc(teamName(o[0].n.length?0:1))+' has a '+esc(c)+'</span>';
+    return '<div class="vsr"><div class="vsh"><span>'+clsCell(c==='Unknown'?'':c)+'</span><span>'+edge+'</span></div>'+side(0)+side(1)+'</div>'}).join('');
+  return '<div class="panel"><h2>Damage by class, team against team</h2><div class="vs">'+rows+'</div><p class="note">Each class is lined up against the same class on the other team. The big number is damage plus healing divided by the minutes the players were alive (from position samples), so healers are not marked down for healing instead of hitting, dying early does not count against someone, and a team with two of a class is not ahead just for having more. Healing is effective healing from players, without passive regen, and a point of healing counts the same as a point of damage, so read the damage and healing lines too. The bars and Edge compare that rate.'+(est?' This log has no position samples, so alive time is not known and the rate uses the whole match instead.':'')+'</p></div>';
 }
 function teamDamage(d){
   if(!Object.keys(d.series||{}).length)return '<div class="panel"><h2>Damage dealt per 30 seconds</h2><p class="note">No damage dealt in this log.</p></div>';
