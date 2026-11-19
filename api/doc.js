@@ -1,7 +1,7 @@
 'use strict';
 const L = require('./_lib');
 
-module.exports = L.handler(async (req, res) => {
+const route = L.handler(async (req, res) => {
   const c = req.q.c, id = req.q.id;
   if ((c !== 'matches' && c !== 'snapshots') || !L.ID_OK.test(id || '')) return L.send(res, 400, { error: 'bad_target' });
   const p = c + '/' + id + '.json';
@@ -10,6 +10,8 @@ module.exports = L.handler(async (req, res) => {
     if (c === 'snapshots') { const st0 = await L.readState(); if (!st0.published[id] && !L.isAdmin(L.session(req), st0)) return L.send(res, 404, { error: 'not_found' }); }
     const d = await L.getJSON(p); if (!d) return L.send(res, 404, { error: 'not_found' });
     res.statusCode = 200; res.setHeader('Content-Type', 'application/json');
+    /* CORS for public matches only; snapshots stay private until published, so they never get the header */
+    if (c === 'matches') res.setHeader('Access-Control-Allow-Origin', '*');
     /* the page asks with &v=<version>, so each version has its own URL and can be cached hard */
     res.setHeader('Cache-Control', c === 'matches' ? 'public, max-age=31536000, immutable' : 'private, max-age=60');
     return res.end(JSON.stringify(d));
@@ -29,3 +31,18 @@ module.exports = L.handler(async (req, res) => {
   if (req.method === 'DELETE') { await L.delPath(p); if (c === 'snapshots') await L.mutate(s => { delete s.published[id]; }); return L.send(res, 200, { ok: true }); }
   L.send(res, 405, { error: 'method' });
 });
+
+/* CORS preflight is answered here, ahead of L.handler (which rejects every non-GET without a same-origin Origin).
+   Only matches are cross-origin readable; any other target gets a bare 204 with no CORS headers. */
+module.exports = (req, res) => {
+  if (req.method === 'OPTIONS') {
+    res.statusCode = 204;
+    const u = new URL(req.url, 'http://x');
+    if (u.searchParams.get('c') === 'matches') {
+      res.setHeader('Access-Control-Allow-Origin', '*'); res.setHeader('Access-Control-Allow-Methods', 'GET'); res.setHeader('Access-Control-Allow-Headers', 'content-type');
+      res.setHeader('Access-Control-Max-Age', '86400');
+    }
+    return res.end();
+  }
+  return route(req, res);
+};
