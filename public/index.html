@@ -95,6 +95,8 @@ label.chk{display:inline-flex;gap:8px;align-items:center;color:var(--muted);curs
 @media (max-width:560px){.vsr{grid-template-columns:minmax(0,1fr)}}
 .cols{align-items:start;display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:18px}
 .modalbg{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px;z-index:50}.modal{background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:20px;width:min(460px,100%);box-shadow:0 12px 40px rgba(0,0,0,.5)}.modal h2{margin:0 0 6px}
+.mlist{display:grid;gap:10px}.mcard{position:relative;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1.5fr) minmax(0,1fr);gap:14px;align-items:center;padding:14px 16px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}.mcard:hover{border-color:var(--muted)}.mcard .mlink{color:var(--fg);font:600 19px var(--font-d);text-decoration:none;border:0}.mcard .mlink::after{content:'';position:absolute;inset:0}.mcard small{display:block;color:var(--muted);margin-top:3px}.mcard .mfile{opacity:.7;overflow-wrap:anywhere}.mscore{display:flex;gap:12px;align-items:center;flex-wrap:wrap;font:600 18px var(--font-d)}.mscore .mt{display:inline-flex;align-items:center;gap:6px}.mscore .mt i{width:10px;height:10px;border-radius:2px}.mscore .mt.l{color:var(--muted)}.mscore .mt.w{color:var(--fg)}.mscore .n{font-variant-numeric:tabular-nums}.mscore .vs{color:var(--muted);font-size:13px;text-transform:uppercase}.mme{display:flex;flex-direction:column;gap:2px;align-items:flex-start}.mfbar{display:flex;gap:12px 16px;flex-wrap:wrap;align-items:center}.mfbar input[type=search]{flex:1 1 220px;min-width:0}.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+@media (max-width:700px){.mcard{grid-template-columns:minmax(0,1fr);gap:8px}}
 nav.sec{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 16px;border-bottom:1px solid var(--line)}nav.sec a{color:var(--muted);font:600 16px/1 var(--font-d);letter-spacing:.06em;text-transform:uppercase;padding:10px 16px 11px;border-bottom:3px solid transparent;margin-bottom:-1px;text-decoration:none}nav.sec a:hover{color:var(--fg)}nav.sec a[aria-current=page]{color:var(--fg);border-bottom-color:var(--accent)}
 .gxchips{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}.gxchips button{background:var(--panel);border:1px solid var(--line);border-radius:6px;color:var(--fg);font:600 14px/1 var(--font-d);padding:8px 12px;cursor:pointer}.gxchips button:hover{border-color:var(--muted)}.gxchips button[aria-pressed=true]{border-color:var(--accent);box-shadow:inset 0 -3px 0 var(--accent)}.gxsub .subnav{margin-bottom:10px;border-bottom:0}.gxsub .subnav button{font-size:14px;padding:8px 14px;border:1px solid var(--line);border-radius:6px;margin:0 4px 6px 0}.gxsub .subnav button[aria-selected=true]{border-color:var(--accent);background:var(--panel)}
 .skwrap{display:grid;grid-template-columns:128px minmax(0,1fr);gap:18px;align-items:start}.skrail{position:sticky;top:8px;display:flex;flex-direction:column;gap:6px}.skrail button{display:flex;align-items:center;gap:8px;text-align:left;background:none;border:1px solid var(--line);border-radius:6px;color:var(--fg);font:600 14px/1 var(--font-d);letter-spacing:.04em;padding:9px 10px;cursor:pointer}.skrail button:hover{border-color:var(--muted)}.skrail button[aria-pressed=true]{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}.skmain{min-width:0}
@@ -1158,7 +1160,12 @@ function adminShell(h,ov,bg,nb){
 var evModal=null;
 function evList(){
   var list=Object.keys(snaps).map(function(k){return {id:k,s:snaps[k]}}).sort(function(a,b){return (b.s.createdAt||0)-(a.s.createdAt||0)});
-  return list.length?'<ul class="events">'+list.map(function(x){return '<li><time>'+esc(new Date(x.s.createdAt||0).toLocaleDateString(undefined,{month:'short',day:'numeric'}))+'</time><span class="tag">'+(x.s.matchIds||[]).length+' matches</span><span><a class="plink" href="#event-'+esc(x.id)+'">'+esc(x.s.name)+'</a></span><span style="margin-left:auto;display:flex;gap:8px;align-items:center">'+pubTag(x.id)+pubBtn(x.id)+'</span></li>'}).join('')+'</ul>':'<p class="note">No events yet.</p>';
+  return list.length?'<ul class="events">'+list.map(function(x){return '<li><time>'+esc(new Date(x.s.createdAt||0).toLocaleDateString(undefined,{month:'short',day:'numeric'}))+'</time><span class="tag">'+(x.s.matchIds||[]).length+' matches</span><span><a class="plink" href="#event-'+esc(x.id)+'">'+esc(x.s.name)+'</a></span><span style="margin-left:auto;display:flex;gap:8px;align-items:center">'+pubTag(x.id)+pubBtn(x.id)+(function(){var on=confirmKey==='e:'+x.id;return '<button class="btn" type="button" data-confirm="e:'+esc(x.id)+'" aria-label="Delete event '+esc(x.s.name)+'"'+(on?' style="background:var(--bad);color:#fff"':' style="background:transparent;color:var(--fg);border:1px solid var(--line)"')+'>'+(on?'Click again to delete':'Delete')+'</button>'})()+'</span></li>'}).join('')+'</ul>':'<p class="note">No events yet.</p>';
+}
+function evDelete(id){
+  if(!db)return;
+  var go=function(){return db.collection('snapshots').doc(id).delete()};
+  (pubIds[id]?api('POST','/api/admin',{op:'unpublish',id:id}).then(go,go):go()).then(function(){confirmKey='';adminData=null;return refresh(true)},function(){confirmKey='';render()});
 }
 function matchHandler(){
   var ms=allMatches().filter(function(m){return m.saved}).sort(function(a,b){return playedAt(b.doc)-playedAt(a.doc)||(b.doc.uploadedAt||0)-(a.doc.uploadedAt||0)});
@@ -1173,7 +1180,7 @@ function matchHandler(){
       return '<tr><td style="padding:0"><label class="selbox"><input type="checkbox" aria-label="Select '+esc(d.name)+'" data-delsel="'+esc(m.id)+'"'+(delSel[m.id]?' checked':'')+'></label></td><td><a class="plink" href="#match-'+esc(m.id)+'"><strong>'+esc(d.name)+'</strong></a>'+(isPractice(d)?' <span class="tag">Practice vs bots</span>':'')+'</td><td>'+esc(t.toLocaleDateString())+' '+esc(t.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}))+'</td><td>'+dur(d.duration)+'</td><td>'+(d.players||[]).filter(function(p){return !isBot(p.name)}).length+'</td><td>'+(hasResult(d)?(d.result.winner==='draw'?'Draw':esc(teamName(d.result.winner))+' won'):'-')+'</td>'+
       '<td style="text-align:right;white-space:nowrap"><button class="btn" type="button" data-confirm="m:'+esc(m.id)+'" aria-label="Delete '+esc(d.name)+'"'+(on?' style="background:var(--bad);color:#fff"':' '+gh)+'>'+(on?'Click again to delete':'Delete')+'</button></td></tr>'}).join('')+'</tbody></table></div>';
   h+='<div class="panel"><h2>Clear in bulk</h2><div style="display:flex;gap:10px;flex-wrap:wrap">'+confirmBtn('practice','Delete practice matches vs bots',bulkIds('practice'))+confirmBtn('summary','Delete imported summaries',bulkIds('summary'))+confirmBtn('all','Delete ALL matches',bulkIds('all'),true)+'</div><p class="note">Events keep their name but lose the deleted matches.</p></div>';
-  h+='<div class="panel"><h2>Events</h2>'+evList()+'</div>';
+  h+='<div class="panel"><h2>Events</h2><p class="note" style="margin-top:0">Deleting an event removes its page and unpublishes it. The matches stay. The button asks you to click twice.</p>'+evList()+'</div>';
   return h;
 }
 function evModalHtml(){
@@ -1198,15 +1205,57 @@ document.addEventListener('click',function(e){
 });
 document.addEventListener('input',function(e){if(e.target&&e.target.id==='evmName'&&evModal)evModal.name=e.target.value});
 document.addEventListener('keydown',function(e){if(!evModal)return;if(e.key==='Escape'&&!evModal.busy){evModal=null;render()}else if(e.key==='Enter'&&e.target.id==='evmName'){evmCreate(true)}});
-function viewMatches(){
-  var ms=allMatches().sort(function(a,b){return playedAt(b.doc)-playedAt(a.doc)||(b.doc.uploadedAt||0)-(a.doc.uploadedAt||0)});
-  var h='<div><h1>Matches</h1><p class="sub">'+ms.length+' stored '+statusLine()+'</p></div>';
-  if(!ms.length)return h+empty('No matches yet','Upload a combat log on the Upload tab.');
-  h+='<div class="panel scroll"><table><thead><tr><th scope="col"><button type="button" disabled>Log</button></th><th scope="col"><button type="button" disabled>Played</button></th><th scope="col"><button type="button" disabled>Length</button></th><th scope="col"><button type="button" disabled>Players</button></th><th scope="col"><button type="button" disabled>Result</button></th><th scope="col"><button type="button" disabled>Kills</button></th><th scope="col"><button type="button" disabled>Damage</button></th><th scope="col"><button type="button" disabled></button></th></tr></thead><tbody>';
-  ms.forEach(function(m){var d=m.doc,k=0,dm=0;(d.players||[]).forEach(function(p){k+=p.kills;dm+=p.dmg});
-    h+='<tr class="click" tabindex="0" data-go="match-'+esc(m.id)+'"><td><strong>'+esc(d.name)+'</strong></td><td>'+esc(new Date(playedAt(d)).toLocaleDateString())+' '+esc(new Date(playedAt(d)).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}))+'</td><td>'+dur(d.duration)+'</td><td>'+(d.players||[]).length+'</td><td>'+(hasResult(d)?(d.result.winner==='draw'?'Draw':teamName(d.result.winner)+' won'):'-')+'</td><td>'+num(k)+'</td><td>'+num(dm)+'</td><td>'+(isPractice(d)?'<span class="tag">Practice vs bots</span> ':'')+(m.saved?'':'<span class="tag warn">Not saved</span>')+'</td></tr>'});
-  return h+'</tbody></table></div>';
+/* Matches list for players: when it was played, the score, who won, who stood out, and (if you have claimed a player) how you did. Search and filters on top. */
+var mf={q:'',res:'all',cls:'all',mine:false,prac:false};
+function mcHumans(d){return (d.players||[]).filter(function(p){return !isBot(p.name)})}
+function mcInfo(m){
+  var d=m.doc,hu=mcHumans(d),cnt=[0,0],rated=!d.noDmg,best=null,bestV=-1,mine=null,claim=me&&me.claim?me.claim:'';
+  hu.forEach(function(p){if(p.team===0||p.team===1)cnt[p.team]++;var v=rated?perf(p,d).r:(p.score||0);if(v>bestV){bestV=v;best=p}if(claim&&p.name===claim)mine=p});
+  var tm=d.teams||{},pts=[(tm[0]||{}).points,(tm[1]||{}).points];
+  return {m:m,d:d,hu:hu,cnt:cnt,rated:rated,mvp:best,mvpV:bestV,mine:mine,pts:pts,t:playedAt(d),
+    fmt:cnt[0]&&cnt[1]?cnt[0]+' v '+cnt[1]:hu.length+' player'+(hu.length===1?'':'s')};
 }
+function mcWhen(t){var x=new Date(t);return x.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'})+', '+x.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}
+function mcCard(x){
+  var d=x.d,w=hasResult(d)&&d.result.winner!=='draw'?d.result.winner:null,draw=hasResult(d)&&d.result.winner==='draw';
+  var sc=[0,1].map(function(t){var win=w===t,col=TEAMS[t]?TEAMS[t].col:'var(--muted)';
+    return '<span class="mt'+(win?' w':w==null?'':' l')+'"><i style="background:'+col+'"></i>'+esc(teamName(t))+(x.pts[t]!=null?' <b class="n">'+num(x.pts[t])+'</b>':'')+(win?' <span class="tag ok">Won</span>':'')+'</span>'});
+  var h='<div class="mcard"><div class="mc1"><a class="mlink" href="#match-'+esc(x.m.id)+'">'+esc(mcWhen(x.t))+'</a><small>'+esc(x.fmt)+' &middot; '+dur(d.duration||0)+(x.m.saved?'':' <span class="tag warn">Not saved</span>')+(isPractice(d)?' <span class="tag">Practice vs bots</span>':'')+'</small><small class="mfile">'+esc(d.name||'')+'</small></div>'+
+    '<div class="mc2"><div class="mscore">'+sc[0]+'<span class="vs" aria-hidden="true">vs</span>'+sc[1]+'</div>'+(draw?'<small>Draw</small>':w==null?'<small>No result recorded</small>':'')+'</div>'+
+    '<div class="mc3">';
+  if(x.mine){var p=x.mine,o=outcome(d,p.team),r=x.rated?perf(p,d).r:null;
+    h+='<div class="mme"><span class="tag '+(o==='win'?'ok':o==='loss'?'err':'')+'">'+(o==='win'?'Win':o==='loss'?'Loss':o==='draw'?'Draw':'You')+'</span> '+clsPlain(p.cls)+'<small>You: '+(p.kills||0)+' / '+(p.deaths||0)+' / '+(p.assists||0)+' K/D/A'+(r!=null?' &middot; rating '+num(r):'')+'</small></div>';
+  }else if(x.mvp)h+='<div class="mme"><small>Top performer</small><span>'+clsPlain(x.mvp.cls)+' <strong>'+esc(x.mvp.name)+'</strong></span>'+(x.rated?'<small>rating '+num(x.mvpV)+'</small>':'')+'</div>';
+  return h+'</div></div>';
+}
+function viewMatches(){
+  var all=allMatches().sort(function(a,b){return playedAt(b.doc)-playedAt(a.doc)||(b.doc.uploadedAt||0)-(a.doc.uploadedAt||0)});
+  var h='<div><h1>Matches</h1>';
+  if(!all.length)return h+'<p class="sub">0 stored '+statusLine()+'</p></div>'+empty('No matches yet','Matches appear here once an admin uploads them.');
+  var claim=me&&me.claim?me.claim:'',q=mf.q.trim().toLowerCase(),infos=all.map(mcInfo),hiddenPrac=0;
+  var list=infos.filter(function(x){
+    if(isPractice(x.d)&&!mf.prac){hiddenPrac++;return false}
+    if(mf.mine&&!x.mine)return false;
+    if(q&&String(x.d.name||'').toLowerCase().indexOf(q)<0&&!x.hu.some(function(p){return p.name.toLowerCase().indexOf(q)>=0}))return false;
+    if(mf.cls!=='all'&&!x.hu.some(function(p){return p.cls===mf.cls}))return false;
+    var w=hasResult(x.d)?x.d.result.winner:null;
+    if(mf.res==='0'||mf.res==='1')return w===+mf.res;
+    if(mf.res==='mywin'||mf.res==='myloss'){if(!x.mine)return false;var o=outcome(x.d,x.mine.team);return o===(mf.res==='mywin'?'win':'loss')}
+    return true});
+  h+='<p class="sub">'+list.length+' of '+all.length+' match'+(all.length===1?'':'es')+' '+statusLine()+'</p></div>';
+  var sel='style="padding:8px 10px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--fg);font:inherit"';
+  h+='<div class="panel mfbar"><label class="sr" for="mfq">Search</label><input id="mfq" type="search" placeholder="Search a player or match" value="'+esc(mf.q)+'" '+sel+'>'+
+    '<label class="chk">Result <select id="mfres" '+sel+'><option value="all">All</option><option value="0"'+(mf.res==='0'?' selected':'')+'>'+esc(teamName(0))+' won</option><option value="1"'+(mf.res==='1'?' selected':'')+'>'+esc(teamName(1))+' won</option>'+
+    (claim?'<option value="mywin"'+(mf.res==='mywin'?' selected':'')+'>My wins</option><option value="myloss"'+(mf.res==='myloss'?' selected':'')+'>My losses</option>':'')+'</select></label>'+
+    '<label class="chk">Class <select id="mfcls" '+sel+'><option value="all">All classes</option>'+CLASSES.map(function(c){return '<option value="'+c+'"'+(mf.cls===c?' selected':'')+'>'+c+'</option>'}).join('')+'</select></label>'+
+    (claim?'<label class="chk"><input type="checkbox" id="mfmine"'+(mf.mine?' checked':'')+'> My matches</label>':'')+
+    '<label class="chk"><input type="checkbox" id="mfprac"'+(mf.prac?' checked':'')+'> Include practice vs bots'+(hiddenPrac&&!mf.prac?' ('+hiddenPrac+' hidden)':'')+'</label></div>';
+  if(!list.length)return h+empty('No matches fit these filters','<button class="btn ghost" type="button" data-mfclear="1">Clear filters</button>');
+  return h+'<div class="mlist">'+list.map(mcCard).join('')+'</div>';
+}
+document.addEventListener('input',function(e){if(e.target&&e.target.id==='mfq'){mf.q=e.target.value;render();var i=document.getElementById('mfq');if(i){i.focus();try{i.setSelectionRange(mf.q.length,mf.q.length)}catch(x){}}}});
+document.addEventListener('change',function(e){var t=e.target;if(!t||!t.id)return;if(t.id==='mfres'){mf.res=t.value;render()}else if(t.id==='mfcls'){mf.cls=t.value;render()}else if(t.id==='mfmine'){mf.mine=t.checked;render()}else if(t.id==='mfprac'){mf.prac=t.checked;render()}});
+document.addEventListener('click',function(e){if(e.target.closest&&e.target.closest('[data-mfclear]')){mf={q:'',res:'all',cls:'all',mine:false,prac:true};render()}});
 function dmgSum(a){return (a||[]).reduce(function(s,v){return s+(v||0)},0)}
 function niceTop(mx){var step=Math.pow(10,Math.floor(Math.log10(mx||1))),top=Math.ceil(mx/step)*step||1;if(top/step<2)top=step*2;return top}
 /* players that have a damage series, bots hidden when asked */
@@ -2185,7 +2234,7 @@ document.addEventListener('click',function(e){
   var xm=e.target.closest('[data-expm]');if(xm){exportMatches(allMatches().filter(function(m){return xm.dataset.expm==='all'||delSel[m.id]}),xm.dataset.expm==='all'?'all-matches':'selected-matches');return}
   var xo=e.target.closest('[data-expone]');if(xo){var mo=allMatches().filter(function(m){return m.id===xo.dataset.expone});if(mo.length)exportMatches(mo,(mo[0].doc.name||'match').replace(/\.[a-z]+$/i,''));return}
   var xe=e.target.closest('[data-expev]');if(xe){var sn=snaps[xe.dataset.expev];if(sn){var all=allMatches();exportMatches((sn.matchIds||[]).map(function(k){return all.filter(function(m){return m.id===k})[0]}).filter(Boolean),'event-'+(sn.name||'event').replace(/[^a-z0-9]+/gi,'-').toLowerCase(),{event:{id:xe.dataset.expev,name:sn.name,createdAt:sn.createdAt}})}return}
-  var cf=e.target.closest('[data-confirm]');if(cf){var k=cf.dataset.confirm;if(confirmKey===k){delMatches(k.indexOf('m:')===0?[k.slice(2)]:bulkIds(k))}else{confirmKey=k;render()}return}
+  var cf=e.target.closest('[data-confirm]');if(cf){var k=cf.dataset.confirm;if(confirmKey===k){if(k.indexOf('e:')===0)evDelete(k.slice(2));else delMatches(k.indexOf('m:')===0?[k.slice(2)]:bulkIds(k))}else{confirmKey=k;render()}return}
   if(confirmKey){confirmKey='';render()}
   var da=e.target.closest('[data-delall]');if(da){var on2=da.dataset.delall==='1';allMatches().forEach(function(m){if(m.saved)delSel[m.id]=on2});render();return}
   var dd=e.target.closest('[data-discard]');if(dd){var ui=+dd.dataset.discard,u=uploads[ui];if(u&&u.id&&local[u.id])delete local[u.id];uploads.splice(ui,1);render();return}
