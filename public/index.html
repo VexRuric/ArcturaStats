@@ -313,15 +313,16 @@ function allMatches(){var m={},k;for(k in local)m[k]=local[k];for(k in remote)m[
    Tanking = (damage taken + damage absorbed or blocked) per minute against the class reference, scaled by how well the player stayed alive,
    so soaking damage only counts while surviving it, and it is capped at 2 so standing in front of mobs cannot carry a rating.
    Survival is 1.5 with no deaths, 1.0 at the reference death rate, 0 at three times the reference.
+   Priest swaps in a healing component: damage 20%, score 20%, kills 10%, survival 20%, healing 30% (heal/min against 800, capped at 2).
    The rating line is an exponential moving average of match ratings (alpha 0.35), so it moves with form. */
-var REF={dpm:2000,spm:70,kpm:0.5,dth:0.1,tpm:600,w:{dmg:0.35,score:0.25,kills:0.2,surv:0.2,tank:0}},REF_CLASS={Assassin:{},Hunter:{},Mystic:{},Priest:{},Warrior:{dpm:1400,spm:60,kpm:0.4,dth:0.12,tpm:600,w:{dmg:0.25,score:0.25,kills:0.15,surv:0.15,tank:0.2}}},ALPHA=0.35,PROVISIONAL=5;
+var REF={dpm:2000,spm:70,kpm:0.5,dth:0.1,tpm:600,w:{dmg:0.35,score:0.25,kills:0.2,surv:0.2,tank:0,heal:0},hpm:800},REF_CLASS={Assassin:{},Hunter:{},Mystic:{},Priest:{dpm:1200,w:{dmg:0.2,score:0.2,kills:0.1,surv:0.2,heal:0.3}},Warrior:{dpm:1400,spm:60,kpm:0.4,dth:0.12,tpm:600,w:{dmg:0.25,score:0.25,kills:0.15,surv:0.15,tank:0.2,heal:0}}},ALPHA=0.35,PROVISIONAL=5;
 function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
 function refFor(c){var o=Object.assign({},REF,REF_CLASS[c]||{});o.w=Object.assign({},REF.w,(REF_CLASS[c]||{}).w||{});return o}
 function perf(p,d){
   var mins=Math.max((d.duration||0)/60,1),R=refFor(p.cls);
   var comp={dmg:clamp(p.dmg/mins/R.dpm,0,2),score:clamp(p.score/mins/R.spm,0,2),kills:clamp(p.kills/mins/R.kpm,0,2),surv:clamp(1.5-0.5*((p.deaths/mins)/R.dth),0,1.5)};
-  var W=R.w;comp.tank=clamp(((p.taken||0)+(p.absorbed||0))/mins/R.tpm,0,2)*clamp(comp.surv/1.5,0,1);
-  return {r:clamp(100*(W.dmg*comp.dmg+W.score*comp.score+W.kills*comp.kills+W.surv*comp.surv+W.tank*comp.tank),0,200),comp:comp,mins:mins};
+  var W=R.w;comp.heal=clamp((p.heal||0)/mins/R.hpm,0,2);comp.tank=clamp(((p.taken||0)+(p.absorbed||0))/mins/R.tpm,0,2)*clamp(comp.surv/1.5,0,1);
+  return {r:clamp(100*(W.dmg*comp.dmg+W.score*comp.score+W.kills*comp.kills+W.surv*comp.surv+W.tank*comp.tank+W.heal*comp.heal),0,200),comp:comp,mins:mins};
 }
 function playedAt(d){var m=/(\d{4})-(\d\d)-(\d\d)[_ T](\d\d)-(\d\d)-(\d\d)/.exec(d.name||'');return m?new Date(+m[1],m[2]-1,+m[3],+m[4],+m[5],+m[6]).getTime():(d.uploadedAt||0)}
 function slug(n){return String(n).replace(/[^A-Za-z0-9]/g,function(c){return '-'+c.charCodeAt(0).toString(16)+'-'})}
@@ -1545,7 +1546,7 @@ function ratingChart(h,key){
   return s+'</svg><div class="legend"><span><i style="background:var(--accent)"></i>Rating (moving average)</span><span><i style="background:var(--muted)"></i>Single match</span></div>';
 }
 function compBars(c){
-  var rows=[['Damage','dmg',2],['Score','score',2],['Kills','kills',2],['Survival','surv',1.5]];
+  var rows=[['Damage','dmg',2],['Score','score',2],['Kills','kills',2],['Survival','surv',1.5]];if(c.heal)rows.push(['Healing','heal',2]);if(c.tank)rows.push(['Tanking','tank',2]);
   return rows.map(function(r){var v=c[r[1]];return '<div class="cb"><span>'+r[0]+'</span><div class="track"><i style="width:'+Math.round(100*v/r[2])+'%"></i><b style="left:'+Math.round(100/r[2])+'%"></b></div><em>'+num(v*100)+'%</em></div>'}).join('');
 }
 var openCls={},CLASSES=['Assassin','Hunter','Mystic','Priest','Warrior'],LVMAX=10;
@@ -1569,14 +1570,14 @@ function viewPlayer(slugId){
   var h=history(name);if(!h.length)return '<div><h1>'+esc(name)+'</h1></div>'+empty('No rated matches','Every match for this player is practice against bots. Untick Rated matches only to include them.');var last=h[h.length-1],peak=Math.max.apply(null,h.map(function(x){return x.ema}));
   var tot={dmg:0,k:0,d:0,mins:0,score:0,hits:0,crits:0,best:0};
   h.forEach(function(x){tot.dmg+=x.p.dmg;tot.k+=x.p.kills;tot.d+=x.p.deaths;tot.mins+=x.pf.mins;tot.score+=x.p.score;tot.hits+=x.p.hits;tot.crits+=x.p.crits;if(x.p.maxHit>tot.best)tot.best=x.p.maxHit});
-  var avgC={dmg:0,score:0,kills:0,surv:0};h.forEach(function(x){for(var k in avgC)avgC[k]+=x.pf.comp[k]/h.length});
+  var avgC={dmg:0,score:0,kills:0,surv:0,heal:0,tank:0};h.forEach(function(x){for(var k in avgC)avgC[k]+=x.pf.comp[k]/h.length});
   var trend='';if(h.length>=4){var a=h.slice(-3),b=h.slice(0,-3),m=function(z){return z.reduce(function(s,x){return s+x.r},0)/z.length},dlt=m(a)-m(b);trend=(dlt>=0?'+':'')+num(dlt)}
   var mainC=Object.keys(h.reduce(function(o,x){if(x.cls)o[x.cls]=(o[x.cls]||0)+1;return o},{})).sort(function(a,b){var f=function(c){return h.filter(function(x){return x.cls===c}).length};return f(b)-f(a)})[0];
   var out='<div class="bar"><div class="chero">'+(mainC&&CIMG[mainC]?'<a href="#class-'+mainC+'"><img class="cimg" alt="'+mainC+'" src="'+CIMG[mainC]+'"></a>':'')+'<div><h1>'+esc(name)+'</h1><p class="sub">'+h.length+' match'+(h.length===1?'':'es')+' tracked ('+h.filter(function(x){return x.practice}).length+' practice vs bots), last played '+esc(new Date(last.t).toLocaleDateString())+' '+(h.length<PROVISIONAL?'<span class="tag warn">Provisional until '+PROVISIONAL+' matches</span>':'')+(isBot(name)?' <span class="tag">Test bot</span>':'')+'</p></div></div><div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><label class="chk"><input type="checkbox" id="ratedChk"'+(ratedOnly?' checked':'')+'> Rated matches only</label><a class="btn ghost" href="#players" style="text-decoration:none">All players</a></div></div>';
   out+=claimBlock(name);
   out+='<div class="kpis"><div class="kpi"><b>'+num(last.ema)+'</b><small>Skill rating, '+tier(last.ema)+'</small></div><div class="kpi"><b>'+num(peak)+'</b><small>Peak rating</small></div><div class="kpi"><b>'+(trend||'-')+'</b><small>Last 3 vs earlier</small></div><div class="kpi"><b>'+num(tot.d?tot.k/tot.d:tot.k,2)+'</b><small>K/D</small></div><div class="kpi"><b>'+num(tot.dmg/tot.mins)+'</b><small>Damage/min</small></div></div>';
-  out+='<div class="cols"><div class="panel"><h2>Skill over match history</h2>'+ratingChart(h,'ema')+'</div><div class="panel"><h2>What drives the rating</h2><div class="comps">'+compBars(avgC)+'</div><p class="note">Average over all matches, as a share of the reference. The tick marks the reference (100%). Damage 35%, score 25%, kills 20%, survival 20%.</p></div></div>';
-  var byC={};h.forEach(function(x){var c=x.cls||'?';(byC[c]||(byC[c]={cls:c==='?'?'':c,matches:0,dmg:0,k:0,d:0,mins:0,score:0,hits:0,crits:0,best:0,rating:0,peak:0,comp:{dmg:0,score:0,kills:0,surv:0},list:[]})).list.push(x)});
+  out+='<div class="cols"><div class="panel"><h2>Skill over match history</h2>'+ratingChart(h,'ema')+'</div><div class="panel"><h2>What drives the rating</h2><div class="comps">'+compBars(avgC)+'</div><p class="note">Average over all matches, as a share of the reference. The tick marks the reference (100%). Default weights: damage 35%, score 25%, kills 20%, survival 20%. Priest swaps in healing (30%) and Warrior tanking (20%).</p></div></div>';
+  var byC={};h.forEach(function(x){var c=x.cls||'?';(byC[c]||(byC[c]={cls:c==='?'?'':c,matches:0,dmg:0,k:0,d:0,mins:0,score:0,hits:0,crits:0,best:0,rating:0,peak:0,comp:{dmg:0,score:0,kills:0,surv:0,heal:0,tank:0},list:[]})).list.push(x)});
   var crows=Object.keys(byC).map(function(c){var o=byC[c];o.list.forEach(function(x){o.matches++;o.dmg+=x.p.dmg;o.k+=x.p.kills;o.d+=x.p.deaths;o.mins+=x.pf.mins;o.score+=x.p.score;o.hits+=x.p.hits;o.crits+=x.p.crits;if(x.p.maxHit>o.best)o.best=x.p.maxHit;for(var q in o.comp)o.comp[q]+=x.pf.comp[q]/o.list.length;if(x.cema>o.peak)o.peak=x.cema});
     o.rating=o.list[o.list.length-1].cema;o.kdr=o.d?o.k/o.d:o.k;o.dpm=o.dmg/o.mins;o.spm=o.score/o.mins;o.crit=o.hits?100*o.crits/o.hits:0;return o});
   var ob={s:0,m:0,l:0,b:0,rp:0,rr:0,rc:0,rk:0,any:false,rany:false};playerGames(name).forEach(function(x){var mz=mobSizes(x.p),rl=relicOf(x.p);if(mz){ob.any=true;ob.s+=mz.s;ob.m+=mz.m;ob.l+=mz.l;ob.b+=mz.b}if(rl){ob.rany=true;ob.rp+=rl.p;ob.rr+=rl.r;ob.rc+=rl.c;ob.rk+=rl.k}});
