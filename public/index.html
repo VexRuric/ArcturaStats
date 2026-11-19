@@ -1484,7 +1484,7 @@ function viewMatch(id){
   var AN=analyze(d);
   var rows=(d.players||[]).filter(function(p){return !(hideBots&&isBot(p.name))}).map(function(p){var r=Object.assign({},p);r.kdr=p.deaths?p.kills/p.deaths:p.kills;r.crit=p.hits?100*p.crits/p.hits:0;r.dpm=d.duration?p.dmg/(d.duration/60):0;r.mob=p.mobKills;r.rating=perf(p,d).r;r.mitig=(p.absorbed||0)+(p.mit||0);r.ea=(AN.players[p.name]||{}).ea||0;return r});
   var h='<div class="bar"><div><h1>'+esc(d.name)+'</h1><p class="sub">'+dur(d.duration)+' long, '+num(d.rows)+' log rows, uploaded '+esc(new Date(d.uploadedAt||0).toLocaleString())+(isPractice(d)?' <span class="tag">Practice vs bots</span>':'')+(d.summary?' <span class="tag warn">Imported summary, '+(d.noDmg?'no damage data':'no hit data')+(d.partial?', roster may be incomplete':'')+'</span>':'')+(m.saved?'':' <span class="tag warn">Not saved</span>')+'</p></div>'+
-    '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><label class="chk"><input type="checkbox" id="botsChk"'+(hideBots?' checked':'')+'> Hide bot players</label><a class="btn ghost" href="#matches" style="text-decoration:none">All matches</a><button class="btn ghost" type="button" data-card="copy">Copy stats image</button><button class="btn ghost" type="button" data-card="save">Save PNG</button><span class="note" id="cardMsg" role="status" style="margin:0"></span>'+(canEdit?'<button class="btn ghost" type="button" data-expone="'+esc(id)+'">Export JSON</button>':'')+(canEdit&&m.saved?'<button class="btn ghost" type="button" data-del="'+esc(id)+'">Remove</button>':'')+'</div></div>';
+    '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><label class="chk"><input type="checkbox" id="botsChk"'+(hideBots?' checked':'')+'> Hide bot players</label><a class="btn ghost" href="#matches" style="text-decoration:none">All matches</a><button class="btn ghost" type="button" data-card="copy">Copy stats image</button><button class="btn ghost" type="button" data-card="save">Save PNG</button><span class="note" id="cardMsg" role="status" style="margin:0"></span>'+(canEdit?'<button class="btn ghost" type="button" data-expone="'+esc(id)+'">Export JSON</button>':'')+(canEdit&&m.saved&&d.ledger?'<button class="btn ghost" type="button" data-rebuild="'+esc(id)+'">Rebuild from raw ledger</button>':'')+(canEdit&&m.saved?'<button class="btn ghost" type="button" data-del="'+esc(id)+'">Remove</button>':'')+(rebuildMsg?'<span class="note" role="status" style="margin:0">'+esc(rebuildMsg)+'</span>':'')+'</div></div>';
   var ts=d.teams||{},tk=Object.keys(ts);
   var fk=Object.keys(TEAMS).map(Number);Object.keys(ts).forEach(function(k){if(fk.indexOf(+k)<0)fk.push(+k)});
   var facs='<div class="fac">'+fk.map(function(k){var s=ts[k]||{kills:0,points:0,relics:0},w=hasResult(d)&&d.result.winner===k;return '<div class="fcard'+(w?' win':'')+'" style="--fc:'+(TEAMS[k]?TEAMS[k].col+'33':'transparent')+'">'+(TFLAG[k]?'<img alt="'+esc(teamName(k))+' banner" src="'+TFLAG[k]+'">':'')+'<div><b>'+esc(teamName(k))+'</b>'+(w?' <span class="tag ok">Winner</span>':'')+'<p class="note" style="margin:4px 0 0">'+s.kills+' kills, '+s.points+' points, '+s.relics+' relic'+(s.relics===1?'':'s')+(s.carrierKills?', '+s.carrierKills+' carrier kill'+(s.carrierKills===1?'':'s'):'')+'</p></div></div>'}).join('')+'</div>';
@@ -1620,7 +1620,7 @@ function viewUpload(){if(!canEdit)return '<div><h1>Upload</h1></div>'+empty('Adm
   if(!canWrite)h+='<p class="note err">Your access level can read stats but not save new matches. Parsed files stay in this tab only.</p>';
   if(uploads.length){
     h+='<div class="panel scroll"><table><thead><tr><th scope="col"><button type="button" disabled>File</button></th><th scope="col"><button type="button" disabled>Length</button></th><th scope="col"><button type="button" disabled>Players</button></th><th scope="col"><button type="button" disabled>Status</button></th><th scope="col"><button type="button" disabled></button></th></tr></thead><tbody>'+
-    uploads.map(function(u,i){return '<tr><td><strong>'+esc(u.name)+'</strong></td><td>'+(u.doc?dur(u.doc.duration):'-')+'</td><td>'+(u.doc?u.doc.players.length:'-')+'</td><td class="'+(u.err?'err':u.saved?'ok':'')+'">'+esc(u.err||(u.saved?'Saved':u.dup?'Already saved':'Ready'))+'</td><td>'+(u.doc&&!u.saved&&!u.dup&&db&&canWrite?'<button class="btn" type="button" data-save="'+i+'">Save</button> ':'')+(u.doc&&u.raw&&/^\s*\ufeff?\s*\{/.test(u.raw)?'<button class="btn ghost" type="button" data-expraw="'+i+'" title="The file as you uploaded it, with every field">Original JSON</button> ':'')+(u.doc?'<button class="btn ghost" type="button" data-expdoc="'+i+'" title="What this site stores, plus per skill numbers">Parsed JSON</button> ':'')+'<button class="btn" type="button" data-discard="'+i+'" style="background:transparent;color:var(--fg);border:1px solid var(--line)">Drop</button></td></tr>'}).join('')+'</tbody></table></div>';
+    uploads.map(function(u,i){return '<tr><td><strong>'+esc(u.name)+'</strong></td><td>'+(u.doc?dur(u.doc.duration):'-')+'</td><td>'+(u.doc?u.doc.players.length:'-')+'</td><td class="'+(u.err?'err':u.saved?'ok':'')+'">'+esc(u.err||(u.saved?'Saved'+(u.rawSaved?' (raw ledger kept)':u.rawNote?'. '+u.rawNote:''):u.dup?'Already saved':'Ready'))+'</td><td>'+(u.doc&&!u.saved&&!u.dup&&db&&canWrite?'<button class="btn" type="button" data-save="'+i+'">Save</button> ':'')+(u.doc&&u.raw&&/^\s*\ufeff?\s*\{/.test(u.raw)?'<button class="btn ghost" type="button" data-expraw="'+i+'" title="The file as you uploaded it, with every field">Original JSON</button> ':'')+(u.doc?'<button class="btn ghost" type="button" data-expdoc="'+i+'" title="What this site stores, plus per skill numbers">Parsed JSON</button> ':'')+'<button class="btn" type="button" data-discard="'+i+'" style="background:transparent;color:var(--fg);border:1px solid var(--line)">Drop</button></td></tr>'}).join('')+'</tbody></table></div>';
   }
   h+='<div class="panel"><h2>What the logs contain</h2><p class="note" style="margin:8px 0 0">Per player: damage (to players, mobs, boss), damage taken, kills, deaths, mob and boss kills, score, damage per 30 seconds, kill and capture events. Class is inferred from the vitals and regen effects. The log has no ability names (every hit is AeonResolvedDamageEffect) and no player to player healing yet, so ability and healing pages need those two fields added to the log.</p></div>';
   return h;
@@ -1908,6 +1908,7 @@ document.addEventListener('input',function(e){if(e.target&&e.target.id==='snapNa
 document.addEventListener('toggle',function(e){var d=e.target;if(d&&d.classList&&d.classList.contains('cdet'))openCls[d.dataset.cls]=d.open},true);
 document.addEventListener('change',function(e){var t=e.target;if(t&&t.dataset&&t.dataset.evmap){subSel['evmap-'+t.dataset.evmap]=t.value;render()}});
 document.addEventListener('click',function(e){
+  var rb=e.target.closest('[data-rebuild]');if(rb){rebuildMatch(rb.dataset.rebuild);return}
   var sb=e.target.closest('[data-sub]');if(sb){var q=sb.dataset.sub,i=q.lastIndexOf('|');subSel[q.slice(0,i)]=q.slice(i+1);render();return}
   var t=e.target.closest('[data-sort]');if(t){var p=t.dataset.sort.split(':'),s=sortState[p[0]];s.d=s.k===p[1]?-s.d:(p[1]==='name'||p[1]==='main'||p[1]==='cls'?1:p[1]==='t'?-1:-1);s.k=p[1];render();return}
   var g=e.target.closest('[data-go]');if(g&&!e.target.closest('a,input,label,button')){location.hash=g.dataset.go;return}
@@ -1963,8 +1964,27 @@ function exportMatches(list,label,extra){
 }
 function save(i){
   var u=uploads[i];if(!u||!u.doc||!db)return;
-  db.collection('matches').doc(u.id).set(u.doc).then(function(){u.saved=true;delete local[u.id];render()},function(err){u.err='Save failed: '+(err&&err.code||'error');render()});
+  db.collection('matches').doc(u.id).set(u.doc).then(function(){u.saved=true;delete local[u.id];render();saveRaw(u)},function(err){u.err='Save failed: '+(err&&err.code||'error');render()});
 }
+/* the uploaded ledger, kept untouched in a separate admin-only store so nothing the importer skips is ever lost */
+function saveRaw(u){
+  if(!u.doc||!u.doc.ledger||!u.raw||u.rawSaved)return;
+  if(u.raw.length>4000000){u.rawNote='Raw ledger is over 4 MB, not kept.';render();return}
+  var led;try{led=JSON.parse(u.raw.replace(/^\ufeff/,''))}catch(x){return}
+  api('PUT','/api/doc?c=raw&id='+encodeURIComponent(u.id),{fileName:u.name,savedAt:Date.now(),ledger:led}).then(function(){u.rawSaved=true;render()},function(err){u.rawNote='Raw ledger not kept: '+(err&&err.code||'error');render()});
+}
+/* rebuild a stored match from its kept raw ledger with the current importer */
+function rebuildMatch(id){
+  var m=allMatches().filter(function(x){return x.id===id})[0];if(!m||!db)return;
+  rebuildMsg='Rebuilding...';render();
+  api('GET','/api/doc?c=raw&id='+encodeURIComponent(id)).then(function(r){
+    var d=parseMatchLedger(JSON.stringify(r.ledger),(m.doc.name||r.fileName||'match ledger'));
+    d.uploadedAt=m.doc.uploadedAt||d.uploadedAt;
+    if(m.doc.result&&m.doc.result.src!=='log')d.result=m.doc.result;
+    return db.collection('matches').doc(id).set(d).then(function(){rebuildMsg='Rebuilt from the raw ledger.';render()});
+  }).catch(function(err){rebuildMsg=err&&err.code==='not_found'?'No raw ledger was kept for this match. It was saved before raw ledgers were kept; re-upload the original file.':'Could not rebuild: '+(err&&err.code||'error');render()});
+}
+var rebuildMsg='';
 function remove(id){db&&db.collection('matches').doc(id).delete().then(function(){location.hash='matches'},function(){})}
 
 /* ---- hosted storage and accounts ---- */

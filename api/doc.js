@@ -3,9 +3,16 @@ const L = require('./_lib');
 
 const route = L.handler(async (req, res) => {
   const c = req.q.c, id = req.q.id;
-  if ((c !== 'matches' && c !== 'snapshots') || !L.ID_OK.test(id || '')) return L.send(res, 400, { error: 'bad_target' });
+  if ((c !== 'matches' && c !== 'snapshots' && c !== 'raw') || !L.ID_OK.test(id || '')) return L.send(res, 400, { error: 'bad_target' });
   const p = c + '/' + id + '.json';
   /* Reading: matches are public; an event is public only once published (admins can read drafts). */
+  /* raw: the uploaded Match Ledger exactly as parsed, kept so any later feature can be rebuilt from it. Admin only, never cached, never cross-origin. */
+  if (c === 'raw' && req.method === 'GET') {
+    const stR = await L.readState(); if (!L.isAdmin(L.session(req), stR)) return L.send(res, 403, { error: 'admin_only' });
+    const dr = await L.getJSON(p); if (!dr) return L.send(res, 404, { error: 'not_found' });
+    res.statusCode = 200; res.setHeader('Content-Type', 'application/json'); res.setHeader('Cache-Control', 'private, no-store');
+    return res.end(JSON.stringify(dr));
+  }
   if (req.method === 'GET') {
     if (c === 'snapshots') { const st0 = await L.readState(); if (!st0.published[id] && !L.isAdmin(L.session(req), st0)) return L.send(res, 404, { error: 'not_found' }); }
     const d = await L.getJSON(p); if (!d) return L.send(res, 404, { error: 'not_found' });
@@ -19,7 +26,7 @@ const route = L.handler(async (req, res) => {
   const st = await L.readState();
   if (!L.isAdmin(L.session(req), st)) return L.send(res, 403, { error: 'admin_only' });
   if (req.method === 'PUT') {
-    const d = await L.body(req, 3.5 * 1024 * 1024);
+    const d = await L.body(req, c === 'raw' ? 4 * 1024 * 1024 : 3.5 * 1024 * 1024);
     if (!d || typeof d !== 'object' || Array.isArray(d)) return L.send(res, 400, { error: 'bad_doc' });
     await L.putJSON(p, d);
     if (c === 'matches' && Array.isArray(d.players)) {
@@ -28,7 +35,7 @@ const route = L.handler(async (req, res) => {
     }
     return L.send(res, 200, { ok: true });
   }
-  if (req.method === 'DELETE') { await L.delPath(p); if (c === 'snapshots') await L.mutate(s => { delete s.published[id]; }); return L.send(res, 200, { ok: true }); }
+  if (req.method === 'DELETE') { await L.delPath(p); if (c === 'matches') await L.delPath('raw/' + id + '.json'); if (c === 'snapshots') await L.mutate(s => { delete s.published[id]; }); return L.send(res, 200, { ok: true }); }
   L.send(res, 405, { error: 'method' });
 });
 
