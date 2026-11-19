@@ -1288,7 +1288,7 @@ function mapLoad(){
 function mapMatches(){return allMatches().filter(function(m){var d=m.doc;return (!mapScope||mapScope.indexOf(m.id)>=0)&&d.ledger&&(d.players||[]).some(function(p){return p.pos&&p.pos.length})}).sort(function(a,b){return playedAt(b.doc)-playedAt(a.doc)})}
 function mapSel(){var all=mapMatches();return mapS.match==='all'?all:all.filter(function(m){return m.id===mapS.match})}
 function mapZone(x,y){var best='',bd=1e9;Object.keys(MAPZONES).forEach(function(k){var z=MAPZONES[k],d=Math.hypot(x-z[0],y-z[1]);if(d<bd){bd=d;best=k}});return (bd<45?'At ':'Near ')+best}
-var MAPMODES=[['pos','Player presence (time spent)'],['kill','Kills (where the killer stood)'],['death','Deaths (where the player fell)'],['mob','Mob kills'],['obj','Objectives (control points, relic, boss)']];
+var MAPMODES=[['pos','Player presence (time spent)'],['kill','Kills (killer position)'],['death','Deaths (victim position)'],['mob','Mob kills'],['obj','Objectives (control points, relic, boss)']];
 function mapPass(e){
   if(e.t<mapS.t0||e.t>mapS.t1)return false;
   var who=e.k==='death'?e.b:e.a;
@@ -1367,12 +1367,15 @@ function mapArrows(ctx,sel,k){
       if(e.k!=='death'||!mapPass(e)||(mapS.upto&&e.t>mapS.ph))return;
       var kp=mapKillerAt(PM[e.a],e.t);if(!kp)return;
       var kx=mpx(kp[0]),ky=mpy(kp[1]),vx=mpx(e.x),vy=mpy(e.y),dx=vx-kx,dy=vy-ky,len=Math.hypot(dx,dy);if(len<1)return;
-      var ux=dx/len,uy=dy/len,hs=13*k,bx=vx-ux*hs,by=vy-uy*hs,kt=PM[e.a]&&TEAMS[PM[e.a].team]?TEAMS[PM[e.a].team].col:'#ddd';
+      var ux=dx/len,uy=dy/len,kt=PM[e.a]&&TEAMS[PM[e.a].team]?TEAMS[PM[e.a].team].col:'#ddd',vt=TEAMS[e.team]?TEAMS[e.team].col:'#ddd';
+      /* the arrow stops short of the victim, which gets an X; a short hop keeps a small head instead of a backwards one */
+      var tl=Math.max(len-8*k,len*.5),tx=kx+ux*tl,ty=ky+uy*tl,hs=Math.min(11*k,Math.max(tl*.8,5*k)),bx=tx-ux*hs,by=ty-uy*hs;
       ctx.lineCap='round';ctx.lineJoin='round';
       [['#fff',6.5*k],[kt,3*k]].forEach(function(st){ctx.strokeStyle=st[0];ctx.fillStyle=st[0];ctx.lineWidth=st[1];
-        ctx.beginPath();ctx.moveTo(kx,ky);ctx.lineTo(bx,by);ctx.stroke();
-        ctx.beginPath();ctx.moveTo(vx,vy);ctx.lineTo(bx-uy*hs*.55,by+ux*hs*.55);ctx.lineTo(bx+uy*hs*.55,by-ux*hs*.55);ctx.closePath();ctx.fill();if(st[1]>4*k)ctx.stroke()});
-      ctx.beginPath();ctx.arc(kx,ky,4.5*k,0,6.3);ctx.fillStyle=kt;ctx.fill();ctx.lineWidth=2*k;ctx.strokeStyle='#fff';ctx.stroke()})});
+        if(tl>hs){ctx.beginPath();ctx.moveTo(kx,ky);ctx.lineTo(bx,by);ctx.stroke()}
+        ctx.beginPath();ctx.moveTo(tx,ty);ctx.lineTo(bx-uy*hs*.55,by+ux*hs*.55);ctx.lineTo(bx+uy*hs*.55,by-ux*hs*.55);ctx.closePath();ctx.fill();if(st[1]>4*k)ctx.stroke()});
+      ctx.beginPath();ctx.arc(kx,ky,4.5*k,0,6.3);ctx.fillStyle=kt;ctx.fill();ctx.lineWidth=2*k;ctx.strokeStyle='#fff';ctx.stroke();
+      var xr=6*k;[['#fff',6*k],[vt,2.6*k]].forEach(function(st){ctx.strokeStyle=st[0];ctx.lineWidth=st[1];ctx.beginPath();ctx.moveTo(vx-xr,vy-xr);ctx.lineTo(vx+xr,vy+xr);ctx.moveTo(vx+xr,vy-xr);ctx.lineTo(vx-xr,vy+xr);ctx.stroke()})})});
 }
 function mapRelics(ctx,one,k){
   if(!mapS.dot.relic)return;var S=one?relicState(one,mapS.ph):{0:{st:'home'},1:{st:'home'}};
