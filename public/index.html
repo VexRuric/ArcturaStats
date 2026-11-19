@@ -578,16 +578,84 @@ function evClassTable(crow){
   return '<div class="panel"><h2>Class breakdown</h2>'+table('evcls',[{k:'cls',l:'Class',f:function(r){return clsCell(r.cls)}},{k:'picks',l:'Picks'},{k:'dpm',l:'Dmg/min',f:function(r){return r.dpm<0?'-':num(r.dpm)}},{k:'avg',l:'Avg points',f:function(r){return num(r.avg)}},{k:'k',l:'Kills'},{k:'d',l:'Deaths'},{k:'kdr',l:'K/D',f:function(r){return num(r.kdr,2)}}],crow)+'</div>';
 }
 /* ---- match analysis: fights, comebacks, positioning, relic chase, death map and accolades ---- */
-var ANA={near:22,together:40,chase:25,fgap:30,frad:70,cgap:20,pull:12};
+var ANA={near:22,together:40,chase:25,fgap:30,frad:70,cgap:20,pull:12,mfoes:4,mdiff:2,mgap:15,mmin:90,okdiff:3,rhold:120,balone:20,rchase:45,mobn:6,mobgap:30,lsmax:2,lsmin:20,bwin:30};
 /* mobs per camp spawn. Camps respawn at each minute mark, so a camp pulled just before the mark holds two batches. Adjust these to the game's real batch sizes. */
 var MOB_BATCH={Easy:3,Medium:2,Hard:3};
 var anaCache=new WeakMap();
 function anaHas(d){return !!(d&&d.ledger&&(d.players||[]).some(function(p){return p.pos&&p.pos.length}))}
 function campLabel(c){var pre={Hard:'H',Medium:'MD',Easy:'MC'}[c[2]],i=0,n=0;MAPCAMPS.forEach(function(x){if(x[2]===c[2]){n++;if(x[0]===c[0]&&x[1]===c[1])i=n}});return pre+i}
+/* stand out moments: things a big team fight does not explain. All use the position samples (every few seconds) and ANA.frad as "close".
+   stand  = a living player with 4+ living enemies close and at least 2 more enemies than teammates, for a minute or more (gaps up to ANA.mgap seconds are bridged)
+   okill  = a kill made while 3+ more enemies than teammates were close
+   boss   = a boss kill with no teammate close for the 20 seconds before it
+   relic  = one relic carry held for 2 minutes or more */
+function findMoments(d,pl,byT,ts,step,carries,kills){
+  var out=[],R=ANA.frad;
+  function snap(t){var b=null,bd=1e9;for(var i=0;i<ts.length;i++){var dd=Math.abs(ts[i]-t);if(dd<bd){bd=dd;b=ts[i]}if(ts[i]>t)break}return bd<=step?b:null}
+  function find(g,n){var me=null;g.forEach(function(a){if(a.n===n)me=a});return me}
+  function crowd(g,me,skip){var m=0,f=0;g.forEach(function(b){if(b===me||!b.a||b.n===skip||Math.hypot(b.x-me.x,b.y-me.y)>R)return;if(b.t===me.t)m++;else f++});return {m:m,f:f}}
+  var st=[];
+  pl.forEach(function(p){var run=null,gap=0,top=null;
+    function close(){if(run){var dur=run.e-run.s+step;if(dur>=ANA.mmin&&(!top||dur>top.dur))top={n:p.name,team:p.team,t0:run.s,t1:run.e,dur:dur,foes:run.pf,mates:run.pm,x:run.x,y:run.y}}run=null;gap=0}
+    ts.forEach(function(t){var g=byT[t],me=find(g,p.name),c=me&&me.a?crowd(g,me):null,hit=c&&c.f>=ANA.mfoes&&c.f-c.m>=ANA.mdiff;
+      if(hit){if(!run)run={s:t,e:t,pf:0,pm:0,x:me.x,y:me.y};run.e=t;gap=0;if(c.f>run.pf){run.pf=c.f;run.pm=c.m;run.x=me.x;run.y=me.y}}
+      else if(run){gap+=step;if(gap>ANA.mgap)close()}});
+    close();
+    if(top){top.ty='stand';top.score=top.dur;
+      top.died=(d.log||[]).some(function(e){return e.k==='death'&&e.b===top.n&&e.t>=top.t0&&e.t<=top.t1+ANA.mgap});
+      top.kills=kills.filter(function(e){return e.a===top.n&&e.t>=top.t0&&e.t<=top.t1+step}).length;st.push(top)}});
+  st.sort(function(a,b){return b.score-a.score});out=out.concat(st.slice(0,3));
+  var ok=[];
+  kills.forEach(function(e){var tt=snap(e.t);if(tt===null)return;var me=find(byT[tt],e.a);if(!me||!me.a)return;var c=crowd(byT[tt],me,e.b);
+    if(c.f>=ANA.mfoes&&c.f-c.m>=ANA.okdiff)ok.push({ty:'okill',score:c.f-c.m,n:e.a,team:e.team,v:e.b,t0:e.t,mates:c.m,foes:c.f,x:me.x,y:me.y})});
+  ok.sort(function(a,b){return b.score-a.score});out=out.concat(ok.slice(0,3));
+  (d.log||[]).forEach(function(e){if(e.k!=='boss'||(hideBots&&isBot(e.a)))return;
+    var mx=0,mf=0,n=0;
+    for(var t=e.t-ANA.balone;t<=e.t;t+=step){var tt=snap(t);if(tt===null)continue;var me=find(byT[tt],e.a);if(!me||!me.a)continue;var c=crowd(byT[tt],me);n++;mx=Math.max(mx,c.m);mf=Math.max(mf,c.f)}
+    if(n>=2&&mx===0)out.push({ty:'boss',score:1,n:e.a,team:e.team,t0:e.t,foes:mf,x:e.x,y:e.y})});
+  /* last stand: a team down to its last 1 or 2 living players, outnumbered by 2 or more, for ANA.lsmin seconds or more */
+  [0,1].forEach(function(T){var run=null,gap=0,best=null;
+    function close(){if(run&&run.e-run.s+step>=ANA.lsmin&&(!best||run.e-run.s>best.e-best.s))best=run;run=null;gap=0}
+    ts.forEach(function(t){var own=[],foe=0;byT[t].forEach(function(a){if(!a.a)return;if(a.t===T)own.push(a.n);else foe++});
+      if(own.length>=1&&own.length<=ANA.lsmax&&foe>=own.length+2){if(!run)run={s:t,e:t,who:own,foe:foe};run.e=t;gap=0;if(foe>run.foe)run.foe=foe}
+      else if(run){gap+=step;if(gap>ANA.mgap)close()}});
+    close();
+    if(best){var nx=snap(best.e+step),wiped=!nx||!byT[nx].some(function(a){return a.t===T&&a.a});
+      var ks=kills.filter(function(e){return best.who.indexOf(e.a)>=0&&e.t>=best.s&&e.t<=best.e+step}).length;
+      out.push({ty:'last',score:best.e-best.s+step,n:best.who[0],who:best.who,team:T,t0:best.s,t1:best.e,dur:best.e-best.s+step,foes:best.foe,kills:ks,wiped:wiped})}});
+  /* relic chaser: one enemy spent ANA.rchase seconds or more within reach of a relic carrier, and may have run them down */
+  var ch=[];
+  carries.forEach(function(c){if(!c.by||!(c.team===0||c.team===1))return;var top=null;Object.keys(c.by).forEach(function(n){if(!top||c.by[n]>c.by[top])top=n});
+    if(!top||c.by[top]<ANA.rchase)return;
+    var kl=null;(d.log||[]).forEach(function(e){if(e.k==='kill'&&e.b===c.n&&Math.abs(e.t-c.t1)<=1)kl=e.a});
+    ch.push({ty:'chase',score:c.by[top],n:top,team:1-c.team,t0:c.t0,t1:c.t1,dur:c.by[top],carrier:c.n,killed:kl===top,res:c.res})});
+  ch.sort(function(a,b){return b.score-a.score});out=out.concat(ch.slice(0,2));
+  /* mob stealer: ANA.mobn or more mob kills in a row on the enemy half of the map (nearer the enemy relic home than their own) */
+  var mb={};
+  (d.log||[]).forEach(function(e){if(e.k!=='mob'||!(e.team===0||e.team===1)||(hideBots&&isBot(e.a)))return;var c=mobSpot(e);if(!c)return;
+    var sd=Math.hypot(c[0]-RELIC_HOME[0][0],c[1]-RELIC_HOME[0][1])<=Math.hypot(c[0]-RELIC_HOME[1][0],c[1]-RELIC_HOME[1][1])?0:1;
+    if(sd!==e.team)(mb[e.a]||(mb[e.a]=[])).push({t:e.t,c:c,team:e.team})});
+  var ms=[];
+  Object.keys(mb).forEach(function(n){var cur=[],best=null;
+    function fin(){if(cur.length>=ANA.mobn&&(!best||cur.length>best.length))best=cur;cur=[]}
+    mb[n].forEach(function(k){if(cur.length&&k.t-cur[cur.length-1].t>ANA.mobgap)fin();cur.push(k)});fin();
+    if(best){var sx=0,sy=0,labs={};best.forEach(function(k){sx+=k.c[0];sy+=k.c[1];labs[campLabel(k.c)]=1});
+      ms.push({ty:'mob',score:best.length,n:n,team:best[0].team,t0:best[0].t,t1:best[best.length-1].t,count:best.length,camps:Object.keys(labs),x:sx/best.length,y:sy/best.length})}});
+  ms.sort(function(a,b){return b.score-a.score});out=out.concat(ms.slice(0,2));
+  /* boss stealer: the boss kill went to a team that had fewer players near the boss over the prior ANA.bwin seconds, with 2 or more of the other team close at the kill */
+  (d.log||[]).forEach(function(e){if(e.k!=='boss'||!(e.team===0||e.team===1)||(hideBots&&isBot(e.a)))return;
+    var A=0,B=0,bA=0,bB=0,n=0;
+    for(var t=e.t-ANA.bwin;t<=e.t;t+=step){var tt=snap(t);if(tt===null)continue;n++;var a=0,b=0;
+      byT[tt].forEach(function(q){if(!q.a||Math.hypot(q.x-e.x,q.y-e.y)>R)return;if(q.t===e.team)a++;else b++});A+=a;B+=b;bA=a;bB=b}
+    if(n>=2&&bB>=2&&B>A)out.push({ty:'bsteal',score:B-A,n:e.a,team:e.team,t0:e.t,mates:bA,foes:bB,avgMates:A/n,avgFoes:B/n,x:e.x,y:e.y})});
+  carries.filter(function(c){return c.dur>=ANA.rhold}).sort(function(a,b){return b.dur-a.dur}).slice(0,2).forEach(function(c){
+    out.push({ty:'relic',score:c.dur,n:c.n,team:c.team,t0:c.t0,t1:c.t1,dur:c.dur,res:c.res,chasers:c.chasers,chaseSec:c.chaseSec})});
+  return out;
+}
 function analyze(d){
   var key=hideBots?1:0,c=anaCache.get(d);if(!c){c={};anaCache.set(d,c)}
   if(c[key])return c[key];
-  var r={players:{},fights:[],picks:0,carries:[],deaths:[],stacks:[],cb:null},out=c[key]=r;
+  var r={players:{},fights:[],picks:0,carries:[],deaths:[],stacks:[],moments:[],cb:null},out=c[key]=r;
   var pl=(d.players||[]).filter(function(p){return !(hideBots&&isBot(p.name))});
   pl.forEach(function(p){r.players[p.name]={name:p.name,team:p.team,stk:0,ea:0,alive:0,obj:0,alone:0,group:0,chase:0,escort:0,fw:0,fl:0,nf:0}});
   var byT={},times={};
@@ -601,11 +669,11 @@ function analyze(d){
       if(mate)s.group+=step;else s.alone+=step})});
   /* relic carries and chasing */
   var cur=null;
-  function endCarry(t1,res){var c0=cur;cur=null;if(!c0)return;var chasers={},chaseSec=0;
+  function endCarry(t1,res){var c0=cur;cur=null;if(!c0)return;var chasers={},chaseSec=0,bySec={};
     ts.forEach(function(t){if(t<c0.t0||t>t1)return;var g=byT[t],me=null;g.forEach(function(a){if(a.n===c0.n&&a.a)me=a});if(!me)return;
       g.forEach(function(a){if(a===me||!a.a||Math.hypot(a.x-me.x,a.y-me.y)>ANA.chase)return;var s=r.players[a.n];if(!s)return;
-        if(a.t!==c0.team){s.chase+=step;chasers[a.n]=1;chaseSec+=step}else s.escort+=step})});
-    r.carries.push({n:c0.n,team:c0.team,t0:c0.t0,t1:t1,dur:Math.max(0,t1-c0.t0),res:res,chasers:Object.keys(chasers).length,chaseSec:chaseSec})}
+        if(a.t!==c0.team){s.chase+=step;chasers[a.n]=1;chaseSec+=step;bySec[a.n]=(bySec[a.n]||0)+step}else s.escort+=step})});
+    r.carries.push({n:c0.n,team:c0.team,t0:c0.t0,t1:t1,dur:Math.max(0,t1-c0.t0),res:res,chasers:Object.keys(chasers).length,chaseSec:chaseSec,by:bySec})}
   (d.log||[]).forEach(function(e){
     if(e.k==='relic'){
       if(e.ty==='pickup'||e.ty==='repickup'){if(cur)endCarry(e.t,'dropped');cur={n:e.a,team:e.team,t0:e.t}}
@@ -658,6 +726,7 @@ function analyze(d){
     var w=d.result&&(d.result.winner===0||d.result.winner===1)?d.result.winner:(fin[1]>fin[2]?0:fin[2]>fin[1]?1:-1);
     var thr=Math.max(10,0.08*(w>=0?fin[1+w]:0));
     r.cb={winner:w,def:def,defT:defT,deficit:w>=0?def[w]:0,t:w>=0?defT[w]:0,leadChanges:lc,fin:[fin[1],fin[2]],big:bigGain,comeback:w>=0&&def[w]>=thr}}
+  r.moments=findMoments(d,pl,byT,ts,step,r.carries,kills);
   return r;
 }
 /* one row per player with everything the accolades and position tables use */
@@ -740,16 +809,43 @@ function carriesPanel(list){
   var rows=list.map(function(c){return '<tr><td>'+esc(c.m)+'</td><td><a class="plink" href="#player-'+slug(c.n)+'">'+esc(c.n)+'</a></td><td>'+teamTag(c.team)+'</td><td>'+dur(c.t0)+'</td><td>'+dur(c.dur)+'</td><td>'+({captured:'Captured',dropped:'Dropped',killed:'Carrier killed',end:'Match ended'}[c.res]||esc(c.res))+'</td><td>'+c.chasers+'</td><td>'+(c.chaseSec?dur(c.chaseSec):'-')+'</td></tr>'}).join('');
   return '<div class="panel"><h2>Relic carries and chasing</h2>'+plainTable(['Match','Carrier','Team','Picked up','Held','Ended','Enemies near','Time chased'],rows)+'<p class="note">Chased time adds up every enemy that was within '+ANA.chase+' m of the carrier, sampled every few seconds. The log has no per hit target, so this is time in range, not damage dealt to the carrier.</p></div>';
 }
+function fightCol(t){return TEAMS[t]?TEAMS[t].col:'inherit'}
+function fightWho(f){var st={};Object.keys(f.who).forEach(function(n){st[n]={k:0,d:0,a:0}});
+  f.ks.forEach(function(e){if(st[e.a])st[e.a].k++;if(st[e.b])st[e.b].d++;(e.as||[]).forEach(function(n){if(st[n])st[n].a++;else if(n)st[n]={k:0,d:0,a:1}})});
+  var names=Object.keys(st).sort(function(a,b){return (f.who[a]===0?0:1)-(f.who[b]===0?0:1)||st[b].k-st[a].k});
+  return names.map(function(n){var x=st[n];return '<div><span style="color:'+fightCol(f.who[n])+'">'+esc(n)+'</span> <span class="note" style="margin:0">'+x.k+' / '+x.d+' / '+x.a+'</span></div>'}).join('')}
+function fightFeed(f){return f.ks.map(function(e){var sk=(e.sk||'').split('.').pop();if(sk==='None')sk='';
+  return '<div><span class="note" style="margin:0">'+dur(e.t)+'</span> <span style="color:'+fightCol(e.team)+'">'+esc(e.a)+'</span> &#9656; <span style="color:'+fightCol(1-e.team)+'">'+esc(e.b)+'</span>'+(sk?' <span class="note" style="margin:0">'+esc(sk)+'</span>':'')+((e.as&&e.as.length)?' <span class="note" style="margin:0">(assist '+e.as.map(esc).join(', ')+')</span>':'')+'</div>'}).join('')}
+var MOMENT_NAME={stand:'Stand out fight',last:'Last stand',chase:'Relic chaser',boss:'Solo boss',bsteal:'Boss stealer',mob:'Mob stealer',okill:'Outnumbered kill',relic:'Long relic hold'},MOMENT_ORDER={stand:0,last:1,chase:2,boss:3,bsteal:4,mob:5,okill:6,relic:7};
+function momentText(o){
+  if(o.ty==='stand')return 'Held off up to '+o.foes+' enemies with '+(o.mates?o.mates+' teammate'+(o.mates===1?'':'s'):'no teammates')+' close, for '+dur(o.dur)+' ('+dur(o.t0)+' to '+dur(o.t1)+')'+(o.kills?', '+o.kills+' kill'+(o.kills===1?'':'s'):', no kills')+(o.died?', then died':', and survived');
+  if(o.ty==='last')return 'Last '+(o.who.length===1?'player':o.who.length+' players')+' alive, '+o.foes+' enemies left, held '+dur(o.dur)+' ('+dur(o.t0)+' to '+dur(o.t1)+')'+(o.kills?', '+o.kills+' kill'+(o.kills===1?'':'s'):', no kills')+(o.wiped?', then the team was wiped':', and the team got people back');
+  if(o.ty==='chase')return 'Stayed within reach of '+esc(o.carrier)+', the enemy relic carrier, for '+dur(o.dur)+' of a '+dur(o.t1-o.t0)+' carry, '+(o.killed?'and ran them down':({captured:'but they captured it',dropped:'until they dropped it',killed:'until the carrier fell',end:'to the end of the match'}[o.res]||esc(o.res)));
+  if(o.ty==='mob')return 'Cleared '+o.count+' mobs in a row on the enemy half ('+o.camps.map(esc).join(', ')+') in '+dur(o.t1-o.t0)+' ('+dur(o.t0)+' to '+dur(o.t1)+')';
+  if(o.ty==='bsteal')return 'Landed the boss kill with '+o.foes+' enemies and '+(o.mates?o.mates+' teammate'+(o.mates===1?'':'s'):'no teammates')+' close; over the prior '+ANA.bwin+' seconds the other team averaged '+num(o.avgFoes,1)+' near the boss to their '+num(o.avgMates,1);
+  if(o.ty==='okill')return 'Killed '+esc(o.v)+' with '+o.foes+' enemies and '+(o.mates?o.mates+' teammate'+(o.mates===1?'':'s'):'no teammates')+' close';
+  if(o.ty==='boss')return 'Took down the boss with no teammate within '+ANA.frad+' m for '+ANA.balone+' seconds before'+(o.foes?', '+o.foes+' enem'+(o.foes===1?'y':'ies')+' close':'');
+  return 'Held the relic for '+dur(o.dur)+' ('+dur(o.t0)+' to '+dur(o.t1)+'), '+({captured:'captured it',dropped:'dropped it',killed:'killed with it',end:'still holding at the end'}[o.res]||esc(o.res))+(o.chasers?', '+o.chasers+' enem'+(o.chasers===1?'y':'ies')+' chased':'')}
+function momentsPanel(items,multi){
+  var l=[];items.forEach(function(x){(x.mo||[]).forEach(function(o){l.push({m:x.m,id:x.id,o:o})})});
+  var note='<p class="note">Moments a big team fight does not explain. Stand out fight: 4 or more enemies close and at least 2 more than teammates, for '+ANA.mmin+' seconds or more. Outnumbered kill: a kill with 3 or more extra enemies close. Last stand: a team down to its last '+ANA.lsmax+' players, outnumbered by 2 or more, for '+ANA.lsmin+' seconds or more. Relic chaser: '+ANA.rchase+' seconds or more near one enemy relic carrier. Mob stealer: '+ANA.mobn+' or more mobs in a row on the enemy half, which is the half nearer their relic home. Solo boss: boss kill with no teammate close. Boss stealer: boss kill by the team with fewer players near it, the other team still close. Long relic hold: '+ANA.rhold+' seconds or more. Close means within '+ANA.frad+' m, sampled every few seconds.</p>';
+  if(!l.length)return '<div class="panel"><h2>Stand out moments</h2><p class="note" style="margin-top:6px">None found'+(multi?' in these matches':' in this match')+'.</p>'+note+'</div>';
+  l.sort(function(a,b){return MOMENT_ORDER[a.o.ty]-MOMENT_ORDER[b.o.ty]||b.o.score-a.o.score});l=l.slice(0,multi?12:8);
+  var rows=l.map(function(x){var o=x.o;return '<tr>'+(multi?'<td><a class="plink" href="#match-'+esc(x.id)+'">'+esc(x.m)+'</a></td>':'')+'<td><strong>'+MOMENT_NAME[o.ty]+'</strong></td><td>'+(o.who||[o.n]).map(function(w){return '<a class="plink" href="#player-'+slug(w)+'">'+esc(w)+'</a>'}).join(', ')+'</td><td>'+teamTag(o.team)+'</td><td>'+dur(o.t0)+'</td><td>'+(o.x!=null?esc(mapZone(o.x,o.y)):'-')+'</td><td style="text-align:left">'+momentText(o)+'</td></tr>'}).join('');
+  return '<div class="panel"><h2>Stand out moments</h2>'+plainTable((multi?['Match']:[]).concat(['Moment','Player','Team','When','Where','What happened']),rows)+note+'</div>';
+}
 function fightsPanel(items,multi){
   if(!items.length)return '<div class="panel"><h2>Fights</h2><p class="note">No fights found. A fight is 2 or more player kills within '+ANA.fgap+' seconds and '+ANA.frad+' m of each other.</p></div>';
   var W=[0,0,0],picks=0;items.forEach(function(x){x.f.forEach(function(f){W[f.win<0?2:f.win]++});picks+=x.picks});
   var top=[];items.forEach(function(x){x.f.forEach(function(f){top.push({m:x.m,id:x.id,f:f})})});
   if(!top.length)return '<div class="panel"><h2>Fights</h2><p class="note">No fights in '+(multi?'these matches':'this match')+'. '+picks+' single kill'+(picks===1?'':'s')+' not counted as fights. A fight is 2 or more player kills within '+ANA.fgap+' seconds and '+ANA.frad+' m of each other.</p></div>';
+  var lo=top[0];top.forEach(function(o){if(o.f.t1-o.f.t0>lo.f.t1-lo.f.t0)lo=o});
+  var longest='<p style="margin:0 0 10px"><strong>Longest fight:</strong> '+dur(lo.f.t1-lo.f.t0)+' ('+dur(lo.f.t0)+' to '+dur(lo.f.t1)+') in <strong>'+esc(lo.f.zone)+'</strong>, '+lo.f.ks.length+' kills ('+lo.f.k[0]+' : '+lo.f.k[1]+'), '+(lo.f.win>=0?'won by '+esc(teamName(lo.f.win)):'even')+(multi?' in <a class="plink" href="#match-'+esc(lo.id)+'">'+esc(lo.m)+'</a>':'')+'</p>';
   top.sort(function(a,b){return b.f.ks.length-a.f.ks.length||b.f.n-a.f.n});top=top.slice(0,multi?8:12);
   if(!multi)top.sort(function(a,b){return a.f.t0-b.f.t0});
-  var rows=top.map(function(o,i){var f=o.f;return '<tr>'+(multi?'<td><a class="plink" href="#match-'+esc(o.id)+'">'+esc(o.m)+'</a></td>':'')+'<td>'+dur(f.t0)+(f.t1>f.t0?' to '+dur(f.t1):'')+'</td><td>'+esc(f.zone)+'</td><td><b style="color:'+TEAMS[0].col+'">'+f.k[0]+'</b> : <b style="color:'+TEAMS[1].col+'">'+f.k[1]+'</b></td><td>'+(f.win>=0?teamTag(f.win):'Even')+'</td><td>'+f.n+'</td><td style="text-align:left">'+Object.keys(f.who).map(function(n){return '<span style="color:'+(TEAMS[f.who[n]]?TEAMS[f.who[n]].col:'inherit')+'">'+esc(n)+'</span>'}).join(', ')+'</td></tr>'}).join('');
-  return '<div class="panel"><h2>Fights</h2><p style="margin:6px 0 10px"><span style="color:'+TEAMS[0].col+'">&#9632;</span> '+esc(teamName(0))+' won <strong>'+W[0]+'</strong> &nbsp; <span style="color:'+TEAMS[1].col+'">&#9632;</span> '+esc(teamName(1))+' won <strong>'+W[1]+'</strong> &nbsp; Even '+W[2]+' &nbsp; <span class="note" style="margin:0">'+picks+' single kill'+(picks===1?'':'s')+' not counted as fights</span></p>'+
-    plainTable((multi?['Match']:[]).concat(['When','Where','Kills','Won by','Players','Who']),rows)+'<p class="note">A fight is 2 or more player kills within '+ANA.fgap+' seconds and '+ANA.frad+' m of each other. The winner is the side with more kills in it.'+(multi?' Showing the biggest '+top.length+'.':'')+'</p></div>';
+  var rows=top.map(function(o,i){var f=o.f;return '<tr>'+(multi?'<td><a class="plink" href="#match-'+esc(o.id)+'">'+esc(o.m)+'</a></td>':'')+'<td>'+dur(f.t0)+(f.t1>f.t0?' to '+dur(f.t1):'')+'</td><td>'+esc(f.zone)+'</td><td><b style="color:'+TEAMS[0].col+'">'+f.k[0]+'</b> : <b style="color:'+TEAMS[1].col+'">'+f.k[1]+'</b></td><td>'+(f.win>=0?teamTag(f.win):'Even')+'</td><td>'+f.n+'</td><td style="text-align:left">'+fightWho(f)+'</td><td style="text-align:left">'+fightFeed(f)+'</td></tr>'}).join('');
+  return '<div class="panel"><h2>Fights</h2><p style="margin:6px 0 10px"><span style="color:'+TEAMS[0].col+'">&#9632;</span> '+esc(teamName(0))+' won <strong>'+W[0]+'</strong> &nbsp; <span style="color:'+TEAMS[1].col+'">&#9632;</span> '+esc(teamName(1))+' won <strong>'+W[1]+'</strong> &nbsp; Even '+W[2]+' &nbsp; <span class="note" style="margin:0">'+picks+' single kill'+(picks===1?'':'s')+' not counted as fights</span></p>'+longest+
+    plainTable((multi?['Match']:[]).concat(['When','Where','Kills','Won by','Players','Who (K / D / A)','Kill feed']),rows)+'<p class="note">A fight is 2 or more player kills within '+ANA.fgap+' seconds and '+ANA.frad+' m of each other. The winner is the side with more kills in it.'+(multi?' Showing the biggest '+top.length+'.':'')+'</p></div>';
 }
 function comebackPanel(items){
   var l=items.filter(function(x){return x.cb});
@@ -772,12 +868,12 @@ function deathMap(ms){
   return '<div class="panel"><h2>Death map</h2><div class="cols"><div>'+s+'</div><div><p class="note" style="margin-top:0"><span style="color:'+TEAMS[0].col+'">&#9632;</span> '+esc(teamName(0))+' deaths &nbsp; <span style="color:'+TEAMS[1].col+'">&#9632;</span> '+esc(teamName(1))+' deaths. '+pts.length+' player death'+(pts.length===1?'':'s')+', each marker sits where the player fell. Red glow builds up where many died.</p>'+
     plainTable(['Area','Total',esc(teamName(0)),esc(teamName(1))],zr.map(function(z){return '<tr><td>'+esc(z.z)+'</td><td>'+z.n+'</td><td>'+z[0]+'</td><td>'+z[1]+'</td></tr>'}).join(''))+'<p class="note">Area is the nearest control point or the center. Deaths to mobs are not in the log with a position.</p></div></div></div>';
 }
-function anaItems(ms){return ms.map(function(m){var d=m.doc,a=anaHas(d)?analyze(d):null;return {id:m.id,m:d.name,f:a?a.fights:[],picks:a?a.picks:0,cb:a?a.cb:null,carries:a?a.carries:[],stacks:a?a.stacks:[],has:!!a}})}
+function anaItems(ms){return ms.map(function(m){var d=m.doc,a=anaHas(d)?analyze(d):null;return {id:m.id,m:d.name,f:a?a.fights:[],picks:a?a.picks:0,cb:a?a.cb:null,carries:a?a.carries:[],stacks:a?a.stacks:[],mo:a?a.moments:[],has:!!a}})}
 function anaMatchSections(id,d){
   var ms=[{id:id,doc:d}],it=anaItems(ms)[0],h='';
   if(!it.has)return h;
   h+=comebackPanel([it])+(d.scoreTl&&d.scoreTl.length>1?'<div class="panel"><h2>Score over time</h2><div class="evmini">'+evMiniChart(d)+'</div><p class="note"><span style="color:'+TEAMS[0].col+'">&#9632;</span> '+esc(teamName(0))+' <span style="color:'+TEAMS[1].col+'">&#9632;</span> '+esc(teamName(1))+'</p></div>':'');
-  h+=fightsPanel([it],false)+stackPanel([it],false);
+  h+=momentsPanel([it],false)+fightsPanel([it],false)+stackPanel([it],false);
   h+=posPanel(anaMatchRows(d),analyze(d),'anapos');
   h+=carriesPanel(it.carries.map(function(c){return Object.assign({m:d.name},c)}));
   h+=deathMap(ms);
@@ -786,7 +882,7 @@ function anaMatchSections(id,d){
 function anaEventSections(ms){
   var l=ms.filter(function(m){return anaHas(m.doc)});if(!l.length)return '';
   var it=anaItems(l),car=[];it.forEach(function(x){x.carries.forEach(function(c){car.push(Object.assign({m:x.m},c))})});
-  return comebackPanel(it)+fightsPanel(it,true)+stackPanel(it,true)+posPanel(anaEventRows(l),null,'anaevpos')+carriesPanel(car)+deathMap(l);
+  return comebackPanel(it)+momentsPanel(it,true)+fightsPanel(it,true)+stackPanel(it,true)+posPanel(anaEventRows(l),null,'anaevpos')+carriesPanel(car)+deathMap(l);
 }
 function viewSnapshot(id){
   var s=snaps[id];
