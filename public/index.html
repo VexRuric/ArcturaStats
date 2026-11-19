@@ -1053,23 +1053,69 @@ function viewMatches(){
     h+='<tr class="click" tabindex="0" data-go="match-'+esc(m.id)+'">'+(canEdit?'<td style="padding:0">'+(m.saved?'<label class="selbox"><input type="checkbox" aria-label="Select '+esc(d.name)+'" data-delsel="'+esc(m.id)+'"'+(delSel[m.id]?' checked':'')+'></label>':'')+'</td>':'')+'<td><strong>'+esc(d.name)+'</strong></td><td>'+esc(new Date(playedAt(d)).toLocaleDateString())+'</td><td>'+dur(d.duration)+'</td><td>'+(d.players||[]).length+'</td><td>'+(hasResult(d)?(d.result.winner==='draw'?'Draw':teamName(d.result.winner)+' won'):'-')+'</td><td>'+num(k)+'</td><td>'+num(dm)+'</td><td>'+(isPractice(d)?'<span class="tag">Practice vs bots</span> ':'')+(m.saved?'':'<span class="tag warn">Not saved</span>')+'</td></tr>'});
   return h+'</tbody></table></div>';
 }
-function chart(d){
-  var names=Object.keys(d.series||{});if(!names.length)return '<p class="note">No damage dealt in this log.</p>';
-  names=names.sort(function(a,b){return sum(d.series[b])-sum(d.series[a])}).slice(0,6);
-  function sum(a){return a.reduce(function(s,v){return s+(v||0)},0)}
+function dmgSum(a){return (a||[]).reduce(function(s,v){return s+(v||0)},0)}
+function niceTop(mx){var step=Math.pow(10,Math.floor(Math.log10(mx||1))),top=Math.ceil(mx/step)*step||1;if(top/step<2)top=step*2;return top}
+/* players that have a damage series, bots hidden when asked */
+function dmgPlayers(d){return (d.players||[]).filter(function(p){return d.series&&d.series[p.name]&&!(hideBots&&isBot(p.name))})}
+/* one chart line per player. On a team chart every line is the team's color in a different lightness (so a green class never reads as the green team) and the class is the marker shape. team null = everyone, colored by class, no markers. topFix keeps two charts on one scale */
+var CMARK={Hunter:'circle',Priest:'square',Assassin:'triangle',Mystic:'diamond',Warrior:'cross'};
+function classMark(c,x,y,r,col){var k=CMARK[c]||'dot',f='fill="'+col+'" stroke="var(--panel)" stroke-width="1"';x=+x.toFixed(1);y=+y.toFixed(1);
+  if(k==='circle')return '<circle cx="'+x+'" cy="'+y+'" r="'+r+'" '+f+'/>';
+  if(k==='square')return '<rect x="'+(x-r)+'" y="'+(y-r)+'" width="'+2*r+'" height="'+2*r+'" '+f+'/>';
+  if(k==='triangle')return '<polygon points="'+x+','+(y-r-1)+' '+(x+r+1)+','+(y+r)+' '+(x-r-1)+','+(y+r)+'" '+f+'/>';
+  if(k==='diamond')return '<polygon points="'+x+','+(y-r-1)+' '+(x+r+1)+','+y+' '+x+','+(y+r+1)+' '+(x-r-1)+','+y+'" '+f+'/>';
+  if(k==='cross')return '<path d="M'+(x-r)+','+(y-r)+'L'+(x+r)+','+(y+r)+'M'+(x+r)+','+(y-r)+'L'+(x-r)+','+(y+r)+'" fill="none" stroke="'+col+'" stroke-width="2.4" stroke-linecap="round"/>';
+  return '<circle cx="'+x+'" cy="'+y+'" r="'+Math.max(1.5,r-1.5)+'" fill="'+col+'"/>'}
+/* lightness steps of one team color, mixed toward the page text color so they stay visible in dark and light themes */
+var TSHADE=[30,55,42,70,20,82,62,90];
+function teamShade(t,i){var base=TEAMS[t]?TEAMS[t].col:'#888',m=TSHADE[i%TSHADE.length];return {css:'color-mix(in srgb,'+base+' '+(100-m)+'%,var(--fg))',fb:base}}
+function chart(d,team,topFix){
+  var P={};(d.players||[]).forEach(function(p){P[p.name]=p});
+  var names=Object.keys(d.series||{}).filter(function(k){return (team==null||(P[k]&&P[k].team===team))&&!(hideBots&&isBot(k))});
+  if(!names.length)return '<p class="note">'+(team==null?'No damage dealt in this log.':'No damage dealt by this team.')+'</p>';
+  names=names.sort(function(a,b){return dmgSum(d.series[b])-dmgSum(d.series[a])}).slice(0,team==null?6:8);
   var W=760,H=250,L=52,R=14,T=12,B=30,n=Math.max.apply(null,names.map(function(k){return d.series[k].length})),mx=0;
   names.forEach(function(k){d.series[k].forEach(function(v){if(v>mx)mx=v})});
-  var step=Math.pow(10,Math.floor(Math.log10(mx||1))),top=Math.ceil(mx/step)*step||1;if(top/step<2)top=step*2;
+  var top=topFix||niceTop(mx);
   var X=function(i){return L+(W-L-R)*(n>1?i/(n-1):0)},Y=function(v){return T+(H-T-B)*(1-v/top)};
-  var s='<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Damage dealt per 30 seconds">';
+  var seen={},DASH=['','7 4','2 3'],style={};
+  names.forEach(function(k,j){var p=P[k],c=p&&p.cls?p.cls:'#'+j,i=seen[c]||0;seen[c]=i+1;
+    var col=team==null?((p&&CCOL[p.cls])||SERIES[j%SERIES.length]):teamShade(team,j);
+    style[k]={css:col.css||col,fb:col.fb||col,dash:DASH[Math.min(i,2)]}});
+  var s='<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Damage dealt per 30 seconds'+(team==null?'':', '+esc(teamName(team)))+'">';
   for(var g=0;g<=4;g++){var v=top*g/4;s+='<line class="grid" x1="'+L+'" x2="'+(W-R)+'" y1="'+Y(v)+'" y2="'+Y(v)+'"/><text x="'+(L-8)+'" y="'+(Y(v)+4)+'" text-anchor="end">'+num(v)+'</text>'}
   var tickEvery=Math.max(1,Math.ceil(n/8));
   for(var i=0;i<n;i+=tickEvery)s+='<text x="'+X(i)+'" y="'+(H-10)+'" text-anchor="middle">'+dur(i*(d.bucket||30))+'</text>';
-  names.forEach(function(k,j){var p=(d.players||[]).filter(function(q){return q.name===k})[0],col=(p&&CCOL[p.cls])||SERIES[j%SERIES.length];
-    var pts=d.series[k].map(function(v,i){return X(i)+','+Y(v||0)}).join(' ');
-    s+='<polyline fill="none" stroke="'+col+'" stroke-width="2.2" stroke-linejoin="round" points="'+pts+'"/>'});
-  s+='</svg><div class="legend">'+names.map(function(k,j){var p=(d.players||[]).filter(function(q){return q.name===k})[0],col=(p&&CCOL[p.cls])||SERIES[j%SERIES.length];return '<span><i style="background:'+col+'"></i>'+esc(k)+'</span>'}).join('')+'</div>';
+  names.forEach(function(k){var st=style[k],pts=d.series[k].map(function(v,i){return X(i)+','+Y(v||0)}).join(' ');
+    s+='<polyline fill="none" stroke="'+st.fb+'" style="stroke:'+st.css+'" stroke-width="2.2" stroke-linejoin="round"'+(st.dash?' stroke-dasharray="'+st.dash+'"':'')+' points="'+pts+'"/>'});
+  if(team!=null)names.forEach(function(k){var st=style[k],c=P[k]&&P[k].cls;
+    s+='<g style="color:'+st.css+'">'+d.series[k].map(function(v,i){return classMark(c,X(i),Y(v||0),4,'currentColor')}).join('')+'</g>'});
+  s+='</svg><div class="legend">'+names.map(function(k){var p=P[k],st=style[k];
+    var key=team==null?'<i style="background:'+(st.dash?'repeating-linear-gradient(90deg,'+st.css+' 0 6px,transparent 6px 9px)':st.css)+'"></i>'
+      :'<svg width="22" height="14" viewBox="0 0 22 14" style="color:'+st.css+'"><line x1="0" x2="22" y1="7" y2="7" stroke="currentColor" stroke-width="2.2"'+(st.dash?' stroke-dasharray="'+st.dash+'"':'')+'/>'+classMark(p&&p.cls,11,7,3.6,'currentColor')+'</svg>';
+    return '<span>'+key+esc(k)+(team!=null&&p&&p.cls?' <span class="note" style="margin:0">'+esc(p.cls)+'</span>':'')+'</span>'}).join('')+'</div>';
   return s;
+}
+/* both teams on the same scale, then each class against the same class on the other team */
+function classVs(d){
+  var pl=dmgPlayers(d).filter(function(p){return p.team===0||p.team===1});if(!pl.length)return '';
+  var cls={},mins=(d.duration||0)/60;
+  pl.forEach(function(p){var c=p.cls||'Unknown',o=cls[c]||(cls[c]={0:{n:[],dmg:0},1:{n:[],dmg:0}});o[p.team].n.push(p.name);o[p.team].dmg+=dmgSum(d.series[p.name])});
+  var rows=Object.keys(cls).sort(function(a,b){return cls[b][0].dmg+cls[b][1].dmg-cls[a][0].dmg-cls[a][1].dmg}).map(function(c){var o=cls[c];
+    function cell(t){var x=o[t];if(!x.n.length)return '<td>-</td><td>-</td><td>-</td>';var avg=x.dmg/x.n.length;
+      return '<td style="text-align:left">'+x.n.map(function(n){return '<a class="plink" href="#player-'+slug(n)+'">'+esc(n)+'</a>'}).join(', ')+'</td><td>'+num(x.dmg)+'</td><td>'+(mins>0?num(avg/mins):'-')+'</td>'}
+    var a0=o[0].n.length?o[0].dmg/o[0].n.length:0,a1=o[1].n.length?o[1].dmg/o[1].n.length:0,edge='-';
+    if(o[0].n.length&&o[1].n.length&&(a0>0||a1>0)){var w=a0>=a1?0:1,lo=Math.min(a0,a1),hi=Math.max(a0,a1);edge='<span style="color:'+TEAMS[w].col+'">'+esc(teamName(w))+'</span> '+(lo>0?'+'+Math.round((hi-lo)/lo*100)+'%':'only')}
+    else if(o[0].n.length!==o[1].n.length)edge='<span class="note" style="margin:0">no '+esc(o[0].n.length?teamName(1):teamName(0))+' '+esc(c)+'</span>';
+    return '<tr><td>'+clsCell(c==='Unknown'?'':c)+'</td>'+cell(0)+cell(1)+'<td>'+edge+'</td></tr>'}).join('');
+  return '<div class="panel"><h2>Damage by class, team against team</h2>'+plainTable(['Class',esc(teamName(0)),'Damage','Dmg/min each',esc(teamName(1)),'Damage','Dmg/min each','Edge per player'],rows)+'<p class="note">Each class is lined up against the same class on the other team. Dmg/min each is damage per player per minute, so a team with two of a class is not ahead just for having more. Edge compares that per-player figure.</p></div>';
+}
+function teamDamage(d){
+  if(!Object.keys(d.series||{}).length)return '<div class="panel"><h2>Damage dealt per 30 seconds</h2><p class="note">No damage dealt in this log.</p></div>';
+  var mx=0;dmgPlayers(d).forEach(function(p){d.series[p.name].forEach(function(v){if(v>mx)mx=v})});var top=niceTop(mx);
+  var h='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px;margin-bottom:18px">';
+  [0,1].forEach(function(t){h+='<div class="panel" style="margin:0"><h2><span style="color:'+TEAMS[t].col+'">&#9632;</span> '+esc(teamName(t))+': damage dealt per 30 seconds</h2>'+chart(d,t,top)+'</div>'});
+  return h+'</div>'+classVs(d);
 }
 function mobSizes(p){if(!p||!p.tiers||p.tiers.Easy==null)return null;return {s:p.tiers.Easy||0,m:p.tiers.Medium||0,l:p.tiers.Hard||0,b:p.bossKills||0}}
 function relicOf(p){if(!p)return null;var pk=p.relicPickups!=null?p.relicPickups:p.relicTakes;if(pk==null&&p.relicCaps==null&&p.relicReturns==null&&p.carrierKills==null)return null;return {p:pk||0,r:p.relicReturns||0,c:p.relicCaps||0,k:p.carrierKills||0}}
@@ -1123,8 +1169,9 @@ function viewMatch(id){
   h+=objPanel(d,(d.players||[]).filter(function(p){return !(hideBots&&isBot(p.name))}));
   if(d.ledger){mapScope=null;h+='<div class="panel"><h2>Heat map and event timeline</h2>'+mapBody(id)+'</div>'}
   h+=anaMatchSections(id,d);
-  h+='<div class="cols"><div class="panel"><h2>Damage dealt per 30 seconds</h2>'+chart(d)+'</div><div class="panel"><h2>Events</h2>'+
-    ((d.events||[]).length?'<ul class="events">'+d.events.map(function(e){return '<li><time>'+dur(e.t)+'</time><span class="tag'+(e.k==='boss'?' warn':'')+'">'+esc(e.k==='kill'?'Kill':e.k==='boss'?'Boss':'Point')+'</span><span>'+esc(e.x)+'</span></li>'}).join('')+'</ul>':'<p class="note">No kills or captures in this log.</p>')+'</div></div>';
+  h+=teamDamage(d);
+  h+='<div class="panel"><h2>Events</h2>'+
+    ((d.events||[]).length?'<ul class="events">'+d.events.map(function(e){return '<li><time>'+dur(e.t)+'</time><span class="tag'+(e.k==='boss'?' warn':'')+'">'+esc(e.k==='kill'?'Kill':e.k==='boss'?'Boss':'Point')+'</span><span>'+esc(e.x)+'</span></li>'}).join('')+'</ul>':'<p class="note">No kills or captures in this log.</p>')+'</div>';
   return h;
 }
 function ratingChart(h,key){
