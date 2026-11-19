@@ -1278,7 +1278,7 @@ var MAPW=1400,MAPH=1654;
 var MAPC=(function(){var d={x0:710.6,sx:3.45,y0:798.5,sy:3.45};try{var s=JSON.parse(localStorage.getItem('arctura-mapcal3')||'null');if(s&&s.sx&&s.sy)d=s}catch(e){}return d})();
 function mpx(x){return MAPC.x0+x*MAPC.sx}function mpy(y){return MAPC.y0+y*MAPC.sy}
 var MAPZONES={North:[0,-150],South:[0,150],West:[-150,0],East:[150,0],Center:[0,0]};
-var mapS={match:'all',mode:'pos',team:'all',player:'',types:{kill:1,mob:1,boss:1,relic:1,cp:1},t0:0,t1:99999,ph:0,showCp:true,showPl:true,upto:false,timer:0,dot:{mob:1,boss:1,relic:1,cp:1,kill:0},focus:null,radius:26,raf:0};
+var mapS={match:'all',mode:'pos',team:'all',player:'',types:{kill:1,mob:1,boss:1,relic:1,cp:1},t0:0,t1:99999,ph:0,showCp:true,showPl:true,upto:false,timer:0,dot:{mob:1,boss:1,relic:1,cp:1,kill:0,arrow:1},focus:null,radius:26,raf:0};
 var mapImg={},mapImgState=0;
 function mapLoad(){
   if(mapImgState)return;mapImgState=1;
@@ -1322,7 +1322,7 @@ function mapHeat(ctx,pts){
   c2.putImageData(im,0,0);ctx.imageSmoothingEnabled=true;ctx.drawImage(cv,0,0,MAPW,MAPH);
 }
 function mapCpOwner(d,cp,t){var o=-1;(d.cpTl||[]).forEach(function(e){if(e.cp===cp&&e.t<=t)o=e.nt});return o}
-var MAPDOT={mob:['Mob kills','#ff8a00'],boss:['Boss kills','#ff2bd6'],relic:['Relic','#ffd400'],cp:['Control point changes','#ffffff'],kill:['Player kills','#38bdf8']};
+var MAPDOT={mob:['Mob kills','#ff8a00'],boss:['Boss kills','#ff2bd6'],relic:['Relic','#ffd400'],cp:['Control point changes','#ffffff'],kill:['Player kills','#38bdf8'],arrow:['Death arrows (killer to victim)','#ffffff']};
 var MAPCAMPS=[[-86,131,"Hard"],[-74,-141,"Hard"],[-45,-47,"Hard"],[45,47,"Hard"],[74,141,"Hard"],[86,-131,"Hard"],[-109,105,"Medium"],[-68,-71,"Medium"],[-47,50,"Medium"],[-1,77,"Medium"],[1,-77,"Medium"],[47,-50,"Medium"],[68,71,"Medium"],[109,-105,"Medium"],[-101,-115,"Easy"],[101,115,"Easy"],[-53,21,"Easy"],[-53,-29,"Easy"],[-40,111,"Easy"],[-1,67,"Easy"],[0,-67,"Easy"],[40,-111,"Easy"],[53,29,"Easy"],[53,-21,"Easy"]];
 function mapCpPx(k){var z=MAPZONES[k];return z?[mpx(z[0]),mpy(z[1])]:null}
 function mobSpot(e){var bc=null,bd=1e9;MAPCAMPS.forEach(function(c){if(e.tier&&c[2]!==e.tier)return;var d=Math.hypot(c[0]-e.x,c[1]-e.y);if(d<bd){bd=d;bc=c}});return bc}
@@ -1359,6 +1359,21 @@ function mapDots(ctx,sel,one,k){
   })});
 }
 /* relics rest at their base and travel with the carrier */
+/* death arrows: from where the killer stood to where the victim fell, white outline so they read on any heat, killer's team color inside. Kills and Deaths modes only */
+function mapArrows(ctx,sel,k){
+  if(!mapS.dot.arrow||(mapS.mode!=='death'&&mapS.mode!=='kill'))return;
+  sel.forEach(function(m){var PM={};(m.doc.players||[]).forEach(function(p){PM[p.name]=p});
+    (m.doc.log||[]).forEach(function(e){
+      if(e.k!=='death'||!mapPass(e)||(mapS.upto&&e.t>mapS.ph))return;
+      var kp=mapKillerAt(PM[e.a],e.t);if(!kp)return;
+      var kx=mpx(kp[0]),ky=mpy(kp[1]),vx=mpx(e.x),vy=mpy(e.y),dx=vx-kx,dy=vy-ky,len=Math.hypot(dx,dy);if(len<1)return;
+      var ux=dx/len,uy=dy/len,hs=13*k,bx=vx-ux*hs,by=vy-uy*hs,kt=PM[e.a]&&TEAMS[PM[e.a].team]?TEAMS[PM[e.a].team].col:'#ddd';
+      ctx.lineCap='round';ctx.lineJoin='round';
+      [['#fff',6.5*k],[kt,3*k]].forEach(function(st){ctx.strokeStyle=st[0];ctx.fillStyle=st[0];ctx.lineWidth=st[1];
+        ctx.beginPath();ctx.moveTo(kx,ky);ctx.lineTo(bx,by);ctx.stroke();
+        ctx.beginPath();ctx.moveTo(vx,vy);ctx.lineTo(bx-uy*hs*.55,by+ux*hs*.55);ctx.lineTo(bx+uy*hs*.55,by-ux*hs*.55);ctx.closePath();ctx.fill();if(st[1]>4*k)ctx.stroke()});
+      ctx.beginPath();ctx.arc(kx,ky,4.5*k,0,6.3);ctx.fillStyle=kt;ctx.fill();ctx.lineWidth=2*k;ctx.strokeStyle='#fff';ctx.stroke()})});
+}
 function mapRelics(ctx,one,k){
   if(!mapS.dot.relic)return;var S=one?relicState(one,mapS.ph):{0:{st:'home'},1:{st:'home'}};
   [0,1].forEach(function(rt){var im=mapImg['relic'+rt],H=RELIC_HOME[rt],hx=mpx(H[0]),hy=mpy(H[1]),st=S[rt],x=hx,y=hy,sz=58*k,glow=TEAMS[rt].col;
@@ -1398,6 +1413,7 @@ function mapDraw(){
     ctx.font='700 22px sans-serif';ctx.textAlign='center';ctx.lineWidth=4;ctx.strokeStyle='rgba(0,0,0,.8)';ctx.fillStyle='#fff';ctx.strokeText(k,A[0],A[1]+62);ctx.fillText(k,A[0],A[1]+62)});
   var K=mapK();
   mapDots(ctx,sel,one,K);
+  mapArrows(ctx,sel,K);
   var RS=one&&mapS.dot.relic?relicState(one,mapS.ph):null,carry={};if(RS)[0,1].forEach(function(r){if(RS[r].st==='carried')carry[RS[r].by]=r});
   if(mapS.showPl&&one)(one.players||[]).forEach(function(p){if(hideBots&&isBot(p.name))return;var q=null;(p.pos||[]).forEach(function(s){if(s[0]<=mapS.ph)q=s});if(!q||!q[3])return;
     var c=TEAMS[p.team]?TEAMS[p.team].col:'#888',ci=mapImg[p.cls],px=mpx(q[1]),py=mpy(q[2]),R=(ci?27:11)*K;
