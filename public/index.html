@@ -2028,7 +2028,7 @@ var MAPW=1400,MAPH=1654;
 var MAPC=(function(){var d={x0:710.6,sx:3.45,y0:798.5,sy:3.45};try{var s=JSON.parse(localStorage.getItem('arctura-mapcal3')||'null');if(s&&s.sx&&s.sy)d=s}catch(e){}return d})();
 function mpx(x){return MAPC.x0+x*MAPC.sx}function mpy(y){return MAPC.y0+y*MAPC.sy}
 var MAPZONES={North:[0,-150],South:[0,150],West:[-150,0],East:[150,0],Center:[0,0]};
-var mapS={match:'all',mode:'pos',team:'all',player:'',types:{kill:1,mob:1,boss:1,relic:1,cp:1},t0:0,t1:99999,ph:0,showCp:true,showPl:true,upto:false,timer:0,dot:{mob:0,boss:0,relic:0,cp:0,kill:0,arrow:0,mark:0},focus:null,radius:26,raf:0};
+var mapS={match:'all',mode:'pos',team:'all',player:'',types:{kill:1,mob:1,boss:1,relic:1,cp:1},t0:0,t1:99999,ph:0,showCp:true,showPl:true,upto:false,timer:0,dot:{mob:0,boss:0,relic:0,cp:0,kill:0,arrow:0,mark:0,killer:0},focus:null,radius:26,raf:0};
 var mapImg={},mapImgState=0;
 function mapLoad(){
   if(mapImgState)return;mapImgState=1;
@@ -2038,7 +2038,7 @@ function mapLoad(){
 function mapMatches(){return allMatches().filter(function(m){var d=m.doc;return (!mapScope||mapScope.indexOf(m.id)>=0)&&d.ledger&&(d.players||[]).some(function(p){return p.pos&&p.pos.length})}).sort(function(a,b){return playedAt(b.doc)-playedAt(a.doc)})}
 function mapSel(){var all=mapMatches();return mapS.match==='all'?all:all.filter(function(m){return m.id===mapS.match})}
 function mapZone(x,y){var best='',bd=1e9;Object.keys(MAPZONES).forEach(function(k){var z=MAPZONES[k],d=Math.hypot(x-z[0],y-z[1]);if(d<bd){bd=d;best=k}});return (bd<45?'At ':'Near ')+best}
-var MAPMODES=[['pos','Presence'],['kill','Kills'],['death','Deaths'],['mob','Mob kills'],['obj','Objectives']];
+var MAPMODES=[['pos','Presence'],['kill','Kills & deaths'],['mob','Mob kills'],['obj','Objectives']];
 function mapPass(e){
   if(e.t<mapS.t0||e.t>mapS.t1)return false;
   var who=e.k==='death'?e.b:e.a;
@@ -2055,7 +2055,7 @@ function mapPoints(){
     if(md==='pos'){(d.players||[]).forEach(function(p){if(hideBots&&isBot(p.name))return;if(mapS.team!=='all'&&p.team!==+mapS.team)return;if(mapS.player&&p.name!==mapS.player)return;
       (p.pos||[]).forEach(function(q){if(q[3]&&q[0]>=mapS.t0&&q[0]<=mapS.t1&&(!mapS.upto||q[0]<=mapS.ph))out.push([q[1],q[2]])})});return}
     var PM={};(d.players||[]).forEach(function(p){PM[p.name]=p});
-    (d.log||[]).forEach(function(e){var ok=md==='obj'?(e.k==='cp'||e.k==='relic'||e.k==='boss'):e.k===md;if(!ok||!mapPass(e)||(mapS.upto&&e.t>mapS.ph))return;var q=[e.x,e.y];if(e.k==='kill'&&md==='kill'){var kp=mapKillerAt(PM[e.a],e.t);if(kp)q=kp}if(e.k==='mob'){var bc=mobSpot(e);if(bc)q=[bc[0],bc[1]]}else if(e.k==='boss')q=[0,0];else if(e.k==='cp'&&MAPZONES[e.cp])q=MAPZONES[e.cp];out.push(q)})});
+    (d.log||[]).forEach(function(e){var ok=md==='obj'?(e.k==='cp'||e.k==='relic'||e.k==='boss'):e.k===md;if(!ok||!mapPass(e)||(mapS.upto&&e.t>mapS.ph))return;var q=[e.x,e.y];if(e.k==='mob'){var bc=mobSpot(e);if(bc)q=[bc[0],bc[1]]}else if(e.k==='boss')q=[0,0];else if(e.k==='cp'&&MAPZONES[e.cp])q=MAPZONES[e.cp];out.push(q)})});
   return out;
 }
 function mapHeat(ctx,pts){
@@ -2072,10 +2072,10 @@ function mapHeat(ctx,pts){
   c2.putImageData(im,0,0);ctx.imageSmoothingEnabled=true;ctx.drawImage(cv,0,0,MAPW,MAPH);
 }
 function mapCpOwner(d,cp,t){var o=-1;(d.cpTl||[]).forEach(function(e){if(e.cp===cp&&e.t<=t)o=e.nt});return o}
-var MAPDOT={mob:['Mob kills','#ff8a00'],boss:['Boss kills','#ff2bd6'],relic:['Relic','#ffd400'],cp:['Control point changes','#ffffff'],kill:['Player kills','#38bdf8'],arrow:['Death arrows (killer to victim)','#ffffff'],mark:['Death markers (team color)','#ff2a2a']};
+var MAPDOT={mob:['Mob kills','#ff8a00'],boss:['Boss kills','#ff2bd6'],relic:['Relic','#ffd400'],cp:['Control point changes','#ffffff'],kill:['Player kills','#38bdf8'],arrow:['Death arrows (killer to victim)','#ffffff'],mark:['Where they fell (victim team color)','#ff2a2a'],killer:['Where the killer stood','#38bdf8']};
 /* what each map tab shows: its own dots, and whether the control point owners and players at the playhead apply */
-var MAPUI={pos:{dots:[],cp:1,pl:1},kill:{dots:['kill','arrow'],cp:0,pl:0},death:{dots:['mark','arrow'],cp:0,pl:0},mob:{dots:['mob','boss'],cp:0,pl:0},obj:{dots:['cp','relic','boss'],cp:1,pl:1}};
-function mapPreset(md){var d={mob:0,boss:0,relic:0,cp:0,kill:0,arrow:0,mark:0};(MAPUI[md]||MAPUI.pos).dots.forEach(function(k){d[k]=1});return d}
+var MAPUI={pos:{dots:[],cp:1,pl:1},kill:{dots:['mark','killer','arrow'],cp:0,pl:0},mob:{dots:['mob','boss'],cp:0,pl:0},obj:{dots:['cp','relic','boss'],cp:1,pl:1}};
+function mapPreset(md){var d={mob:0,boss:0,relic:0,cp:0,kill:0,arrow:0,mark:0,killer:0};(MAPUI[md]||MAPUI.pos).dots.forEach(function(k){d[k]=1});return d}
 var MAPCAMPS=[[-86,131,"Hard"],[-74,-141,"Hard"],[-45,-47,"Hard"],[45,47,"Hard"],[74,141,"Hard"],[86,-131,"Hard"],[-109,105,"Medium"],[-68,-71,"Medium"],[-47,50,"Medium"],[-1,77,"Medium"],[1,-77,"Medium"],[47,-50,"Medium"],[68,71,"Medium"],[109,-105,"Medium"],[-101,-115,"Easy"],[101,115,"Easy"],[-53,21,"Easy"],[-53,-29,"Easy"],[-40,111,"Easy"],[-1,67,"Easy"],[0,-67,"Easy"],[40,-111,"Easy"],[53,29,"Easy"],[53,-21,"Easy"]];
 function mapCpPx(k){var z=MAPZONES[k];return z?[mpx(z[0]),mpy(z[1])]:null}
 function mobSpot(e){var bc=null,bd=1e9;MAPCAMPS.forEach(function(c){if(e.tier&&c[2]!==e.tier)return;var d=Math.hypot(c[0]-e.x,c[1]-e.y);if(d<bd){bd=d;bc=c}});return bc}
@@ -2170,6 +2170,7 @@ function mapDraw(){
   var K=mapK();
   mapDots(ctx,sel,one,K);
   mapArrows(ctx,sel,K);
+  if(mapS.dot.killer)sel.forEach(function(m){var PM={};(m.doc.players||[]).forEach(function(p){PM[p.name]=p});(m.doc.log||[]).forEach(function(e){if(e.k!=='death'||!mapPass(e)||(mapS.upto&&e.t>mapS.ph))return;var kp=mapKillerAt(PM[e.a],e.t);if(!kp)return;var x=mpx(kp[0]),y=mpy(kp[1]),pt=PM[e.a],c=pt&&TEAMS[pt.team]?TEAMS[pt.team].col:'#ddd';ctx.lineWidth=3*K;ctx.strokeStyle='rgba(0,0,0,.9)';ctx.beginPath();ctx.arc(x,y,7*K,0,6.3);ctx.fillStyle='#fff';ctx.fill();ctx.stroke();ctx.beginPath();ctx.arc(x,y,4.5*K,0,6.3);ctx.fillStyle=c;ctx.fill()})});
   if(mapS.dot.mark)sel.forEach(function(m){(m.doc.log||[]).forEach(function(e){if(e.k!=='death'||!mapPass(e)||(mapS.upto&&e.t>mapS.ph)||e.x==null)return;var x=mpx(e.x),y=mpy(e.y),c=TEAMS[e.team]?TEAMS[e.team].col:'#ddd',q=11*K;ctx.lineCap='round';ctx.lineWidth=9*K;ctx.strokeStyle='#000';ctx.beginPath();ctx.moveTo(x-q,y-q);ctx.lineTo(x+q,y+q);ctx.moveTo(x+q,y-q);ctx.lineTo(x-q,y+q);ctx.stroke();ctx.lineWidth=5*K;ctx.strokeStyle=c;ctx.stroke()})});
   var RS=one&&mapS.dot.relic?relicState(one,mapS.ph):null,carry={};if(RS)[0,1].forEach(function(r){if(RS[r].st==='carried')carry[RS[r].by]=r});
   if(mapS.showPl&&one)(one.players||[]).forEach(function(p){if(hideBots&&isBot(p.name))return;var q=null;(p.pos||[]).forEach(function(s){if(s[0]<=mapS.ph)q=s});if(!q||!q[3])return;
@@ -2206,12 +2207,24 @@ function mapStrips(d){
     ev.forEach(function(e){seg(last,e.t,own);last=e.t;own=e.nt});seg(last,T,own);
     return '<div class="mstrip" data-mapstrip="1"><span>'+esc(cp)+'</span><div class="mtr" data-dur="'+T+'">'+segs+'<b style="left:'+(100*Math.min(mapS.ph,T)/T)+'%"></b></div></div>'}).join('');
 }
+/* the kills log: killer and killed, each with class and team color */
+function mapWho(p,name){var c=p&&TEAMS[p.team]?TEAMS[p.team].col:'var(--muted)';return '<span style="display:inline-flex;align-items:center;gap:6px"><i style="width:9px;height:9px;border-radius:2px;background:'+c+'"></i>'+(p&&p.cls?clsPlain(p.cls)+' ':'')+'<strong>'+esc(name||'?')+'</strong></span>'}
+function mapKillRows(){
+  var rows=[];mapSel().forEach(function(m){var PM={};(m.doc.players||[]).forEach(function(p){PM[p.name]=p});
+    (m.doc.log||[]).forEach(function(e,i){if(e.k!=='kill'||e.t<mapS.t0||e.t>mapS.t1)return;if(hideBots&&(isBot(e.a)||isBot(e.b)))return;
+      if(mapS.team!=='all'&&e.team!==+mapS.team)return;if(mapS.player&&e.a!==mapS.player&&e.b!==mapS.player)return;rows.push({m:m,e:e,i:i,PM:PM})})});
+  rows.sort(function(a,b){return mapS.match==='all'?(playedAt(b.m.doc)-playedAt(a.m.doc))||(a.e.t-b.e.t):a.e.t-b.e.t});return rows;
+}
 function mapDyn(){
   var sel=mapSel(),one=mapS.match!=='all'&&sel.length===1?sel[0].doc:null,rows=mapRows();
   var cnt={kill:0,mob:0,boss:0,relic:0,cp:0};rows.forEach(function(r){cnt[r.e.k]++});
   var h=!mapFull?'':'<div class="kpis"><div class="kpi"><b>'+sel.length+'</b><small>Match'+(sel.length===1?'':'es')+'</small></div><div class="kpi"><b>'+cnt.kill+'</b><small>Kills</small></div><div class="kpi"><b>'+cnt.mob+'</b><small>Mob kills</small></div><div class="kpi"><b>'+cnt.boss+'</b><small>Boss kills</small></div><div class="kpi"><b>'+cnt.cp+'</b><small>Control point changes</small></div><div class="kpi"><b>'+cnt.relic+'</b><small>Relic events</small></div></div>';
   if(one&&mapFull)h+='<div class="panel"><h2>Control point ownership</h2><p class="note" style="margin-top:0">Click a bar to move the playhead. Purple is Elysiant, green is Ze\'kar, dark is neutral.</p>'+mapStrips(one)+'</div>';
   var cap=400;
+  if(mapS.mode==='kill'){var kr=mapKillRows();
+    h+='<div class="panel"><h2>Kills</h2>'+(kr.length?'<div class="scroll"><table><thead><tr><th scope="col"><button type="button" disabled>Time</button></th>'+(mapS.match==='all'?'<th scope="col"><button type="button" disabled>Match</button></th>':'')+'<th scope="col"><button type="button" disabled>Killer</button></th><th scope="col"><button type="button" disabled>Killed</button></th><th scope="col"><button type="button" disabled>Ability</button></th><th scope="col"><button type="button" disabled>Where</button></th></tr></thead><tbody>'+
+      kr.slice(0,cap).map(function(r){var e=r.e;return '<tr class="click" tabindex="0" data-mapev="'+esc(r.m.id)+':'+r.i+'"><td>'+dur(e.t)+'</td>'+(mapS.match==='all'?'<td style="text-align:left">'+esc(mtitle(r.m.doc))+'</td>':'')+'<td style="text-align:left">'+mapWho(r.PM[e.a],e.a)+'</td><td style="text-align:left">'+mapWho(r.PM[e.b],e.b)+'</td><td style="text-align:left">'+esc(e.sk?skName(e.sk):'-')+'</td><td>'+mapZone(e.x,e.y)+'</td></tr>'}).join('')+'</tbody></table></div>'+(kr.length>cap?'<p class="note">Showing the first '+cap+' of '+kr.length+' kills. Narrow the time range or filters.</p>':'<p class="note">Click a row to mark it on the map. The player filter matches either the killer or the killed.</p>'):'<p class="note">No kills match these filters.</p>')+'</div>';
+    return h}
   h+='<details class="panel" data-maplog="1"'+(mapS.logOpen?' open':'')+'><summary style="cursor:pointer"><strong>Event log</strong> <span class="note" style="margin:0">'+rows.length+' event'+(rows.length===1?'':'s')+'</span></summary>'+(rows.length?'<div class="scroll"><table><thead><tr><th scope="col"><button type="button" disabled>Time</button></th>'+(mapS.match==='all'?'<th scope="col"><button type="button" disabled>Match</button></th>':'')+'<th scope="col"><button type="button" disabled>Type</button></th><th scope="col"><button type="button" disabled>Event</button></th><th scope="col"><button type="button" disabled>Team</button></th><th scope="col"><button type="button" disabled>Where</button></th></tr></thead><tbody>'+
     rows.slice(0,cap).map(function(r){var e=r.e;return '<tr class="click" tabindex="0" data-mapev="'+esc(r.m.id)+':'+r.i+'"><td>'+dur(e.t)+'</td>'+(mapS.match==='all'?'<td style="text-align:left">'+esc(mtitle(r.m.doc))+'</td>':'')+'<td>'+MAPK[e.k]+'</td><td style="text-align:left;white-space:normal">'+mapText(e)+'</td><td>'+teamTag(e.team)+'</td><td>'+mapZone(e.x,e.y)+'</td></tr>'}).join('')+'</tbody></table></div>'+(rows.length>cap?'<p class="note">Showing the first '+cap+' of '+rows.length+' events. Narrow the time range or filters.</p>':'<p class="note">Click a row to mark it on the map.</p>'):'<p class="note">No events match these filters.</p>')+'</details>';
   return h;
@@ -2249,8 +2262,8 @@ function mapBody(mid){
     '<div class="mchk">'+(ui.cp?'<label class="chk"><input type="checkbox" id="mapCp" data-mapf="1"'+(mapS.showCp?' checked':'')+'> Control points'+(full?' (owner at playhead)':'')+'</label>':'')+(full&&ui.pl?'<label class="chk"><input type="checkbox" id="mapPl" data-mapf="1"'+(mapS.showPl?' checked':'')+'> Players at playhead</label>':'')+
     '<label class="chk"><input type="checkbox" id="mapUpto" data-mapf="1"'+(mapS.upto?' checked':'')+'> Build up to playhead</label><button class="btn ghost" type="button" data-mapplay="1">'+(mapS.timer?'Pause':'Play')+'</button>'+'<label class="chk"><input type="checkbox" id="botsChk"'+(hideBots?' checked':'')+'> Hide test bots</label></div>'+
     (ui.dots.length?'<div class="mchk"><b class="note" style="margin:0">Show on this map</b>'+ui.dots.map(function(k){return '<label class="chk"><input type="checkbox" data-mapdot="'+k+'"'+(mapS.dot[k]?' checked':'')+'> <span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:'+MAPDOT[k][1]+';border:1px solid #000;vertical-align:-1px"></span> '+MAPDOT[k][0]+'</label>'}).join('')+'<span class="note" style="margin:0">'+(full&&ui.cp?'The platform icon shows the owner at the playhead.':'')+'</span></div>':'')+
-    (full?'<div class="mchk">'+Object.keys(MAPK).map(function(k){return '<label class="chk"><input type="checkbox" data-maptype="'+k+'"'+(mapS.types[k]?' checked':'')+'> '+MAPK[k]+'</label>'}).join('')+'<span class="note" style="margin:0">Types filter the time table.</span></div>':'')+'</div>';
-  h+='<div class="'+(full?'mapgrid':'mapsolo')+'"><div class="mapwrap"><canvas id="mapCv" width="'+MAPW+'" height="'+MAPH+'" role="img" aria-label="Arena map with heat map overlay"></canvas><div class="mzoom"><button type="button" data-mapzoom="in" aria-label="Zoom in">+</button><button type="button" data-mapzoom="out" aria-label="Zoom out">&minus;</button><button type="button" class="rs" data-mapzoom="reset" aria-label="Reset zoom">1:1</button></div></div><div id="mapDyn" class="mapside"></div></div>'+(mapS.mode==='death'?deathZones(mapSel()):'');
+    (full&&mapS.mode!=='kill'?'<div class="mchk">'+Object.keys(MAPK).map(function(k){return '<label class="chk"><input type="checkbox" data-maptype="'+k+'"'+(mapS.types[k]?' checked':'')+'> '+MAPK[k]+'</label>'}).join('')+'<span class="note" style="margin:0">Types filter the time table.</span></div>':'')+'</div>';
+  h+='<div class="'+(full?'mapgrid':'mapsolo')+'"><div class="mapwrap"><canvas id="mapCv" width="'+MAPW+'" height="'+MAPH+'" role="img" aria-label="Arena map with heat map overlay"></canvas><div class="mzoom"><button type="button" data-mapzoom="in" aria-label="Zoom in">+</button><button type="button" data-mapzoom="out" aria-label="Zoom out">&minus;</button><button type="button" class="rs" data-mapzoom="reset" aria-label="Reset zoom">1:1</button></div></div><div id="mapDyn" class="mapside"></div></div>'+(mapS.mode==='kill'?deathZones(mapSel()):'');
   if(!full)h+='<p class="note">Combined over '+all.length+' ledger match'+(all.length===1?'':'es')+(mapScope?' in this event':'')+'. Open a match for its own event time table and control point owners.</p>'+(mapScope?'':'<details class="panel"><summary>Map calibration</summary><p class="note">The log positions are game coordinates. This maps them onto the picture: pixel = origin + coordinate &times; scale, on a '+MAPW+' by '+MAPH+' image. The control point icons are drawn at the game coordinates of the four platforms, so adjust until they sit on the stone circles. Saved in this browser.</p><div class="mctl" style="padding:0;border:0">'+
     [['x0','X origin'],['sx','X scale'],['y0','Y origin'],['sy','Y scale']].map(function(f){return lab(f[1],'<input type="number" step="0.05" data-mapcal="'+f[0]+'" value="'+MAPC[f[0]]+'">')}).join('')+'<button class="btn ghost" type="button" data-mapcalreset="1">Reset</button></div></details>');
   setTimeout(function(){mapLoad();mapUpdate()},0);
