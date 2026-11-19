@@ -1369,13 +1369,13 @@ function mapArrows(ctx,sel,k){
       var kx=mpx(kp[0]),ky=mpy(kp[1]),vx=mpx(e.x),vy=mpy(e.y),dx=vx-kx,dy=vy-ky,len=Math.hypot(dx,dy);if(len<1)return;
       var ux=dx/len,uy=dy/len,kt=PM[e.a]&&TEAMS[PM[e.a].team]?TEAMS[PM[e.a].team].col:'#ddd',vt=TEAMS[e.team]?TEAMS[e.team].col:'#ddd';
       /* the arrow stops short of the victim, which gets an X; a short hop keeps a small head instead of a backwards one */
-      var tl=Math.max(len-8*k,len*.5),tx=kx+ux*tl,ty=ky+uy*tl,hs=Math.min(11*k,Math.max(tl*.8,5*k)),bx=tx-ux*hs,by=ty-uy*hs;
+      var tl=Math.max(len-15*k,len*.5),tx=kx+ux*tl,ty=ky+uy*tl,hs=Math.min(22*k,Math.max(tl*.8,10*k)),bx=tx-ux*hs,by=ty-uy*hs;
       ctx.lineCap='round';ctx.lineJoin='round';
-      [['#fff',6.5*k],[kt,3*k]].forEach(function(st){ctx.strokeStyle=st[0];ctx.fillStyle=st[0];ctx.lineWidth=st[1];
+      [['#fff',11*k],[kt,5.5*k]].forEach(function(st){ctx.strokeStyle=st[0];ctx.fillStyle=st[0];ctx.lineWidth=st[1];
         if(tl>hs){ctx.beginPath();ctx.moveTo(kx,ky);ctx.lineTo(bx,by);ctx.stroke()}
-        ctx.beginPath();ctx.moveTo(tx,ty);ctx.lineTo(bx-uy*hs*.55,by+ux*hs*.55);ctx.lineTo(bx+uy*hs*.55,by-ux*hs*.55);ctx.closePath();ctx.fill();if(st[1]>4*k)ctx.stroke()});
-      ctx.beginPath();ctx.arc(kx,ky,4.5*k,0,6.3);ctx.fillStyle=kt;ctx.fill();ctx.lineWidth=2*k;ctx.strokeStyle='#fff';ctx.stroke();
-      var xr=6*k;[['#fff',6*k],[vt,2.6*k]].forEach(function(st){ctx.strokeStyle=st[0];ctx.lineWidth=st[1];ctx.beginPath();ctx.moveTo(vx-xr,vy-xr);ctx.lineTo(vx+xr,vy+xr);ctx.moveTo(vx+xr,vy-xr);ctx.lineTo(vx-xr,vy+xr);ctx.stroke()})})});
+        ctx.beginPath();ctx.moveTo(tx,ty);ctx.lineTo(bx-uy*hs*.55,by+ux*hs*.55);ctx.lineTo(bx+uy*hs*.55,by-ux*hs*.55);ctx.closePath();ctx.fill();if(st[1]>8*k)ctx.stroke()});
+      ctx.beginPath();ctx.arc(kx,ky,8*k,0,6.3);ctx.fillStyle=kt;ctx.fill();ctx.lineWidth=3.5*k;ctx.strokeStyle='#fff';ctx.stroke();
+      var xr=11*k;[['#fff',10*k],[vt,5*k]].forEach(function(st){ctx.strokeStyle=st[0];ctx.lineWidth=st[1];ctx.beginPath();ctx.moveTo(vx-xr,vy-xr);ctx.lineTo(vx+xr,vy+xr);ctx.moveTo(vx+xr,vy-xr);ctx.lineTo(vx-xr,vy+xr);ctx.stroke()})})});
 }
 function mapRelics(ctx,one,k){
   if(!mapS.dot.relic)return;var S=one?relicState(one,mapS.ph):{0:{st:'home'},1:{st:'home'}};
