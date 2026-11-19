@@ -94,6 +94,8 @@ label.chk{display:inline-flex;gap:8px;align-items:center;color:var(--muted);curs
 .vsb i{display:block;height:100%;border-radius:3px}
 @media (max-width:560px){.vsr{grid-template-columns:minmax(0,1fr)}}
 .cols{align-items:start;display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:18px}
+.skwrap{display:grid;grid-template-columns:128px minmax(0,1fr);gap:18px;align-items:start}.skrail{position:sticky;top:8px;display:flex;flex-direction:column;gap:6px}.skrail button{display:flex;align-items:center;gap:8px;text-align:left;background:none;border:1px solid var(--line);border-radius:6px;color:var(--fg);font:600 14px/1 var(--font-d);letter-spacing:.04em;padding:9px 10px;cursor:pointer}.skrail button:hover{border-color:var(--muted)}.skrail button[aria-pressed=true]{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}.skmain{min-width:0}
+@media (max-width:700px){.skwrap{grid-template-columns:minmax(0,1fr)}.skrail{position:static;flex-direction:row;flex-wrap:wrap;align-items:center}}
 @media (max-width:820px){.cols{grid-template-columns:minmax(0,1fr)}}
 .note{color:var(--muted);font-size:13px}
 a.plink{color:var(--fg);font-weight:600;text-decoration:none;border-bottom:1px dotted var(--muted)}
@@ -1057,6 +1059,7 @@ var DOC_LIMIT=3.5*1024*1024,DOC_WARN=0.8*DOC_LIMIT;
 function viewAdmin(){
   var h='<div><h1>Admin stats</h1><p class="sub">Overall numbers and automatic checks to find problems in the logs, the game and the balance '+statusLine()+'</p></div>';
   if(!canEdit)return h+empty('Editors only','This page is for people with edit access to the site.');
+  h+='<div class="panel"><h2>Admin tools</h2><p class="note" style="margin:0 0 10px">Other tools for the team. They open in a new tab.</p><a class="btn" style="display:inline-block;text-decoration:none" href="https://aeon-damage-tester.vercel.app/" target="_blank" rel="noopener noreferrer">Aeon damage tester &#8599;</a></div>';
   var ms=allMatches();if(!ms.length)return h+accountsPanel()+empty('No matches yet','Upload combat logs on the Upload tab.');
   var T={matches:ms.length,mins:0,rows:0,dmg:0,kills:0,deaths:0,boss:0,pts:0,relics:0,humans:{},bots:{}};
   var teams={},cls={},bl=[],sizeMax=0;
@@ -1352,35 +1355,39 @@ function themeIcon(){var b=document.getElementById('themeBtn');if(!b)return;var 
 (function(){var s=null;try{s=localStorage.getItem('arcturaTheme')}catch(x){}if(s==='light'||s==='dark')document.documentElement.setAttribute('data-theme',s);themeIcon();
   document.addEventListener('click',function(e){if(!(e.target.closest&&e.target.closest('#themeBtn')))return;var n=themeNow()==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('arcturaTheme',n)}catch(x){}themeIcon();if(typeof render==='function')try{render()}catch(x){}})})();
 /* ---- Skills tab: what the stored match data supports (per player skill stats: casts, hits, crits, kills, damage pipeline) ---- */
-var skFilter={cls:'all',match:'all'};
+var skFilter={cls:[],match:'all'};
+var SKM={np:['Players',0],casts:['Casts',0],hits:['Hits',0],hpc:['Hits per cast',2],crit:['Crit %',1],kills:['Kills',0],dp:['PvP damage',0],de:['PvE damage',0],total:['Total damage',0],dpc:['Damage per cast',0],mitp:['Mitigated %',1]};
 function skName(n){return String(n||'').split('.').pop()||'?'}
 function skillAgg(){
   var ms=allMatches().filter(function(m){return skFilter.match==='all'||m.id===skFilter.match}),A={},users={},nm=0,nps=0;
   ms.forEach(function(m){var any=false;(m.doc.players||[]).forEach(function(p){
-    if(hideBots&&isBot(p.name))return;if(skFilter.cls!=='all'&&p.cls!==skFilter.cls)return;
-    (p.skills||[]).forEach(function(k){any=true;var a=A[k.skill]||(A[k.skill]={skill:k.skill,name:skName(k.skill),casts:0,hitsP:0,hitsE:0,crits:0,kills:0,dp:0,de:0,mit:0,pre:0,pl:{}});
+    if(hideBots&&isBot(p.name))return;if(skFilter.cls.length&&skFilter.cls.indexOf(p.cls)<0)return;
+    (p.skills||[]).forEach(function(k){any=true;var a=A[k.skill]||(A[k.skill]={skill:k.skill,name:skName(k.skill),casts:0,hitsP:0,hitsE:0,crits:0,kills:0,dp:0,de:0,mit:0,pre:0,pl:{},cl:{}});a.cl[p.cls||'']=(a.cl[p.cls||'']||0)+1;
       a.casts+=k.casts;a.hitsP+=k.pvp.hits;a.hitsE+=k.pve.hits;a.crits+=k.pvp.crits+k.pve.crits;a.kills+=k.pvp.kills+k.pve.kills;a.dp+=k.pvp.hl;a.de+=k.pve.hl;a.mit+=k.pvp.mit+k.pve.mit;a.pre+=k.pvp.pre+k.pve.pre;
       var u=a.pl[p.name]=(a.pl[p.name]||0)+k.pvp.hl+k.pve.hl;nps++});});if(any)nm++});
-  var rows=Object.keys(A).map(function(n){var a=A[n];a.hits=a.hitsP+a.hitsE;a.total=a.dp+a.de;a.dpc=a.casts?a.total/a.casts:0;a.hpc=a.casts?a.hits/a.casts:0;a.crit=a.hits?100*a.crits/a.hits:0;a.mitp=a.pre?100*a.mit/a.pre:0;a.np=Object.keys(a.pl).length;
+  var rows=Object.keys(A).map(function(n){var a=A[n];a.hits=a.hitsP+a.hitsE;a.total=a.dp+a.de;a.dpc=a.casts?a.total/a.casts:0;a.hpc=a.casts?a.hits/a.casts:0;a.crit=a.hits?100*a.crits/a.hits:0;a.mitp=a.pre?100*a.mit/a.pre:0;a.np=Object.keys(a.pl).length;a.cls=Object.keys(a.cl).sort(function(x,y){return a.cl[y]-a.cl[x]})[0]||'';
     a.top=Object.keys(a.pl).sort(function(x,y){return a.pl[y]-a.pl[x]}).slice(0,3).map(function(x){return x+' '+num(a.pl[x])}).join(', ');return a});
   return {rows:rows,matches:nm,all:ms.length};
 }
 function viewSkills(){
   var ms=allMatches();
   if(!ms.length)return '<div><h1>Skills</h1></div>'+empty('No matches yet','Upload a match to see skill usage.');
-  var G=skillAgg(),rows=G.rows,cls=['all'].concat(CLASSES);
+  var G=skillAgg(),rows=G.rows;
   var h='<div class="bar"><div><h1>Skills</h1><p class="sub">'+G.matches+' of '+G.all+' match'+(G.all===1?'':'es')+' with skill data. Casts, hits, crits, kills and damage per skill, from the combat ledger.</p></div>'+
-    '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><label class="chk">Class <select id="skCls">'+cls.map(function(c){return '<option value="'+c+'"'+(skFilter.cls===c?' selected':'')+'>'+(c==='all'?'All classes':c)+'</option>'}).join('')+'</select></label>'+
-    '<label class="chk">Match <select id="skMatch"><option value="all">All matches</option>'+ms.map(function(m){return '<option value="'+esc(m.id)+'"'+(skFilter.match===m.id?' selected':'')+'>'+esc(m.doc.name||m.id)+'</option>'}).join('')+'</select></label></div></div>';
+    '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><label class="chk">Match <select id="skMatch"><option value="all">All matches</option>'+ms.map(function(m){return '<option value="'+esc(m.id)+'"'+(skFilter.match===m.id?' selected':'')+'>'+esc(m.doc.name||m.id)+'</option>'}).join('')+'</select></label></div></div>';
+  var rail='<aside class="skrail" aria-label="Class filter"><span class="note" style="margin:0">Classes</span><button type="button" data-skcls="" aria-pressed="'+(skFilter.cls.length?'false':'true')+'">All</button>'+CLASSES.map(function(c){return '<button type="button" data-skcls="'+c+'" aria-pressed="'+(skFilter.cls.indexOf(c)>=0)+'"><i class="dot" style="background:'+(CCOL[c]||'var(--c-none)')+'"></i>'+c+'</button>'}).join('')+'<span class="note" style="margin:0">Click to pick several and compare.</span></aside>';
+  h+='<div class="skwrap">'+rail+'<div class="skmain">';
   if(!rows.length)return h+empty('No skill data','These matches have no per-skill stats (older or imported summaries), or the filter excludes everyone.');
-  var top=rows.slice().sort(function(a,b){return b.total-a.total}).slice(0,12),mx=Math.max(1,top[0].total);
-  h+='<div class="panel"><h2>Top skills by damage</h2><p class="note" style="margin:0 0 10px"><b>PvP</b> damage and <b>PvE</b> damage are split in each bar; hover for the numbers.</p>'+
-    top.map(function(a){var w=100*a.total/mx,wp=a.total?100*a.dp/a.total:0;
-      return '<div style="display:grid;grid-template-columns:170px 1fr 90px;gap:10px;align-items:center;margin:4px 0" title="'+esc(a.skill+'\nPvP '+num(a.dp)+' / PvE '+num(a.de)+'\n'+num(a.casts)+' casts')+'"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(a.name)+'</span>'+
-      '<span style="display:block;height:16px;width:'+w.toFixed(1)+'%;min-width:3px;border-radius:3px;overflow:hidden;display:flex"><i style="width:'+wp.toFixed(1)+'%;background:var(--accent)"></i><i style="flex:1;background:var(--c-mystic)"></i></span><span style="text-align:right">'+num(a.total)+'</span></div>'}).join('')+
-    '<p class="note" style="margin:8px 0 0"><i style="display:inline-block;width:10px;height:10px;background:var(--accent);border-radius:2px"></i> PvP &nbsp; <i style="display:inline-block;width:10px;height:10px;background:var(--c-mystic);border-radius:2px"></i> PvE</p></div>';
+  var st=sortState.skills,key=SKM[st.k]?st.k:'total',dir=SKM[st.k]?st.d:-1,dg=SKM[key][1],lab=SKM[key][0],split=key==='total';
+  var top=rows.filter(function(a){return a[key]>0}).sort(function(a,b){return dir*(a[key]-b[key])}).slice(0,12);
+  if(top.length){var mx=Math.max.apply(null,top.map(function(a){return a[key]}));
+  h+='<div class="panel"><h2>Top skills by '+esc(lab.toLowerCase())+'</h2><p class="note" style="margin:0 0 10px">'+(split?'<b>PvP</b> damage and <b>PvE</b> damage are split in each bar; hover for the numbers. ':'')+'The chart follows the column the table below is sorted by; click another column header to change it.</p>'+
+    top.map(function(a){var w=100*a[key]/mx,wp=a.total?100*a.dp/a.total:0;
+      return '<div style="display:grid;grid-template-columns:190px 1fr 90px;gap:10px;align-items:center;margin:4px 0" title="'+esc(a.skill+'\nPvP '+num(a.dp)+' / PvE '+num(a.de)+'\n'+num(a.casts)+' casts')+'"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(a.cls?'<i class="dot" style="background:'+(CCOL[a.cls]||'var(--c-none)')+'" title="'+esc(a.cls)+'"></i> ':'')+esc(a.name)+'</span>'+
+      '<span style="height:16px;width:'+w.toFixed(1)+'%;min-width:3px;border-radius:3px;overflow:hidden;display:flex">'+(split?'<i style="width:'+wp.toFixed(1)+'%;background:var(--accent)"></i><i style="flex:1;background:var(--c-mystic)"></i>':'<i style="flex:1;background:'+(key==='de'?'var(--c-mystic)':'var(--accent)')+'"></i>')+'</span><span style="text-align:right">'+num(a[key],dg)+'</span></div>'}).join('')+
+    (split?'<p class="note" style="margin:8px 0 0"><i style="display:inline-block;width:10px;height:10px;background:var(--accent);border-radius:2px"></i> PvP &nbsp; <i style="display:inline-block;width:10px;height:10px;background:var(--c-mystic);border-radius:2px"></i> PvE</p>':'')+'</div>'}
   h+='<div class="panel"><h2>All skills</h2>'+table('skills',[
-    {k:'name',l:'Skill',f:function(r){return '<span title="'+esc(r.skill)+'">'+esc(r.name)+'</span>'}},
+    {k:'name',l:'Skill',f:function(r){return (r.cls?'<i class="dot" style="background:'+(CCOL[r.cls]||'var(--c-none)')+'" title="'+esc(r.cls)+'"></i> ':'')+'<span title="'+esc(r.skill)+'">'+esc(r.name)+'</span>'}},
     {k:'np',l:'Players',f:function(r){return '<span title="'+esc(r.top)+'">'+num(r.np)+'</span>'}},
     {k:'casts',l:'Casts',f:function(r){return num(r.casts)}},
     {k:'hits',l:'Hits',f:function(r){return num(r.hits)}},
@@ -1392,10 +1399,11 @@ function viewSkills(){
     {k:'total',l:'Total dmg',f:function(r){return num(r.total)}},
     {k:'dpc',l:'Dmg/cast',f:function(r){return num(r.dpc)}},
     {k:'mitp',l:'Mitigated %',f:function(r){return num(r.mitp,1)}}],rows)+
-    '<p class="note">Hover a skill for its full id and the Players count for the top users. Utility skills show casts with no damage. Accuracy, cooldowns and cast timelines are not in the stored data.</p></div>';
-  return h;
+    '<p class="note">Hover a skill for its full id and the Players count for the top users. Utility skills show casts with no damage. Per-skill accuracy, cooldowns and the cast timeline are on the match Breakdown tab.</p></div>';
+  return h+'</div></div>';
 }
-document.addEventListener('change',function(e){var id=e.target.id;if(id==='skCls'){skFilter.cls=e.target.value;render()}else if(id==='skMatch'){skFilter.match=e.target.value;render()}});
+document.addEventListener('click',function(e){var sc=e.target.closest&&e.target.closest('[data-skcls]');if(!sc)return;var c=sc.dataset.skcls;if(!c)skFilter.cls=[];else{var i=skFilter.cls.indexOf(c);if(i>=0)skFilter.cls.splice(i,1);else skFilter.cls.push(c)}render()});
+document.addEventListener('change',function(e){var id=e.target.id;if(id==='skMatch'){skFilter.match=e.target.value;render()}});
 /* ---- Match breakdown tab: attacks, abilities, hit rate and objectives per player, plus a player by skill matrix ---- */
 var bk={player:'',metric:'dmg'};
 function bkRow(p){
