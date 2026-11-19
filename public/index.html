@@ -1086,16 +1086,16 @@ function aliveSecs(d){if(!anaHas(d))return null;var a=analyze(d),m={};Object.key
 function classVs(d){
   var pl=dmgPlayers(d).filter(function(p){return p.team===0||p.team===1});if(!pl.length)return '';
   var cls={},al=aliveSecs(d),est=!al;
-  pl.forEach(function(p){var c=p.cls||'Unknown',o=cls[c]||(cls[c]={0:{n:[],dmg:0,sec:0},1:{n:[],dmg:0,sec:0}});o[p.team].n.push(p.name);o[p.team].dmg+=dmgSum(d.series[p.name]);o[p.team].sec+=est?(d.duration||0):(al[p.name]||0)});
-  function rate(x){return x.n.length&&x.sec>0?x.dmg/(x.sec/60):null}
+  pl.forEach(function(p){var c=p.cls||'Unknown',o=cls[c]||(cls[c]={0:{n:[],dmg:0,heal:0,sec:0},1:{n:[],dmg:0,heal:0,sec:0}});o[p.team].n.push(p.name);o[p.team].dmg+=dmgSum(d.series[p.name]);o[p.team].heal+=p.heal||0;o[p.team].sec+=est?(d.duration||0):(al[p.name]||0)});
+  function rate(x){return x.n.length&&x.sec>0?(x.dmg+x.heal)/(x.sec/60):null}
   var rows=Object.keys(cls).sort(function(a,b){return cls[b][0].dmg+cls[b][1].dmg-cls[a][0].dmg-cls[a][1].dmg}).map(function(c){var o=cls[c];
-    function cell(t){var x=o[t];if(!x.n.length)return '<td>-</td><td>-</td><td>-</td><td>-</td>';
-      return '<td style="text-align:left">'+x.n.map(function(n){return '<a class="plink" href="#player-'+slug(n)+'">'+esc(n)+'</a>'}).join(', ')+'</td><td>'+num(x.dmg)+'</td><td>'+(est?'-':dur(x.sec/x.n.length))+'</td><td>'+(rate(x)==null?'-':num(rate(x)))+'</td>'}
+    function cell(t){var x=o[t];if(!x.n.length)return '<td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>';
+      return '<td style="text-align:left">'+x.n.map(function(n){return '<a class="plink" href="#player-'+slug(n)+'">'+esc(n)+'</a>'}).join(', ')+'</td><td>'+num(x.dmg)+'</td><td>'+(x.heal>0?num(x.heal):'-')+'</td><td>'+(est?'-':dur(x.sec/x.n.length))+'</td><td>'+(rate(x)==null?'-':num(rate(x)))+'</td>'}
     var a0=rate(o[0])||0,a1=rate(o[1])||0,edge='-';
     if(o[0].n.length&&o[1].n.length&&(a0>0||a1>0)){var w=a0>=a1?0:1,lo=Math.min(a0,a1),hi=Math.max(a0,a1);edge='<span style="color:'+TEAMS[w].col+'">'+esc(teamName(w))+'</span> '+(lo>0?'+'+Math.round((hi-lo)/lo*100)+'%':'only')}
     else if(o[0].n.length!==o[1].n.length)edge='<span class="note" style="margin:0">no '+esc(o[0].n.length?teamName(1):teamName(0))+' '+esc(c)+'</span>';
     return '<tr><td>'+clsCell(c==='Unknown'?'':c)+'</td>'+cell(0)+cell(1)+'<td>'+edge+'</td></tr>'}).join('');
-  return '<div class="panel"><h2>Damage by class, team against team</h2>'+plainTable(['Class',esc(teamName(0)),'Damage','Alive each','Dmg/min alive',esc(teamName(1)),'Damage','Alive each','Dmg/min alive','Edge'],rows)+'<p class="note">Each class is lined up against the same class on the other team. Dmg/min alive is damage divided by the minutes the players were alive (from position samples), so dying early does not count against someone and a team with two of a class is not ahead just for having more. Edge compares that rate.'+(est?' This log has no position samples, so alive time is not known and the rate uses the whole match instead.':'')+'</p></div>';
+  return '<div class="panel"><h2>Damage by class, team against team</h2>'+plainTable(['Class',esc(teamName(0)),'Damage','Healing','Alive each','Dmg + heal /min',esc(teamName(1)),'Damage','Healing','Alive each','Dmg + heal /min','Edge'],rows)+'<p class="note">Each class is lined up against the same class on the other team. Dmg + heal /min is damage plus healing divided by the minutes the players were alive (from position samples), so healers are not marked down for healing instead of hitting, dying early does not count against someone, and a team with two of a class is not ahead just for having more. Healing is effective healing from players, without passive regen, and a point of healing is counted the same as a point of damage, so read the Damage and Healing columns too. Edge compares the combined rate.'+(est?' This log has no position samples, so alive time is not known and the rate uses the whole match instead.':'')+'</p></div>';
 }
 function teamDamage(d){
   if(!Object.keys(d.series||{}).length)return '<div class="panel"><h2>Damage dealt per 30 seconds</h2><p class="note">No damage dealt in this log.</p></div>';
