@@ -94,6 +94,7 @@ label.chk{display:inline-flex;gap:8px;align-items:center;color:var(--muted);curs
 .vsb i{display:block;height:100%;border-radius:3px}
 @media (max-width:560px){.vsr{grid-template-columns:minmax(0,1fr)}}
 .cols{align-items:start;display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:18px}
+.modalbg{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px;z-index:50}.modal{background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:20px;width:min(460px,100%);box-shadow:0 12px 40px rgba(0,0,0,.5)}.modal h2{margin:0 0 6px}
 nav.sec{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 16px;border-bottom:1px solid var(--line)}nav.sec a{color:var(--muted);font:600 16px/1 var(--font-d);letter-spacing:.06em;text-transform:uppercase;padding:10px 16px 11px;border-bottom:3px solid transparent;margin-bottom:-1px;text-decoration:none}nav.sec a:hover{color:var(--fg)}nav.sec a[aria-current=page]{color:var(--fg);border-bottom-color:var(--accent)}
 .gxchips{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}.gxchips button{background:var(--panel);border:1px solid var(--line);border-radius:6px;color:var(--fg);font:600 14px/1 var(--font-d);padding:8px 12px;cursor:pointer}.gxchips button:hover{border-color:var(--muted)}.gxchips button[aria-pressed=true]{border-color:var(--accent);box-shadow:inset 0 -3px 0 var(--accent)}.gxsub .subnav{margin-bottom:10px;border-bottom:0}.gxsub .subnav button{font-size:14px;padding:8px 14px;border:1px solid var(--line);border-radius:6px;margin:0 4px 6px 0}.gxsub .subnav button[aria-selected=true]{border-color:var(--accent);background:var(--panel)}
 .skwrap{display:grid;grid-template-columns:128px minmax(0,1fr);gap:18px;align-items:start}.skrail{position:sticky;top:8px;display:flex;flex-direction:column;gap:6px}.skrail button{display:flex;align-items:center;gap:8px;text-align:left;background:none;border:1px solid var(--line);border-radius:6px;color:var(--fg);font:600 14px/1 var(--font-d);letter-spacing:.04em;padding:9px 10px;cursor:pointer}.skrail button:hover{border-color:var(--muted)}.skrail button[aria-pressed=true]{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}.skmain{min-width:0}
@@ -1064,9 +1065,9 @@ function copyBugs(){
 }
 var DOC_LIMIT=3.5*1024*1024,DOC_WARN=0.8*DOC_LIMIT;
 function viewAdmin(){
-  var h='<div><h1>Admin stats</h1><p class="sub">Overall numbers and automatic checks to find problems in the logs, the game and the balance '+statusLine()+'</p></div>';
+  var h='<div><h1>Admin</h1><p class="sub">Match handling, uploads, accounts, and automatic checks that find problems in the logs, the game and the balance '+statusLine()+'</p></div>';
   if(!canDesign)return h+empty('Designers and admins only','This page is for designers and admins.');
-  var ms=allMatches();if(!ms.length)return h+(canEdit?accountsPanel():'')+empty('No matches yet','Upload combat logs on the Upload tab.');
+  var ms=allMatches();if(!ms.length)return adminShell(h,empty('No matches yet','Upload combat logs in the Upload section.'),'',0);
   var T={matches:ms.length,mins:0,rows:0,dmg:0,kills:0,deaths:0,boss:0,pts:0,relics:0,humans:{},bots:{}};
   var teams={},cls={},bl=[],sizeMax=0;
   var EXPECT_COLS=['Time','Type','Source','Target','Message','Effective','TeamIndex','Killer','Victim','Ability','Critical','MobCampTier','PlayersPresent','ScoreAwarded'],
@@ -1125,8 +1126,7 @@ function viewAdmin(){
   addIssue('practice','Low','Practice match (no other human player)',practice,'Left out of rated numbers when Rated matches only is on.');
   addIssue('bigDoc','High','Stored match near the 3.5 MiB size limit',bigDoc,'The site rejects a match document over 3.5 MiB, so a bigger log would fail to save.');
   var nh=Object.keys(T.humans).length;
-  h+='<div class="kpis"><div class="kpi"><b>'+T.matches+'</b><small>Matches</small></div><div class="kpi"><b>'+num(T.mins/60,1)+'</b><small>Hours logged</small></div><div class="kpi"><b>'+nh+'</b><small>Human players</small></div><div class="kpi"><b>'+Object.keys(T.bots).length+'</b><small>Bot names seen</small></div><div class="kpi"><b>'+num(T.dmg)+'</b><small>Player damage</small></div><div class="kpi"><b>'+num(T.kills)+' / '+num(T.deaths)+'</b><small>Kills / deaths</small></div></div>';
-  if(canEdit){h+=accountsPanel();h+=snapshotPanel();h+=dataPanel()}
+  var ov='<div class="kpis"><div class="kpi"><b>'+T.matches+'</b><small>Matches</small></div><div class="kpi"><b>'+num(T.mins/60,1)+'</b><small>Hours logged</small></div><div class="kpi"><b>'+nh+'</b><small>Human players</small></div><div class="kpi"><b>'+Object.keys(T.bots).length+'</b><small>Bot names seen</small></div><div class="kpi"><b>'+num(T.dmg)+'</b><small>Player damage</small></div><div class="kpi"><b>'+num(T.kills)+' / '+num(T.deaths)+'</b><small>Kills / deaths</small></div></div>';
   var SEV={High:0,Medium:1,Low:2},STL={open:'Open',devs:'With devs',fixed:'Fixed',ignored:'Ignored'},cnt={open:0,devs:0,fixed:0,ignored:0};
   bl.sort(function(a,b){return (SEV[a.sev]-SEV[b.sev])||String(a.mn).localeCompare(String(b.mn))});
   bl.forEach(function(b){b.s=(bugs[b.key]&&bugs[b.key].s)||'open';if(cnt[b.s]==null)b.s='open';cnt[b.s]++});
@@ -1135,26 +1135,76 @@ function viewAdmin(){
   function bugBtn(b,s,l,pri){return '<button class="btn'+(pri?'':' ghost')+'" type="button" data-aop="bug:'+esc(b.key)+'|'+s+'">'+l+'</button>'}
   function bugActs(b){return b.s==='open'?bugBtn(b,'devs','Send to devs',1)+' '+bugBtn(b,'ignored','Ignore'):b.s==='devs'?bugBtn(b,'fixed','Mark fixed',1)+' '+bugBtn(b,'open','Reopen'):bugBtn(b,'open','Reopen')}
   function bth(l){return '<th scope="col"><button type="button" disabled>'+l+'</button></th>'}
-  h+='<div class="panel"><h2>Bugs ('+cnt.open+' open, '+cnt.devs+' with devs)</h2><p class="note" style="margin-top:0">Problems and missing data found in the stored combat logs. Send a bug to the devs to track it, then mark it fixed once a new log shows it is gone. Re-upload a log to re-check it.</p>'+
+  var bg='<div class="panel"><h2>Bugs ('+cnt.open+' open, '+cnt.devs+' with devs)</h2><p class="note" style="margin-top:0">Problems and missing data found in the stored combat logs. Send a bug to the devs to track it, then mark it fixed once a new log shows it is gone. Re-upload a log to re-check it.</p>'+
     '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'+[['active','Active ('+(cnt.open+cnt.devs)+')'],['open','Open ('+cnt.open+')'],['devs','With devs ('+cnt.devs+')'],['fixed','Fixed ('+cnt.fixed+')'],['ignored','Ignored ('+cnt.ignored+')'],['all','All ('+bl.length+')']].map(function(f){return '<button class="btn'+(bugFilter===f[0]?'':' ghost')+'" type="button" data-bugf="'+f[0]+'" aria-pressed="'+(bugFilter===f[0])+'">'+f[1]+'</button>'}).join('')+(cnt.devs?'<button class="btn ghost" type="button" data-bugcopy="1">Copy dev report</button>':'')+'</div>'+
     (bugMsg?'<p class="note" role="status">'+esc(bugMsg)+'</p>':'')+
     (shown.length?'<div class="scroll"><table><thead><tr>'+bth('Severity')+bth('Bug')+bth('Log')+bth('Affected')+bth('Status')+'<th scope="col"></th></tr></thead><tbody>'+
       shown.map(function(b){return '<tr><td><span class="tag '+(b.sev==='High'?'err':b.sev==='Medium'?'warn':'')+'">'+b.sev+'</span></td><td style="white-space:normal;min-width:240px;text-align:left"><strong>'+esc(b.check)+'</strong><br><span class="note" style="margin:0">'+esc(b.detail)+'</span>'+(b.ctx?'<br><span class="note" style="margin:4px 0 0;font-size:12px">'+esc(b.ctx)+'</span>':'')+'</td><td style="white-space:normal;text-align:left">'+(b.m?'<a class="plink" href="#match-'+esc(b.m)+'">'+esc(b.mn)+'</a>':esc(b.mn))+'</td><td style="white-space:normal;min-width:160px;text-align:left">'+esc(bugWho(b.who))+'</td><td><span class="tag '+(b.s==='fixed'?'ok':b.s==='devs'?'warn':'')+'">'+STL[b.s]+'</span></td><td style="text-align:right;white-space:nowrap">'+bugActs(b)+'</td></tr>'}).join('')+'</tbody></table></div>':'<p class="note">'+(bl.length?'Nothing in this view.':'No bugs found.')+'</p>')+'</div>';
   var trows=Object.keys(teams).map(function(k){var a=teams[k];a.sw=(a.w+a.l+a.dr)?100*a.w/(a.w+a.l+a.dr):null;return a});
-  h+='<div class="panel"><h2>Team results, all matches</h2>'+(trows.length?table('adteam',[{k:'team',l:'Team',f:function(r){return teamTag(r.team)}},{k:'matches',l:'Matches'},{k:'w',l:'Wins'},{k:'l',l:'Losses'},{k:'dr',l:'Draws'},{k:'sw',l:'Win %',f:function(r){return r.sw==null?'-':num(r.sw)+'%'}},{k:'kills',l:'Kills'},{k:'points',l:'Points'},{k:'relics',l:'Relics'}],trows):'<p class="note">No team data yet.</p>')+'<p class="note">Wins stay at 0 until a winner is recorded. Only a team that appears in the log gets counted.</p></div>'+
+  ov+='<div class="panel"><h2>Team results, all matches</h2>'+(trows.length?table('adteam',[{k:'team',l:'Team',f:function(r){return teamTag(r.team)}},{k:'matches',l:'Matches'},{k:'w',l:'Wins'},{k:'l',l:'Losses'},{k:'dr',l:'Draws'},{k:'sw',l:'Win %',f:function(r){return r.sw==null?'-':num(r.sw)+'%'}},{k:'kills',l:'Kills'},{k:'points',l:'Points'},{k:'relics',l:'Relics'}],trows):'<p class="note">No team data yet.</p>')+'<p class="note">Wins stay at 0 until a winner is recorded. Only a team that appears in the log gets counted.</p></div>'+
     '<div class="panel"><h2>Class balance</h2>'+(crow.length?table('adcls',[{k:'cls',l:'Class',f:function(r){return clsCell(r.cls)}},{k:'picks',l:'Picks'},{k:'dpm',l:'Dmg/min',f:function(r){return num(r.dpm)}},{k:'vs',l:'vs avg',f:function(r){return '<span class="'+(Math.abs(r.vs)>40?'err':'')+'">'+(r.vs>0?'+':'')+num(r.vs)+'%</span>'}},{k:'tpm',l:'Taken/min',f:function(r){return num(r.tpm)}},{k:'hpm',l:'Heal/min',f:function(r){return num(r.hpm)}},{k:'kdr',l:'K/D',f:function(r){return num(r.kdr,2)}}],crow):'<p class="note">No class data yet.</p>')+'</div>';
   var mrows=ms.map(function(m){var d=m.doc,hu=(d.players||[]).filter(function(p){return !isBot(p.name)}).length;return {id:m.id,name:d.name,len:d.duration||0,hu:hu,bots:(d.players||[]).length-hu,tm:Object.keys(d.teams||{}).length,res:hasResult(d)?(d.result.winner==='draw'?'Draw':teamName(d.result.winner)):'-',rows:d.rows||0,sz:Math.round(JSON.stringify(d).length/1024),t:d.uploadedAt||0}});
-  h+='<div class="panel"><h2>Every stored match</h2>'+table('admatch',[{k:'name',l:'Log',f:function(r){return '<a class="plink" href="#match-'+esc(r.id)+'">'+esc(r.name)+'</a>'}},{k:'len',l:'Length',f:function(r){return dur(r.len)}},{k:'hu',l:'Humans'},{k:'bots',l:'Bots'},{k:'tm',l:'Teams logged'},{k:'res',l:'Result'},{k:'rows',l:'Rows',f:function(r){return num(r.rows)}},{k:'sz',l:'Stored KiB'}],mrows)+'<p class="note">Largest stored match is '+num(sizeMax/1024)+' KiB of the 3,584 KiB (3.5 MiB) limit.</p></div>';
+  ov+='<div class="panel"><h2>Every stored match</h2>'+table('admatch',[{k:'name',l:'Log',f:function(r){return '<a class="plink" href="#match-'+esc(r.id)+'">'+esc(r.name)+'</a>'}},{k:'len',l:'Length',f:function(r){return dur(r.len)}},{k:'hu',l:'Humans'},{k:'bots',l:'Bots'},{k:'tm',l:'Teams logged'},{k:'res',l:'Result'},{k:'rows',l:'Rows',f:function(r){return num(r.rows)}},{k:'sz',l:'Stored KiB'}],mrows)+'<p class="note">Largest stored match is '+num(sizeMax/1024)+' KiB of the 3,584 KiB (3.5 MiB) limit.</p></div>';
+  return adminShell(h,ov,bg,cnt.open+cnt.devs);
+}
+/* the Admin page: one nav inside the page, one section at a time */
+function adminShell(h,ov,bg,nb){
+  var secs=[['overview','Overview'],['bugs','Bugs &amp; checks'+(nb?' ('+nb+')':'')]];
+  if(canEdit)secs.push(['handler','Match handler'],['upload','Upload'],['accounts','Accounts']);
+  var sn=subTabs('admin',secs);
+  return h+sn.h+(sn.cur==='bugs'?bg:sn.cur==='handler'&&canEdit?matchHandler():sn.cur==='upload'&&canEdit?viewUpload():sn.cur==='accounts'&&canEdit?accountsPanel():ov);
+}
+/* Match handler: pick matches, delete one (click twice), or make an event from the picked ones and publish it in one step */
+var evModal=null;
+function evList(){
+  var list=Object.keys(snaps).map(function(k){return {id:k,s:snaps[k]}}).sort(function(a,b){return (b.s.createdAt||0)-(a.s.createdAt||0)});
+  return list.length?'<ul class="events">'+list.map(function(x){return '<li><time>'+esc(new Date(x.s.createdAt||0).toLocaleDateString(undefined,{month:'short',day:'numeric'}))+'</time><span class="tag">'+(x.s.matchIds||[]).length+' matches</span><span><a class="plink" href="#event-'+esc(x.id)+'">'+esc(x.s.name)+'</a></span><span style="margin-left:auto;display:flex;gap:8px;align-items:center">'+pubTag(x.id)+pubBtn(x.id)+'</span></li>'}).join('')+'</ul>':'<p class="note">No events yet.</p>';
+}
+function matchHandler(){
+  var ms=allMatches().filter(function(m){return m.saved}).sort(function(a,b){return playedAt(b.doc)-playedAt(a.doc)||(b.doc.uploadedAt||0)-(a.doc.uploadedAt||0)});
+  var n=ms.filter(function(m){return delSel[m.id]}).length,gh='style="background:transparent;color:var(--fg);border:1px solid var(--line)"';
+  var h='<div class="panel"><h2>Match handler</h2><p class="note" style="margin-top:0">Tick matches, then create an event from them or export them. Delete removes a match for everyone and cannot be undone, so the button asks you to click twice.</p>'+
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><button class="btn" type="button" data-delall="1" '+gh+'>Select all</button><button class="btn" type="button" data-delall="0" '+gh+'>Clear selection</button>'+
+    '<button class="btn" type="button" data-evmopen="1"'+(n&&db?'':' disabled')+'>Create event ('+n+')</button>'+confirmBtn('sel','Delete selected',bulkIds('sel'))+
+    '<span style="flex:1"></span><label class="chk"><input type="checkbox" id="expPos"'+(exportPos?' checked':'')+'> Include positions</label><button class="btn ghost" type="button" data-expm="sel">Export selected (JSON)</button><button class="btn ghost" type="button" data-expm="all">Export all (JSON)</button></div></div>';
+  if(!ms.length)return h+empty('No saved matches','Upload combat logs in the Upload section.');
+  h+='<div class="panel scroll"><table><thead><tr><th scope="col"><button type="button" disabled></button></th><th scope="col"><button type="button" disabled>Log</button></th><th scope="col"><button type="button" disabled>Played</button></th><th scope="col"><button type="button" disabled>Length</button></th><th scope="col"><button type="button" disabled>Players</button></th><th scope="col"><button type="button" disabled>Result</button></th><th scope="col"><button type="button" disabled></button></th></tr></thead><tbody>'+
+    ms.map(function(m){var d=m.doc,on=confirmKey==='m:'+m.id,t=new Date(playedAt(d));
+      return '<tr><td style="padding:0"><label class="selbox"><input type="checkbox" aria-label="Select '+esc(d.name)+'" data-delsel="'+esc(m.id)+'"'+(delSel[m.id]?' checked':'')+'></label></td><td><a class="plink" href="#match-'+esc(m.id)+'"><strong>'+esc(d.name)+'</strong></a>'+(isPractice(d)?' <span class="tag">Practice vs bots</span>':'')+'</td><td>'+esc(t.toLocaleDateString())+' '+esc(t.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}))+'</td><td>'+dur(d.duration)+'</td><td>'+(d.players||[]).filter(function(p){return !isBot(p.name)}).length+'</td><td>'+(hasResult(d)?(d.result.winner==='draw'?'Draw':esc(teamName(d.result.winner))+' won'):'-')+'</td>'+
+      '<td style="text-align:right;white-space:nowrap"><button class="btn" type="button" data-confirm="m:'+esc(m.id)+'" aria-label="Delete '+esc(d.name)+'"'+(on?' style="background:var(--bad);color:#fff"':' '+gh)+'>'+(on?'Click again to delete':'Delete')+'</button></td></tr>'}).join('')+'</tbody></table></div>';
+  h+='<div class="panel"><h2>Clear in bulk</h2><div style="display:flex;gap:10px;flex-wrap:wrap">'+confirmBtn('practice','Delete practice matches vs bots',bulkIds('practice'))+confirmBtn('summary','Delete imported summaries',bulkIds('summary'))+confirmBtn('all','Delete ALL matches',bulkIds('all'),true)+'</div><p class="note">Events keep their name but lose the deleted matches.</p></div>';
+  h+='<div class="panel"><h2>Events</h2>'+evList()+'</div>';
   return h;
 }
+function evModalHtml(){
+  if(!evModal)return '';
+  var n=allMatches().filter(function(m){return m.saved&&delSel[m.id]}).length;
+  return '<div class="modalbg" data-evmbg="1"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="evmT"><h2 id="evmT">New event</h2><p class="note" style="margin:0 0 12px">'+n+' match'+(n===1?'':'es')+' selected.</p>'+
+    '<label class="note" for="evmName" style="display:block;margin:0 0 4px">Event name</label><input id="evmName" type="text" maxlength="80" placeholder="Name, for example Test night Nov 9" value="'+esc(evModal.name)+'" style="width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--fg);font:inherit">'+
+    (evModal.err?'<p class="note err" role="alert">'+esc(evModal.err)+'</p>':'')+
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px"><button class="btn" type="button" data-evmgo="pub"'+(evModal.busy?' disabled':'')+'>'+(evModal.busy?'Working...':'Publish')+'</button><button class="btn ghost" type="button" data-evmgo="draft"'+(evModal.busy?' disabled':'')+'>Save without publishing</button><button class="btn ghost" type="button" data-evmclose="1">Cancel</button></div></div></div>';
+}
+function evmCreate(pub){
+  var ids=allMatches().filter(function(m){return m.saved&&delSel[m.id]}).map(function(m){return m.id});
+  if(!db||!ids.length||!evModal||evModal.busy)return;
+  evModal.busy=true;evModal.err='';render();
+  var id='s'+Date.now().toString(36),doc={name:(evModal.name||'').trim()||('Event '+new Date().toLocaleDateString()),matchIds:ids,createdAt:Date.now()};
+  db.collection('snapshots').doc(id).set(doc).then(function(){return pub?api('POST','/api/admin',{op:'publish',id:id}):null}).then(function(){evModal=null;delSel={};adminData=null;return refresh(true)}).then(function(){location.hash='event-'+id},function(err){if(evModal){evModal.busy=false;evModal.err='Could not create the event: '+(err&&err.code||'error')}render()});
+}
+document.addEventListener('click',function(e){
+  if(e.target.closest('[data-evmopen]')){evModal={name:'',busy:false,err:''};render();var i=document.getElementById('evmName');if(i)i.focus();return}
+  var g=e.target.closest('[data-evmgo]');if(g){evmCreate(g.dataset.evmgo==='pub');return}
+  if(e.target.closest('[data-evmclose]')||(e.target.dataset&&e.target.dataset.evmbg)){if(evModal&&!evModal.busy){evModal=null;render()}}
+});
+document.addEventListener('input',function(e){if(e.target&&e.target.id==='evmName'&&evModal)evModal.name=e.target.value});
+document.addEventListener('keydown',function(e){if(!evModal)return;if(e.key==='Escape'&&!evModal.busy){evModal=null;render()}else if(e.key==='Enter'&&e.target.id==='evmName'){evmCreate(true)}});
 function viewMatches(){
   var ms=allMatches().sort(function(a,b){return playedAt(b.doc)-playedAt(a.doc)||(b.doc.uploadedAt||0)-(a.doc.uploadedAt||0)});
   var h='<div><h1>Matches</h1><p class="sub">'+ms.length+' stored '+statusLine()+'</p></div>';
   if(!ms.length)return h+empty('No matches yet','Upload a combat log on the Upload tab.');
-  h+=matchTools(ms);
-  h+='<div class="panel scroll"><table><thead><tr>'+(canEdit?'<th scope="col"><button type="button" disabled></button></th>':'')+'<th scope="col"><button type="button" disabled>Log</button></th><th scope="col"><button type="button" disabled>Played</button></th><th scope="col"><button type="button" disabled>Length</button></th><th scope="col"><button type="button" disabled>Players</button></th><th scope="col"><button type="button" disabled>Result</button></th><th scope="col"><button type="button" disabled>Kills</button></th><th scope="col"><button type="button" disabled>Damage</button></th><th scope="col"><button type="button" disabled></button></th></tr></thead><tbody>';
+  h+='<div class="panel scroll"><table><thead><tr><th scope="col"><button type="button" disabled>Log</button></th><th scope="col"><button type="button" disabled>Played</button></th><th scope="col"><button type="button" disabled>Length</button></th><th scope="col"><button type="button" disabled>Players</button></th><th scope="col"><button type="button" disabled>Result</button></th><th scope="col"><button type="button" disabled>Kills</button></th><th scope="col"><button type="button" disabled>Damage</button></th><th scope="col"><button type="button" disabled></button></th></tr></thead><tbody>';
   ms.forEach(function(m){var d=m.doc,k=0,dm=0;(d.players||[]).forEach(function(p){k+=p.kills;dm+=p.dmg});
-    h+='<tr class="click" tabindex="0" data-go="match-'+esc(m.id)+'">'+(canEdit?'<td style="padding:0">'+(m.saved?'<label class="selbox"><input type="checkbox" aria-label="Select '+esc(d.name)+'" data-delsel="'+esc(m.id)+'"'+(delSel[m.id]?' checked':'')+'></label>':'')+'</td>':'')+'<td><strong>'+esc(d.name)+'</strong></td><td>'+esc(new Date(playedAt(d)).toLocaleDateString())+'</td><td>'+dur(d.duration)+'</td><td>'+(d.players||[]).length+'</td><td>'+(hasResult(d)?(d.result.winner==='draw'?'Draw':teamName(d.result.winner)+' won'):'-')+'</td><td>'+num(k)+'</td><td>'+num(dm)+'</td><td>'+(isPractice(d)?'<span class="tag">Practice vs bots</span> ':'')+(m.saved?'':'<span class="tag warn">Not saved</span>')+'</td></tr>'});
+    h+='<tr class="click" tabindex="0" data-go="match-'+esc(m.id)+'"><td><strong>'+esc(d.name)+'</strong></td><td>'+esc(new Date(playedAt(d)).toLocaleDateString())+' '+esc(new Date(playedAt(d)).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}))+'</td><td>'+dur(d.duration)+'</td><td>'+(d.players||[]).length+'</td><td>'+(hasResult(d)?(d.result.winner==='draw'?'Draw':teamName(d.result.winner)+' won'):'-')+'</td><td>'+num(k)+'</td><td>'+num(dm)+'</td><td>'+(isPractice(d)?'<span class="tag">Practice vs bots</span> ':'')+(m.saved?'':'<span class="tag warn">Not saved</span>')+'</td></tr>'});
   return h+'</tbody></table></div>';
 }
 function dmgSum(a){return (a||[]).reduce(function(s,v){return s+(v||0)},0)}
@@ -1826,7 +1876,7 @@ function viewPlayer(slugId){
   return out;
 }
 function viewUpload(){if(!canEdit)return '<div><h1>Upload</h1></div>'+empty('Admins only','Only admins can upload combat logs. Log in as an admin to upload.');
-  var h='<div><h1>Upload combat logs</h1><p class="sub">Drop one or more Match_*.json ledger files (or older CombatLog_*.log files). They are read in your browser, then saved to the shared site when you press Save.</p></div>'+
+  var h='<div><h2>Upload combat logs</h2><p class="sub">Drop one or more Match_*.json ledger files (or older CombatLog_*.log files). They are read in your browser, then saved to the shared site when you press Save.</p></div>'+
     '<label class="drop" id="drop" for="file"><strong>Drop match ledgers here</strong>or click to choose files<input id="file" type="file" accept=".json,.log,.csv,.txt" multiple hidden></label>';
   if(uploads.length)h+='<div><button class="btn" type="button" data-discardall="1" style="background:transparent;color:var(--fg);border:1px solid var(--line)">Clear list</button> <button class="btn ghost" type="button" data-expupl="1">Export all uploads (JSON)</button></div>';
   if(!canWrite)h+='<p class="note err">Your access level can read stats but not save new matches. Parsed files stay in this tab only.</p>';
@@ -2108,15 +2158,15 @@ document.addEventListener('keydown',function(e){if(e.key==='Enter'){var g=e.targ
 
 function route(){var h=location.hash.replace('#','')||'players';if(h.indexOf('match-')===0)return {t:'match',id:h.slice(6)};if(h.indexOf('player-')===0)return {t:'player',id:h.slice(7)};if(h.indexOf('class-')===0)return {t:'class',id:h.slice(6)};if(h.indexOf('faction-')===0)return {t:'faction',id:h.slice(8)};if(h.indexOf('event-')===0)return {t:'snapshot',id:h.slice(6)};if(h.indexOf('snapshot-')===0)return {t:'snapshot',id:h.slice(9)};if(h==='events'||h==='snapshots')return {t:'snapshots'};return {t:(TABS.some(function(x){return x[0]===h})||h==='admin')?h:'players'}}
 function render(){
-  var r=route();if(r.t==="admin"&&canDesign&&!adminData)loadAdmin();
+  var r=route();if(r.t==='upload'){subSel['admin']='upload';r={t:'admin'}}if(r.t!=='admin')evModal=null;if(r.t==="admin"&&canDesign&&!adminData)loadAdmin();
   var cur=r.t==='snapshot'||r.t==='snapshots'?'events':r.t==='match'?'matches':r.t==='player'?'players':r.t==='class'?'classes':r.t==='faction'?'factions':r.t;
   var sec=cur==='matches'||cur==='events'||cur==='map'?'matches':cur==='upload'||cur==='admin'?cur:'players',
-    top=[['players','Players'],['matches','Matches']].concat(canEdit?[['upload','Upload']]:[]).concat(canDesign?[['admin','Admin']]:[]);
+    top=[['players','Players'],['matches','Matches']].concat(canDesign?[['admin','Admin']]:[]);
   $nav.innerHTML=top.map(function(t){return '<a href="#'+t[0]+'"'+(t[0]===sec?' aria-current="page"':'')+'>'+t[1]+'</a>'}).join('')+(canDesign?'<a href="https://aeon-damage-tester.vercel.app/" target="_blank" rel="noopener noreferrer">Damage tester <span aria-hidden="true">&#8599;</span></a>':'');
   var subs=sec==='matches'?[['matches','Matches'],['events','Events'],['map','Heat map']]:sec==='players'?[['players','Players'],['classes','Classes'],['factions','Factions']].concat(canDesign?[['skills','Skills']]:[]):null,
     subHtml=subs?'<nav class="subnav sec" aria-label="'+(sec==='matches'?'Matches':'Players')+' sections">'+subs.map(function(t){return '<a href="#'+t[0]+'"'+(t[0]===cur?' aria-current="page"':'')+'>'+t[1]+'</a>'}).join('')+'</nav>':'';
   var f=document.activeElement&&document.activeElement.id;
-  $view.innerHTML=subHtml+(r.t==='snapshots'?viewSnapshots():r.t==='player'?viewPlayer(r.id):r.t==='match'?viewMatch(r.id):r.t==='snapshot'?viewSnapshot(r.id):r.t==='class'?viewClass(r.id):r.t==='faction'?viewFaction(+r.id):r.t==='factions'?viewFactions():r.t==='map'?viewMap():r.t==='classes'?viewClasses():r.t==='skills'?viewSkills():r.t==='matches'?viewMatches():r.t==='upload'?viewUpload():r.t==='admin'?viewAdmin():viewPlayers());
+  $view.innerHTML=subHtml+(r.t==='snapshots'?viewSnapshots():r.t==='player'?viewPlayer(r.id):r.t==='match'?viewMatch(r.id):r.t==='snapshot'?viewSnapshot(r.id):r.t==='class'?viewClass(r.id):r.t==='faction'?viewFaction(+r.id):r.t==='factions'?viewFactions():r.t==='map'?viewMap():r.t==='classes'?viewClasses():r.t==='skills'?viewSkills():r.t==='matches'?viewMatches():r.t==='upload'?viewUpload():r.t==='admin'?viewAdmin():viewPlayers())+evModalHtml();
   if(f){var e=document.getElementById(f);if(e&&e.focus)try{e.focus()}catch(x){}}
 }
 document.addEventListener('change',function(e){var ds=e.target.closest&&e.target.closest('[data-delsel]');if(ds){delSel[ds.dataset.delsel]=ds.checked;confirmKey='';render();return}var c=e.target.closest&&e.target.closest('[data-snapsel]');if(c){snapDraft.sel[c.dataset.snapsel]=c.checked;render()}});
@@ -2135,7 +2185,7 @@ document.addEventListener('click',function(e){
   var xm=e.target.closest('[data-expm]');if(xm){exportMatches(allMatches().filter(function(m){return xm.dataset.expm==='all'||delSel[m.id]}),xm.dataset.expm==='all'?'all-matches':'selected-matches');return}
   var xo=e.target.closest('[data-expone]');if(xo){var mo=allMatches().filter(function(m){return m.id===xo.dataset.expone});if(mo.length)exportMatches(mo,(mo[0].doc.name||'match').replace(/\.[a-z]+$/i,''));return}
   var xe=e.target.closest('[data-expev]');if(xe){var sn=snaps[xe.dataset.expev];if(sn){var all=allMatches();exportMatches((sn.matchIds||[]).map(function(k){return all.filter(function(m){return m.id===k})[0]}).filter(Boolean),'event-'+(sn.name||'event').replace(/[^a-z0-9]+/gi,'-').toLowerCase(),{event:{id:xe.dataset.expev,name:sn.name,createdAt:sn.createdAt}})}return}
-  var cf=e.target.closest('[data-confirm]');if(cf){var k=cf.dataset.confirm;if(confirmKey===k){delMatches(bulkIds(k))}else{confirmKey=k;render()}return}
+  var cf=e.target.closest('[data-confirm]');if(cf){var k=cf.dataset.confirm;if(confirmKey===k){delMatches(k.indexOf('m:')===0?[k.slice(2)]:bulkIds(k))}else{confirmKey=k;render()}return}
   if(confirmKey){confirmKey='';render()}
   var da=e.target.closest('[data-delall]');if(da){var on2=da.dataset.delall==='1';allMatches().forEach(function(m){if(m.saved)delSel[m.id]=on2});render();return}
   var dd=e.target.closest('[data-discard]');if(dd){var ui=+dd.dataset.discard,u=uploads[ui];if(u&&u.id&&local[u.id])delete local[u.id];uploads.splice(ui,1);render();return}
