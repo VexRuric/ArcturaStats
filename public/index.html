@@ -578,7 +578,7 @@ function evClassTable(crow){
   return '<div class="panel"><h2>Class breakdown</h2>'+table('evcls',[{k:'cls',l:'Class',f:function(r){return clsCell(r.cls)}},{k:'picks',l:'Picks'},{k:'dpm',l:'Dmg/min',f:function(r){return r.dpm<0?'-':num(r.dpm)}},{k:'avg',l:'Avg points',f:function(r){return num(r.avg)}},{k:'k',l:'Kills'},{k:'d',l:'Deaths'},{k:'kdr',l:'K/D',f:function(r){return num(r.kdr,2)}}],crow)+'</div>';
 }
 /* ---- match analysis: fights, comebacks, positioning, relic chase, death map and accolades ---- */
-var ANA={near:22,together:40,chase:25,fgap:30,frad:70,cgap:20,pull:12,mfoes:4,mdiff:2,mgap:15,mmin:90,okdiff:3,rhold:120,balone:20,rchase:45,mobn:6,mobgap:30,lsmax:2,lsmin:20,bwin:30};
+var ANA={near:22,together:40,chase:25,fgap:30,frad:70,cgap:20,pull:12,mfoes:4,mdiff:2,mgap:15,mmin:90,okdiff:3,rhold:120,balone:20,rchase:45,lsmax:2,lsmin:20,bwin:30};
 /* mobs per camp spawn. Camps respawn at each minute mark, so a camp pulled just before the mark holds two batches. Adjust these to the game's real batch sizes. */
 var MOB_BATCH={Easy:3,Medium:2,Hard:3};
 var anaCache=new WeakMap();
@@ -630,18 +630,6 @@ function findMoments(d,pl,byT,ts,step,carries,kills){
     var kl=null;(d.log||[]).forEach(function(e){if(e.k==='kill'&&e.b===c.n&&Math.abs(e.t-c.t1)<=1)kl=e.a});
     ch.push({ty:'chase',score:c.by[top],n:top,team:1-c.team,t0:c.t0,t1:c.t1,dur:c.by[top],carrier:c.n,killed:kl===top,res:c.res})});
   ch.sort(function(a,b){return b.score-a.score});out=out.concat(ch.slice(0,2));
-  /* mob stealer: ANA.mobn or more mob kills in a row on the enemy half of the map (nearer the enemy relic home than their own) */
-  var mb={};
-  (d.log||[]).forEach(function(e){if(e.k!=='mob'||!(e.team===0||e.team===1)||(hideBots&&isBot(e.a)))return;var c=mobSpot(e);if(!c)return;
-    var sd=Math.hypot(c[0]-RELIC_HOME[0][0],c[1]-RELIC_HOME[0][1])<=Math.hypot(c[0]-RELIC_HOME[1][0],c[1]-RELIC_HOME[1][1])?0:1;
-    if(sd!==e.team)(mb[e.a]||(mb[e.a]=[])).push({t:e.t,c:c,team:e.team})});
-  var ms=[];
-  Object.keys(mb).forEach(function(n){var cur=[],best=null;
-    function fin(){if(cur.length>=ANA.mobn&&(!best||cur.length>best.length))best=cur;cur=[]}
-    mb[n].forEach(function(k){if(cur.length&&k.t-cur[cur.length-1].t>ANA.mobgap)fin();cur.push(k)});fin();
-    if(best){var sx=0,sy=0,labs={};best.forEach(function(k){sx+=k.c[0];sy+=k.c[1];labs[campLabel(k.c)]=1});
-      ms.push({ty:'mob',score:best.length,n:n,team:best[0].team,t0:best[0].t,t1:best[best.length-1].t,count:best.length,camps:Object.keys(labs),x:sx/best.length,y:sy/best.length})}});
-  ms.sort(function(a,b){return b.score-a.score});out=out.concat(ms.slice(0,2));
   /* boss stealer: the boss kill went to a team that had fewer players near the boss over the prior ANA.bwin seconds, with 2 or more of the other team close at the kill */
   (d.log||[]).forEach(function(e){if(e.k!=='boss'||!(e.team===0||e.team===1)||(hideBots&&isBot(e.a)))return;
     var A=0,B=0,bA=0,bB=0,n=0;
@@ -818,19 +806,18 @@ function fightWho(f){var st={},tm={};Object.keys(f.who).forEach(function(n){st[n
   return names.map(function(n){var x=st[n];return '<div><span style="color:'+fightCol(tm[n])+'">'+esc(n)+'</span> <span class="note" style="margin:0">'+x.k+' / '+x.d+' / '+x.a+'</span></div>'}).join('')}
 function fightFeed(f){return f.ks.map(function(e){var sk=(e.sk||'').split('.').pop();if(sk==='None')sk='';
   return '<div><span class="note" style="margin:0">'+dur(e.t)+'</span> <span style="color:'+fightCol(e.team)+'">'+esc(e.a)+'</span> &#9656; <span style="color:'+fightCol(1-e.team)+'">'+esc(e.b)+'</span>'+(sk?' <span class="note" style="margin:0">'+esc(sk)+'</span>':'')+((e.as&&e.as.length)?' <span class="note" style="margin:0">(assist '+e.as.map(esc).join(', ')+')</span>':'')+'</div>'}).join('')}
-var MOMENT_NAME={stand:'Stand out fight',last:'Last stand',chase:'Relic chaser',boss:'Solo boss',bsteal:'Boss stealer',mob:'Mob stealer',okill:'Outnumbered kill',relic:'Long relic hold'},MOMENT_ORDER={stand:0,last:1,chase:2,boss:3,bsteal:4,mob:5,okill:6,relic:7};
+var MOMENT_NAME={stand:'Stand out fight',last:'Last stand',chase:'Relic chaser',boss:'Solo boss',bsteal:'Boss stealer',okill:'Outnumbered kill',relic:'Long relic hold'},MOMENT_ORDER={stand:0,last:1,chase:2,boss:3,bsteal:4,okill:5,relic:6};
 function momentText(o){
   if(o.ty==='stand')return 'Held off up to '+o.foes+' enemies with '+(o.mates?o.mates+' teammate'+(o.mates===1?'':'s'):'no teammates')+' close, for '+dur(o.dur)+' ('+dur(o.t0)+' to '+dur(o.t1)+')'+(o.kills?', '+o.kills+' kill'+(o.kills===1?'':'s'):', no kills')+(o.died?', then died':', and survived');
   if(o.ty==='last')return 'Last '+(o.who.length===1?'player':o.who.length+' players')+' alive, '+o.foes+' enemies left, held '+dur(o.dur)+' ('+dur(o.t0)+' to '+dur(o.t1)+')'+(o.kills?', '+o.kills+' kill'+(o.kills===1?'':'s'):', no kills')+(o.wiped?', then the team was wiped':', and the team got people back');
   if(o.ty==='chase')return 'Stayed within reach of '+esc(o.carrier)+', the enemy relic carrier, for '+dur(o.dur)+' of a '+dur(o.t1-o.t0)+' carry, '+(o.killed?'and ran them down':({captured:'but they captured it',dropped:'until they dropped it',killed:'until the carrier fell',end:'to the end of the match'}[o.res]||esc(o.res)));
-  if(o.ty==='mob')return 'Cleared '+o.count+' mobs in a row on the enemy half ('+o.camps.map(esc).join(', ')+') in '+dur(o.t1-o.t0)+' ('+dur(o.t0)+' to '+dur(o.t1)+')';
   if(o.ty==='bsteal')return 'Landed the boss kill with '+o.foes+' enemies and '+(o.mates?o.mates+' teammate'+(o.mates===1?'':'s'):'no teammates')+' close; over the prior '+ANA.bwin+' seconds the other team averaged '+num(o.avgFoes,1)+' near the boss to their '+num(o.avgMates,1);
   if(o.ty==='okill')return 'Killed '+esc(o.v)+' with '+o.foes+' enemies and '+(o.mates?o.mates+' teammate'+(o.mates===1?'':'s'):'no teammates')+' close';
   if(o.ty==='boss')return 'Took down the boss with no teammate within '+ANA.frad+' m for '+ANA.balone+' seconds before'+(o.foes?', '+o.foes+' enem'+(o.foes===1?'y':'ies')+' close':'');
   return 'Held the relic for '+dur(o.dur)+' ('+dur(o.t0)+' to '+dur(o.t1)+'), '+({captured:'captured it',dropped:'dropped it',killed:'killed with it',end:'still holding at the end'}[o.res]||esc(o.res))+(o.chasers?', '+o.chasers+' enem'+(o.chasers===1?'y':'ies')+' chased':'')}
 function momentsPanel(items,multi){
   var l=[];items.forEach(function(x){(x.mo||[]).forEach(function(o){l.push({m:x.m,id:x.id,o:o})})});
-  var note='<p class="note">Moments a big team fight does not explain. Stand out fight: 4 or more enemies close and at least 2 more than teammates, for '+ANA.mmin+' seconds or more. Outnumbered kill: a kill with 3 or more extra enemies close. Last stand: a team down to its last '+ANA.lsmax+' players, outnumbered by 2 or more, for '+ANA.lsmin+' seconds or more. Relic chaser: '+ANA.rchase+' seconds or more near one enemy relic carrier. Mob stealer: '+ANA.mobn+' or more mobs in a row on the enemy half, which is the half nearer their relic home. Solo boss: boss kill with no teammate close. Boss stealer: boss kill by the team with fewer players near it, the other team still close. Long relic hold: '+ANA.rhold+' seconds or more. Close means within '+ANA.frad+' m, sampled every few seconds.</p>';
+  var note='<p class="note">Moments a big team fight does not explain. Stand out fight: 4 or more enemies close and at least 2 more than teammates, for '+ANA.mmin+' seconds or more. Outnumbered kill: a kill with 3 or more extra enemies close. Last stand: a team down to its last '+ANA.lsmax+' players, outnumbered by 2 or more, for '+ANA.lsmin+' seconds or more. Relic chaser: '+ANA.rchase+' seconds or more near one enemy relic carrier. Solo boss: boss kill with no teammate close. Boss stealer: boss kill by the team with fewer players near it, the other team still close. Long relic hold: '+ANA.rhold+' seconds or more. Close means within '+ANA.frad+' m, sampled every few seconds.</p>';
   if(!l.length)return '<div class="panel"><h2>Stand out moments</h2><p class="note" style="margin-top:6px">None found'+(multi?' in these matches':' in this match')+'.</p>'+note+'</div>';
   l.sort(function(a,b){return MOMENT_ORDER[a.o.ty]-MOMENT_ORDER[b.o.ty]||b.o.score-a.o.score});l=l.slice(0,multi?12:8);
   var rows=l.map(function(x){var o=x.o;return '<tr>'+(multi?'<td><a class="plink" href="#match-'+esc(x.id)+'">'+esc(x.m)+'</a></td>':'')+'<td><strong>'+MOMENT_NAME[o.ty]+'</strong></td><td>'+(o.who||[o.n]).map(function(w){return '<a class="plink" href="#player-'+slug(w)+'">'+esc(w)+'</a>'}).join(', ')+'</td><td>'+teamTag(o.team)+'</td><td>'+dur(o.t0)+'</td><td>'+(o.x!=null?esc(mapZone(o.x,o.y)):'-')+'</td><td style="text-align:left">'+momentText(o)+'</td></tr>'}).join('');
@@ -1057,7 +1044,7 @@ function dmgSum(a){return (a||[]).reduce(function(s,v){return s+(v||0)},0)}
 function niceTop(mx){var step=Math.pow(10,Math.floor(Math.log10(mx||1))),top=Math.ceil(mx/step)*step||1;if(top/step<2)top=step*2;return top}
 /* players that have a damage series, bots hidden when asked */
 function dmgPlayers(d){return (d.players||[]).filter(function(p){return d.series&&d.series[p.name]&&!(hideBots&&isBot(p.name))})}
-/* one chart line per player. On a team chart every line is the team's color in a different lightness (so a green class never reads as the green team) and the class is the marker shape. team null = everyone, colored by class, no markers. topFix keeps two charts on one scale */
+/* one chart line per player, colored by class. On a team chart each class also has its own marker shape, so class never depends on color alone (color blind readers). The team is named in the panel title, with its color on the panel edge. team null = everyone, no markers. topFix keeps two charts on one scale */
 var CMARK={Hunter:'circle',Priest:'square',Assassin:'triangle',Mystic:'diamond',Warrior:'cross'};
 function classMark(c,x,y,r,col){var k=CMARK[c]||'dot',f='fill="'+col+'" stroke="var(--panel)" stroke-width="1"';x=+x.toFixed(1);y=+y.toFixed(1);
   if(k==='circle')return '<circle cx="'+x+'" cy="'+y+'" r="'+r+'" '+f+'/>';
@@ -1066,9 +1053,6 @@ function classMark(c,x,y,r,col){var k=CMARK[c]||'dot',f='fill="'+col+'" stroke="
   if(k==='diamond')return '<polygon points="'+x+','+(y-r-1)+' '+(x+r+1)+','+y+' '+x+','+(y+r+1)+' '+(x-r-1)+','+y+'" '+f+'/>';
   if(k==='cross')return '<path d="M'+(x-r)+','+(y-r)+'L'+(x+r)+','+(y+r)+'M'+(x+r)+','+(y-r)+'L'+(x-r)+','+(y+r)+'" fill="none" stroke="'+col+'" stroke-width="2.4" stroke-linecap="round"/>';
   return '<circle cx="'+x+'" cy="'+y+'" r="'+Math.max(1.5,r-1.5)+'" fill="'+col+'"/>'}
-/* lightness steps of one team color, mixed toward the page text color so they stay visible in dark and light themes */
-var TSHADE=[30,55,42,70,20,82,62,90];
-function teamShade(t,i){var base=TEAMS[t]?TEAMS[t].col:'#888',m=TSHADE[i%TSHADE.length];return {css:'color-mix(in srgb,'+base+' '+(100-m)+'%,var(--fg))',fb:base}}
 function chart(d,team,topFix){
   var P={};(d.players||[]).forEach(function(p){P[p.name]=p});
   var names=Object.keys(d.series||{}).filter(function(k){return (team==null||(P[k]&&P[k].team===team))&&!(hideBots&&isBot(k))});
@@ -1080,8 +1064,8 @@ function chart(d,team,topFix){
   var X=function(i){return L+(W-L-R)*(n>1?i/(n-1):0)},Y=function(v){return T+(H-T-B)*(1-v/top)};
   var seen={},DASH=['','7 4','2 3'],style={};
   names.forEach(function(k,j){var p=P[k],c=p&&p.cls?p.cls:'#'+j,i=seen[c]||0;seen[c]=i+1;
-    var col=team==null?((p&&CCOL[p.cls])||SERIES[j%SERIES.length]):teamShade(team,j);
-    style[k]={css:col.css||col,fb:col.fb||col,dash:DASH[Math.min(i,2)]}});
+    var col=(p&&CCOL[p.cls])||SERIES[j%SERIES.length];
+    style[k]={css:col,fb:col,dash:DASH[Math.min(i,2)]}});
   var s='<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Damage dealt per 30 seconds'+(team==null?'':', '+esc(teamName(team)))+'">';
   for(var g=0;g<=4;g++){var v=top*g/4;s+='<line class="grid" x1="'+L+'" x2="'+(W-R)+'" y1="'+Y(v)+'" y2="'+Y(v)+'"/><text x="'+(L-8)+'" y="'+(Y(v)+4)+'" text-anchor="end">'+num(v)+'</text>'}
   var tickEvery=Math.max(1,Math.ceil(n/8));
@@ -1097,24 +1081,27 @@ function chart(d,team,topFix){
   return s;
 }
 /* both teams on the same scale, then each class against the same class on the other team */
+/* seconds alive per player from the position samples; null when the log has none */
+function aliveSecs(d){if(!anaHas(d))return null;var a=analyze(d),m={};Object.keys(a.players).forEach(function(n){m[n]=a.players[n].alive});return m}
 function classVs(d){
   var pl=dmgPlayers(d).filter(function(p){return p.team===0||p.team===1});if(!pl.length)return '';
-  var cls={},mins=(d.duration||0)/60;
-  pl.forEach(function(p){var c=p.cls||'Unknown',o=cls[c]||(cls[c]={0:{n:[],dmg:0},1:{n:[],dmg:0}});o[p.team].n.push(p.name);o[p.team].dmg+=dmgSum(d.series[p.name])});
+  var cls={},al=aliveSecs(d),est=!al;
+  pl.forEach(function(p){var c=p.cls||'Unknown',o=cls[c]||(cls[c]={0:{n:[],dmg:0,sec:0},1:{n:[],dmg:0,sec:0}});o[p.team].n.push(p.name);o[p.team].dmg+=dmgSum(d.series[p.name]);o[p.team].sec+=est?(d.duration||0):(al[p.name]||0)});
+  function rate(x){return x.n.length&&x.sec>0?x.dmg/(x.sec/60):null}
   var rows=Object.keys(cls).sort(function(a,b){return cls[b][0].dmg+cls[b][1].dmg-cls[a][0].dmg-cls[a][1].dmg}).map(function(c){var o=cls[c];
-    function cell(t){var x=o[t];if(!x.n.length)return '<td>-</td><td>-</td><td>-</td>';var avg=x.dmg/x.n.length;
-      return '<td style="text-align:left">'+x.n.map(function(n){return '<a class="plink" href="#player-'+slug(n)+'">'+esc(n)+'</a>'}).join(', ')+'</td><td>'+num(x.dmg)+'</td><td>'+(mins>0?num(avg/mins):'-')+'</td>'}
-    var a0=o[0].n.length?o[0].dmg/o[0].n.length:0,a1=o[1].n.length?o[1].dmg/o[1].n.length:0,edge='-';
+    function cell(t){var x=o[t];if(!x.n.length)return '<td>-</td><td>-</td><td>-</td><td>-</td>';
+      return '<td style="text-align:left">'+x.n.map(function(n){return '<a class="plink" href="#player-'+slug(n)+'">'+esc(n)+'</a>'}).join(', ')+'</td><td>'+num(x.dmg)+'</td><td>'+(est?'-':dur(x.sec/x.n.length))+'</td><td>'+(rate(x)==null?'-':num(rate(x)))+'</td>'}
+    var a0=rate(o[0])||0,a1=rate(o[1])||0,edge='-';
     if(o[0].n.length&&o[1].n.length&&(a0>0||a1>0)){var w=a0>=a1?0:1,lo=Math.min(a0,a1),hi=Math.max(a0,a1);edge='<span style="color:'+TEAMS[w].col+'">'+esc(teamName(w))+'</span> '+(lo>0?'+'+Math.round((hi-lo)/lo*100)+'%':'only')}
     else if(o[0].n.length!==o[1].n.length)edge='<span class="note" style="margin:0">no '+esc(o[0].n.length?teamName(1):teamName(0))+' '+esc(c)+'</span>';
     return '<tr><td>'+clsCell(c==='Unknown'?'':c)+'</td>'+cell(0)+cell(1)+'<td>'+edge+'</td></tr>'}).join('');
-  return '<div class="panel"><h2>Damage by class, team against team</h2>'+plainTable(['Class',esc(teamName(0)),'Damage','Dmg/min each',esc(teamName(1)),'Damage','Dmg/min each','Edge per player'],rows)+'<p class="note">Each class is lined up against the same class on the other team. Dmg/min each is damage per player per minute, so a team with two of a class is not ahead just for having more. Edge compares that per-player figure.</p></div>';
+  return '<div class="panel"><h2>Damage by class, team against team</h2>'+plainTable(['Class',esc(teamName(0)),'Damage','Alive each','Dmg/min alive',esc(teamName(1)),'Damage','Alive each','Dmg/min alive','Edge'],rows)+'<p class="note">Each class is lined up against the same class on the other team. Dmg/min alive is damage divided by the minutes the players were alive (from position samples), so dying early does not count against someone and a team with two of a class is not ahead just for having more. Edge compares that rate.'+(est?' This log has no position samples, so alive time is not known and the rate uses the whole match instead.':'')+'</p></div>';
 }
 function teamDamage(d){
   if(!Object.keys(d.series||{}).length)return '<div class="panel"><h2>Damage dealt per 30 seconds</h2><p class="note">No damage dealt in this log.</p></div>';
   var mx=0;dmgPlayers(d).forEach(function(p){d.series[p.name].forEach(function(v){if(v>mx)mx=v})});var top=niceTop(mx);
   var h='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px;margin-bottom:18px">';
-  [0,1].forEach(function(t){h+='<div class="panel" style="margin:0"><h2><span style="color:'+TEAMS[t].col+'">&#9632;</span> '+esc(teamName(t))+': damage dealt per 30 seconds</h2>'+chart(d,t,top)+'</div>'});
+  [0,1].forEach(function(t){h+='<div class="panel" style="margin:0;border-top:4px solid '+TEAMS[t].col+'"><h2><span style="color:'+TEAMS[t].col+'">&#9632;</span> '+esc(teamName(t))+': damage dealt per 30 seconds</h2>'+chart(d,t,top)+'</div>'});
   return h+'</div>'+classVs(d);
 }
 function mobSizes(p){if(!p||!p.tiers||p.tiers.Easy==null)return null;return {s:p.tiers.Easy||0,m:p.tiers.Medium||0,l:p.tiers.Hard||0,b:p.bossKills||0}}
