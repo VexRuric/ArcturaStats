@@ -578,7 +578,7 @@ function evClassTable(crow){
   return '<div class="panel"><h2>Class breakdown</h2>'+table('evcls',[{k:'cls',l:'Class',f:function(r){return clsCell(r.cls)}},{k:'picks',l:'Picks'},{k:'dpm',l:'Dmg/min',f:function(r){return r.dpm<0?'-':num(r.dpm)}},{k:'avg',l:'Avg points',f:function(r){return num(r.avg)}},{k:'k',l:'Kills'},{k:'d',l:'Deaths'},{k:'kdr',l:'K/D',f:function(r){return num(r.kdr,2)}}],crow)+'</div>';
 }
 /* ---- match analysis: fights, comebacks, positioning, relic chase, death map and accolades ---- */
-var ANA={near:22,together:40,chase:25,fgap:12,frad:70,cgap:20,pull:12};
+var ANA={near:22,together:40,chase:25,fgap:30,frad:70,cgap:20,pull:12};
 /* mobs per camp spawn. Camps respawn at each minute mark, so a camp pulled just before the mark holds two batches. Adjust these to the game's real batch sizes. */
 var MOB_BATCH={Easy:3,Medium:2,Hard:3};
 var anaCache=new WeakMap();
@@ -744,6 +744,7 @@ function fightsPanel(items,multi){
   if(!items.length)return '<div class="panel"><h2>Fights</h2><p class="note">No fights found. A fight is 2 or more player kills within '+ANA.fgap+' seconds and '+ANA.frad+' m of each other.</p></div>';
   var W=[0,0,0],picks=0;items.forEach(function(x){x.f.forEach(function(f){W[f.win<0?2:f.win]++});picks+=x.picks});
   var top=[];items.forEach(function(x){x.f.forEach(function(f){top.push({m:x.m,id:x.id,f:f})})});
+  if(!top.length)return '<div class="panel"><h2>Fights</h2><p class="note">No fights in '+(multi?'these matches':'this match')+'. '+picks+' single kill'+(picks===1?'':'s')+' not counted as fights. A fight is 2 or more player kills within '+ANA.fgap+' seconds and '+ANA.frad+' m of each other.</p></div>';
   top.sort(function(a,b){return b.f.ks.length-a.f.ks.length||b.f.n-a.f.n});top=top.slice(0,multi?8:12);
   if(!multi)top.sort(function(a,b){return a.f.t0-b.f.t0});
   var rows=top.map(function(o,i){var f=o.f;return '<tr>'+(multi?'<td><a class="plink" href="#match-'+esc(o.id)+'">'+esc(o.m)+'</a></td>':'')+'<td>'+dur(f.t0)+(f.t1>f.t0?' to '+dur(f.t1):'')+'</td><td>'+esc(f.zone)+'</td><td><b style="color:'+TEAMS[0].col+'">'+f.k[0]+'</b> : <b style="color:'+TEAMS[1].col+'">'+f.k[1]+'</b></td><td>'+(f.win>=0?teamTag(f.win):'Even')+'</td><td>'+f.n+'</td><td style="text-align:left">'+Object.keys(f.who).map(function(n){return '<span style="color:'+(TEAMS[f.who[n]]?TEAMS[f.who[n]].col:'inherit')+'">'+esc(n)+'</span>'}).join(', ')+'</td></tr>'}).join('');
