@@ -213,12 +213,16 @@ function parseMatchLedger(text,fileName){
       cpCaps:s.cpCaptures||0,cpTime:r1(s.cpSec),tiers:t,pos:posC(p.positions),
       pb:(function(){if(!(tl&&tl.rows&&ci&&ci.a>=0))return null;var r=tl.rows.map(function(x){return Math.round(x[ci.a]||0)});return r.some(Boolean)?{s:tl.binSec||10,r:r}:null})(),
       stats:s,
-      skills:(p.skills||[]).filter(function(k){return k.casts||((k.pvp||{}).hits)||((k.pve||{}).hits)}).map(function(k){function q(o){o=o||{};return {hits:o.hits||0,crits:o.crits||0,kills:o.kills||0,base:r1(o.base),pre:r1(o.preMitigation),mit:r1(o.mitigated),crit:r1(o.critBonus),res:r1(o.resolved),abs:r1(o.absorbed),hl:r1(o.healthLost),over:r1(o.overkill)}}return {skill:String(k.skill||'').replace(/^Aeon\.Ability\./,''),casts:k.casts||0,pvp:q(k.pvp),pve:q(k.pve)}}),
+      skills:(p.skills||[]).filter(function(k){return k.casts||((k.pvp||{}).hits)||((k.pve||{}).hits)}).map(function(k){function q(o){o=o||{};return {hits:o.hits||0,crits:o.crits||0,kills:o.kills||0,base:r1(o.base),pre:r1(o.preMitigation),mit:r1(o.mitigated),crit:r1(o.critBonus),res:r1(o.resolved),abs:r1(o.absorbed),hl:r1(o.healthLost),over:r1(o.overkill)}}var ac=k.accuracy,cd=k.cooldown,pc=k.placed;return {skill:String(k.skill||'').replace(/^Aeon\.Ability\./,''),casts:k.casts||0,cm:k.committed||0,pvp:q(k.pvp),pve:q(k.pve),acc:ac&&typeof ac==='object'?{k:ac.kind||'',a:ac.attempts||0,l:ac.landed||0}:null,cd:cd&&typeof cd==='object'?{n:cd.applied||0,a:r1(cd.authoredSec),p:r1(cd.appliedSec)}:null,res:k.resource&&typeof k.resource==='object'?k.resource:null,pl:pc&&typeof pc==='object'?{n:pc.placements||0,t:pc.triggered||0}:null}}),
       from:(p.damageTakenFrom||[]).filter(function(x){return x.player!=null&&byId[x.player]&&x.healthLost>0}).map(function(x){return [byId[x.player].name,Math.round(x.healthLost)]})}});
   players.forEach(function(p){if(p.carrierKills&&p.team>=0)tm(p.team).carrierKills+=p.carrierKills});
   var w=L.winningTeam,result=(w===0||w===1)?{winner:w,src:'log'}:null;
   var types={};['kills','mobKills','bossKills','relicEvents','controlPointEvents','teamScoreEvents'].forEach(function(k){if((L[k]||[]).length)types[k]=L[k].length});
-  var bal=L.balance||{};return{v:2,ledger:true,map:L.map||L.mapName||'',endReason:L.endReason||'',teamPoints:L.teamPoints,pointsByType:L.teamPointsByType||null,scoreTl:scoreTl,scoreCheck:L.scoreCheck||null,meta:{schema:L.schemaVersion==null?L.version:L.schemaVersion,project:bal.projectVersion||'',engine:bal.engineVersion||'',build:bal.buildConfig||'',skillsHash:bal.skillsHash||'',skillsRows:bal.skillsRows==null?'':bal.skillsRows,endedAtUtc:L.endedAtUtc||'',startedLocal:L.startedLocal||''},teams:TM,result:result,types:types,cols:[],name:fileName||'match ledger',uploadedAt:Date.now(),duration:r1(dur),rows:0,bucket:BUCKET,players:players,series:series,log:log,cpTl:cpTl,events:ev.slice(0,200)};
+  var castLog=null;
+  if(L.castLog&&L.castLog.rows&&L.castLog.names){var cl=L.castLog,cc=cl.cols||['t','player','skill','step'],ct=cc.indexOf('t'),cp=cc.indexOf('player'),cs=cc.indexOf('skill'),idIx={};
+    L.players.forEach(function(p,i){idIx[p.id]=i});
+    if(ct>=0&&cp>=0&&cs>=0)castLog={n:cl.names.map(function(x){return String(x).replace(/^Aeon\.Ability\./,'')}),r:cl.rows.slice(0,30000).map(function(x){return [Math.round(x[ct]*10)/10,idIx[x[cp]]==null?-1:idIx[x[cp]],x[cs]]})}}
+  var bal=L.balance||{};return{v:2,ledger:true,castLog:castLog,map:L.map||L.mapName||'',endReason:L.endReason||'',teamPoints:L.teamPoints,pointsByType:L.teamPointsByType||null,scoreTl:scoreTl,scoreCheck:L.scoreCheck||null,meta:{schema:L.schemaVersion==null?L.version:L.schemaVersion,project:bal.projectVersion||'',engine:bal.engineVersion||'',build:bal.buildConfig||'',skillsHash:bal.skillsHash||'',skillsRows:bal.skillsRows==null?'':bal.skillsRows,endedAtUtc:L.endedAtUtc||'',startedLocal:L.startedLocal||''},teams:TM,result:result,types:types,cols:[],name:fileName||'match ledger',uploadedAt:Date.now(),duration:r1(dur),rows:0,bucket:BUCKET,players:players,series:series,log:log,cpTl:cpTl,events:ev.slice(0,200)};
 }
 function parseAnyLog(text,fileName){return /^\s*﻿?\s*\{/.test(text)?parseMatchLedger(text,fileName):parseCombatLog(text,fileName)}
 function parseCombatLog(text,fileName){
@@ -1399,11 +1403,30 @@ function bkRow(p){
   if(!has&&p.hits!=null){hits=p.hits;crits=p.crits||0}
   var rl=relicOf(p),mz=mobSizes(p),dt=dp+de;
   return {name:p.name,team:p.team,cls:p.cls,casts:has?casts:null,hits:has||p.hits!=null?hits:null,crits:has||p.hits!=null?crits:null,
-    crit:hits?100*crits/hits:null,hpc:has&&casts?hits/casts:null,mx:p.maxHit!=null?p.maxHit:null,used:has?used:null,
+    crit:hits?100*crits/hits:null,hpc:has&&casts?hits/casts:null,mx:p.maxHit?p.maxHit:null,used:has?used:null,
     top:top&&top.t>0?top.n:'-',tshare:top&&dt>0?100*top.t/dt:null,
     dmg:p.dmg||0,dmgP:p.dmgP||0,dmgB:p.dmgB||0,taken:p.taken||0,mit:(p.absorbed||0)+(p.mit||0),
     cp:p.cpCaps||0,cpT:p.cpTime||0,rp:rl?rl.p:null,rr:rl?rl.r:null,rc:rl?rl.c:null,rk:rl?rl.k:null,mobs:p.mobKills||0,boss:p.bossKills!=null?p.bossKills:null,
-    ms:mz?mz.s:null,mm:mz?mz.m:null,ml:mz?mz.l:null};
+    ms:mz?mz.s:null,mm:mz?mz.m:null,ml:mz?mz.l:null,
+    accr:(function(){var a=0,l=0;sk.forEach(function(k){if(k.acc){a+=k.acc.a;l+=k.acc.l}});return a>0?100*l/a:null})(),
+    cc:p.stats&&p.stats.ccApplied!=null?p.stats.ccApplied:null,cons:p.stats&&p.stats.consumablesUsed!=null?p.stats.consumablesUsed:null,cpu:p.stats&&p.stats.cpUncaptures!=null?p.stats.cpUncaptures:null,
+    rcs:p.stats&&p.stats.relicCarrySec?p.stats.relicCarrySec:0,rd:p.stats&&p.stats.relicDrops!=null?p.stats.relicDrops:null};
+}
+function castTimeline(d,sel){
+  var cl=d.castLog,pi=(d.players||[]).indexOf(sel);
+  if(!cl||pi<0)return '';
+  var rows=cl.r.filter(function(x){return x[1]===pi});
+  if(!rows.length)return '<div class="panel"><h2>Cast timeline</h2><p class="note">No casts logged for this player.</p></div>';
+  var by={};rows.forEach(function(x){(by[x[2]]||(by[x[2]]=[])).push(x[0])});
+  var ks=Object.keys(by).sort(function(a,b){return by[b].length-by[a].length}),W=960,L=170,R=14,T=8,rh=20,B=26,H=T+ks.length*rh+B,dur0=Math.max(d.duration||0,rows[rows.length-1][0])||1;
+  var X=function(t){return L+(W-L-R)*t/dur0},col=TEAMS[sel.team]?TEAMS[sel.team].col:'var(--accent)';
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Casts over time for '+esc(sel.name)+'">';
+  for(var t=0;t<=dur0;t+=120)svg+='<line class="grid" x1="'+X(t)+'" x2="'+X(t)+'" y1="'+T+'" y2="'+(H-B)+'"/><text x="'+X(t)+'" y="'+(H-8)+'" text-anchor="middle">'+dur(t)+'</text>';
+  ks.forEach(function(k,i){var y=T+i*rh,nm=skName(cl.n[k]||('skill '+k));
+    svg+='<text x="'+(L-8)+'" y="'+(y+14)+'" text-anchor="end">'+esc(nm.length>22?nm.slice(0,21)+'…':nm)+' ('+by[k].length+')</text><line x1="'+L+'" x2="'+(W-R)+'" y1="'+(y+rh-2)+'" y2="'+(y+rh-2)+'" stroke="var(--line)" stroke-width=".5"/>';
+    by[k].forEach(function(t){svg+='<line x1="'+X(t).toFixed(1)+'" x2="'+X(t).toFixed(1)+'" y1="'+(y+3)+'" y2="'+(y+rh-5)+'" stroke="'+col+'" stroke-width="1.6" stroke-opacity=".85"/>'})});
+  svg+='</svg>';
+  return '<div class="panel"><h2>Cast timeline</h2><p class="note" style="margin:0 0 8px">Every cast by '+esc(sel.name)+', one row per ability, most used first. Gaps show downtime, dead time and cooldown waits.</p>'+svg+'</div>';
 }
 function viewBreakdown(id,d){
   var pl=(d.players||[]).filter(function(p){return !(hideBots&&isBot(p.name))}),rows=pl.map(bkRow),anySk=pl.some(function(p){return (p.skills||[]).length});
@@ -1417,14 +1440,18 @@ function viewBreakdown(id,d){
     {k:'used',l:'Skills used',f:function(r){return dash(r.used)}},{k:'top',l:'Top skill',f:function(r){return esc(r.top)}},{k:'tshare',l:'Top skill %',f:function(r){return r.tshare==null?'-':num(r.tshare,0)}},
     {k:'dmg',l:'Damage',f:function(r){return num(r.dmg)}},{k:'dmgP',l:'To players',f:function(r){return num(r.dmgP)}},{k:'dmgB',l:'To boss',f:function(r){return num(r.dmgB)}},
     {k:'taken',l:'Taken',f:function(r){return num(r.taken)}},{k:'mit',l:'Absorbed',f:function(r){return num(r.mit)}},
-    {k:'cp',l:'CP caps',f:function(r){return num(r.cp)}},{k:'cpT',l:'On CP',f:function(r){return r.cpT?dur(r.cpT):'-'}},
-    {k:'rp',l:'Relic pickups',f:function(r){return dash(r.rp)}},{k:'rr',l:'Relic returns',f:function(r){return dash(r.rr)}},{k:'rc',l:'Relic caps',f:function(r){return dash(r.rc)}},{k:'rk',l:'Carrier kills',f:function(r){return dash(r.rk)}},
+    {k:'accr',l:'Accuracy %',f:function(r){return r.accr==null?'-':num(r.accr,1)}},{k:'cc',l:'CC applied',f:function(r){return dash(r.cc)}},{k:'cons',l:'Consumables',f:function(r){return dash(r.cons)}},
+    {k:'cp',l:'CP caps',f:function(r){return num(r.cp)}},{k:'cpu',l:'CP uncaps',f:function(r){return dash(r.cpu)}},{k:'cpT',l:'On CP',f:function(r){return r.cpT?dur(r.cpT):'-'}},
+    {k:'rp',l:'Relic pickups',f:function(r){return dash(r.rp)}},{k:'rr',l:'Relic returns',f:function(r){return dash(r.rr)}},{k:'rc',l:'Relic caps',f:function(r){return dash(r.rc)}},{k:'rk',l:'Carrier kills',f:function(r){return dash(r.rk)}},{k:'rcs',l:'Relic carry',f:function(r){return r.rcs?dur(r.rcs):'-'}},{k:'rd',l:'Relic drops',f:function(r){return dash(r.rd)}},
     {k:'mobs',l:'Mobs',f:function(r){return num(r.mobs)}},{k:'ms',l:'Small',f:function(r){return dash(r.ms)}},{k:'mm',l:'Medium',f:function(r){return dash(r.mm)}},{k:'ml',l:'Large',f:function(r){return dash(r.ml)}},{k:'boss',l:'Boss kills',f:function(r){return dash(r.boss)}}
-  ],rows)+'<p class="note">Hits per cast is the closest thing to accuracy the stored data has: how many hits each cast landed. True accuracy and cooldowns are not stored.</p></div>';
+  ],rows)+'<p class="note">Hits per cast is how many hits each cast landed. Accuracy % is landed over attempted from the log\'s own accuracy counters; it stays a dash when the game build did not count attempts.</p></div>';
   /* one player's abilities and objectives */
   var sel=pl.filter(function(p){return p.name===bk.player})[0]||pl.slice().sort(function(a,b){return (b.dmg||0)-(a.dmg||0)})[0];
   var r0=bkRow(sel),sk=(sel.skills||[]).map(function(k){var dp=k.pvp.hl,de=k.pve.hl,hits=k.pvp.hits+k.pve.hits,cr=k.pvp.crits+k.pve.crits,pre=k.pvp.pre+k.pve.pre,tot=dp+de;
-    return {skill:k.skill,name:skName(k.skill),casts:k.casts,hits:hits,hpc:k.casts?hits/k.casts:0,crit:hits?100*cr/hits:0,kills:k.pvp.kills+k.pve.kills,dp:dp,de:de,total:tot,dpc:k.casts?tot/k.casts:0,mitp:pre?100*(k.pvp.mit+k.pve.mit)/pre:0}});
+    return {skill:k.skill,name:skName(k.skill),casts:k.casts,hits:hits,hpc:k.casts?hits/k.casts:0,crit:hits?100*cr/hits:0,kills:k.pvp.kills+k.pve.kills,dp:dp,de:de,total:tot,dpc:k.casts?tot/k.casts:0,mitp:pre?100*(k.pvp.mit+k.pve.mit)/pre:0,
+      cdv:k.cd&&k.cd.p>0?k.cd.p:null,use:k.cd&&k.cd.p>0&&d.duration?Math.min(100,100*k.casts/(Math.floor(d.duration/k.cd.p)+1)):null,
+      resS:k.res?Object.keys(k.res).map(function(x){return x+' '+num(k.res[x])}).join(', '):'',trap:k.pl&&k.pl.n?k.pl.t+' of '+k.pl.n:'',
+      accr:k.acc&&k.acc.a>0?100*k.acc.l/k.acc.a:null}});
   var tt=sk.reduce(function(a,x){return a+x.total},0);sk.forEach(function(x){x.share=tt?100*x.total/tt:0});
   function kp(v,l){return '<div class="kpi"><b>'+v+'</b><small>'+l+'</small></div>'}
   h+='<div class="panel"><h2>Player detail</h2><div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:12px"><label class="chk">Player <select id="bkPlayer">'+pl.map(function(p){return '<option value="'+esc(p.name)+'"'+(p.name===sel.name?' selected':'')+'>'+esc(p.name)+'</option>'}).join('')+'</select></label>'+teamTag(sel.team)+' '+clsCell(sel.cls)+'</div>'+
@@ -1432,8 +1459,10 @@ function viewBreakdown(id,d){
     (sk.length?table('bkskill',[
       {k:'name',l:'Ability',f:function(r){return '<span title="'+esc(r.skill)+'">'+esc(r.name)+'</span>'}},
       {k:'casts',l:'Casts',f:function(r){return num(r.casts)}},{k:'hits',l:'Hits',f:function(r){return num(r.hits)}},{k:'hpc',l:'Hits/cast',f:function(r){return num(r.hpc,2)}},{k:'crit',l:'Crit %',f:function(r){return num(r.crit,1)}},{k:'kills',l:'Kills',f:function(r){return num(r.kills)}},
-      {k:'dp',l:'PvP dmg',f:function(r){return num(r.dp)}},{k:'de',l:'PvE dmg',f:function(r){return num(r.de)}},{k:'total',l:'Total',f:function(r){return num(r.total)}},{k:'share',l:'Share %',f:function(r){return num(r.share,1)}},{k:'dpc',l:'Dmg/cast',f:function(r){return num(r.dpc)}},{k:'mitp',l:'Mitigated %',f:function(r){return num(r.mitp,1)}}],sk)
+      {k:'dp',l:'PvP dmg',f:function(r){return num(r.dp)}},{k:'de',l:'PvE dmg',f:function(r){return num(r.de)}},{k:'total',l:'Total',f:function(r){return num(r.total)}},{k:'share',l:'Share %',f:function(r){return num(r.share,1)}},{k:'dpc',l:'Dmg/cast',f:function(r){return num(r.dpc)}},{k:'mitp',l:'Mitigated %',f:function(r){return num(r.mitp,1)}},
+      {k:'cdv',l:'Cooldown',f:function(r){return r.cdv==null?'-':num(r.cdv,1)+'s'}},{k:'use',l:'Of possible casts %',f:function(r){return r.use==null?'-':num(r.use,0)}},{k:'resS',l:'Resource spent',f:function(r){return r.resS||'-'}},{k:'trap',l:'Placements triggered',f:function(r){return r.trap||'-'}},{k:'accr',l:'Accuracy %',f:function(r){return r.accr==null?'-':num(r.accr,1)}}],sk)
       :'<p class="note">No per-ability stats for this player (older log or screenshot summary).</p>')+'</div>';
+  h+=castTimeline(d,sel);
   /* matrix: players by abilities */
   if(anySk){
     var M={dmg:['Damage','total'],casts:['Casts','casts'],hits:['Hits','hits']},mk=M[bk.metric]?bk.metric:'dmg',tot={},cell={};
