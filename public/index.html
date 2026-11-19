@@ -1030,7 +1030,7 @@ function viewSnapshot(id){
     else if(hasMap){mapScope=ms.map(function(m){return m.id});h+='<div class="panel"><h2>Event heat map</h2>'+mapBody('')+'</div>'}else h+='<div class="panel"><h2>Event heat map</h2><p class="note">No match in this event has position data. Re-upload its Match Ledger files to get a heat map.</p></div>';
     h+=anaEventSections(ms,'map');
   }
-  else if(sn.cur==='graphs')h+=(ms.some(function(m){return dmgPlayers(m.doc).length})?classVs(null,ms.map(function(m){return m.doc})):'')+evProgress(ms)+evControl(ms)+evScoreSources(ms)+anaEventSections(ms,'graphs');
+  else if(sn.cur==='graphs')h+=viewGraphsEvent(id,ms,(ms.some(function(m){return dmgPlayers(m.doc).length})?classVs(null,ms.map(function(m){return m.doc})):'')+evProgress(ms)+evControl(ms)+evScoreSources(ms)+anaEventSections(ms,'graphs'));
   else if(sn.cur==='analysis')h+=anaEventSections(ms,'analysis');
   else{var er=[];ms.forEach(function(m){(m.doc.events||[]).forEach(function(e){er.push({m:mtitle(m.doc),e:e})})});
     h+='<div class="panel"><h2>Events</h2>'+(er.length?'<ul class="events">'+er.slice(0,400).map(function(r){return '<li><time>'+dur(r.e.t)+'</time><span class="tag'+(r.e.k==='boss'?' warn':'')+'">'+esc(r.e.k==='kill'?'Kill':r.e.k==='boss'?'Boss':'Point')+'</span><span>'+esc(r.e.x)+' <span class="note" style="margin:0">'+esc(r.m)+'</span></span></li>'}).join('')+'</ul>'+(er.length>400?'<p class="note">Showing the first 400 of '+er.length+'.</p>':''):'<p class="note">No kills or captures in these logs.</p>')+'</div>'}
@@ -1679,7 +1679,7 @@ function viewMatch(id){
   return h;
 }
 /* ---- Graphs explorer: Over time, Combat, Skills, Objectives. Built for balancing and for locating bugs: every view is per player or per team, from the ledger's own counters. ---- */
-var gx={metric:'dmg',type:'all',by:'team',bins:false,pl:'',cb:'vs',sk:'usage',ob:'score',sc:'tot',team:0};
+var gx={mm:0,metric:'dmg',type:'all',by:'team',bins:false,pl:'',cb:'vs',sk:'usage',ob:'score',sc:'tot',team:0};
 var GXM=[['dmg','Damage dealt'],['taken','Damage taken'],['heal','Healing given'],['healRecv','Healing received'],['ccApplied','Crowd control applied'],['itemUses','Item uses'],['casts','Casts'],['pvpSec','Seconds in PvP'],['objSec','Seconds on objective']];
 var GXPAL=['#e6a23c','#4fa3e0','#9b6bd6','#3fae6a','#e0566b','#d1c45a','#5cc7c0','#b88a64','#8a93a6'];
 function gxChips(key,list,cur){return '<div class="gxchips" role="group">'+list.map(function(x){return '<button type="button" data-gx="'+key+':'+x[0]+'" aria-pressed="'+(String(x[0])===String(cur))+'">'+x[1]+'</button>'}).join('')+'</div>'}
@@ -1716,19 +1716,20 @@ function gxSeries(d,m,type){
   return out;
 }
 function gxTime(d){
-  var m=GXM.filter(function(x){return x[0]===gx.metric})[0]||GXM[0],isD=m[0]==='dmg';
+  var m=GXM.filter(function(x){return x[0]===gx.metric})[0]||GXM[0],isD=m[0]==='dmg',by=gx.by==='match'&&!d.multi?'team':gx.by;
   var h='<div class="panel"><h2>Over time</h2><div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><label class="chk">Metric <select data-gxs="metric">'+GXM.map(function(x){return '<option value="'+x[0]+'"'+(x[0]===gx.metric?' selected':'')+'>'+x[1]+'</option>'}).join('')+'</select></label>'+
     (isD?'<label class="chk">Type <select data-gxs="type"><option value="all"'+(gx.type==='all'?' selected':'')+'>PvP + PvE</option><option value="pvp"'+(gx.type==='pvp'?' selected':'')+'>PvP only</option><option value="pve"'+(gx.type==='pve'?' selected':'')+'>PvE only</option></select></label>':'')+
-    '<span class="gxchips" style="margin:0">'+[['team','By team'],['player','By player']].map(function(x){return '<button type="button" data-gx="by:'+x[0]+'" aria-pressed="'+(gx.by===x[0])+'">'+x[1]+'</button>'}).join('')+'</span>'+
+    '<span class="gxchips" style="margin:0">'+[['team','By team'],['player','By player']].concat(d.multi?[['match','By match']]:[]).map(function(x){return '<button type="button" data-gx="by:'+x[0]+'" aria-pressed="'+(by===x[0])+'">'+x[1]+'</button>'}).join('')+'</span>'+
     '<label class="chk"><input type="checkbox" data-gxc="bins"'+(gx.bins?' checked':'')+'> Per 10 s bins (not cumulative)</label></div>';
   var S=gxSeries(d,m[0],gx.type);
   if(!S.length)return h+gxNeed((m[0]==='casts'?'No cast log in this match. ':'')+GXOLD)+'</div>';
   var cum=!gx.bins,xmax=Math.max(d.duration||0,1),lines;
-  if(gx.by==='team'){lines=[0,1].map(function(t){var arr=[];S.forEach(function(q){if(q.p.team!==t)return;q.v.forEach(function(x,i){arr[i]=(arr[i]||0)+x})});for(var i=0;i<arr.length;i++)arr[i]=arr[i]||0;return {name:teamName(t),col:TEAMS[t].col,v:arr,bs:S[0].bs}}).filter(function(q){return q.v.length})}
+  if(by==='match'){lines=d.docs.map(function(x,i){var arr=[];gxSeries(x.doc,m[0],gx.type).forEach(function(q){q.v.forEach(function(v,j){arr[j]=(arr[j]||0)+v})});for(var j=0;j<arr.length;j++)arr[j]=arr[j]||0;return {name:mtitle(x.doc),col:GXPAL[i%GXPAL.length],v:arr,bs:10}}).filter(function(q){return q.v.length})}
+  else if(by==='team'){lines=[0,1].map(function(t){var arr=[];S.forEach(function(q){if(q.p.team!==t)return;q.v.forEach(function(x,i){arr[i]=(arr[i]||0)+x})});for(var i=0;i<arr.length;i++)arr[i]=arr[i]||0;return {name:teamName(t),col:TEAMS[t].col,v:arr,bs:S[0].bs}}).filter(function(q){return q.v.length})}
   else lines=S.map(function(q){return {name:q.p.name+(q.p.cls?' ('+q.p.cls+')':''),col:gxPcol(q.p),dash:q.p.team===1,v:q.v,bs:q.bs}});
   lines.forEach(function(q){q.pts=gxBinPts(q.v,q.bs,cum)});
-  h+='<p class="note" style="margin:10px 0 0"><b>'+esc(m[0]==='dmg'&&gx.type!=='all'?m[1]+' ('+(gx.type==='pvp'?'PvP':'PvE')+')':m[1])+'</b>, '+(cum?'cumulative':'per 10 seconds')+(gx.by==='player'?'. Dashed lines are '+esc(teamName(1))+' players.':'')+'</p>'+gxXY(lines,xmax)+'</div>';
-  var rows=S.map(function(q){var tot=0,pk=0,pkT=0;q.v.forEach(function(x,i){tot+=x;if(x>pk){pk=x;pkT=i*q.bs}});return {name:q.p.name,cls:q.p.cls||'',team:q.p.team,total:tot,peak:pk,pkT:pkT,pm:tot/Math.max(1,(d.duration||0)/60)}});
+  h+='<p class="note" style="margin:10px 0 0"><b>'+esc(m[0]==='dmg'&&gx.type!=='all'?m[1]+' ('+(gx.type==='pvp'?'PvP':'PvE')+')':m[1])+'</b>, '+(cum?'cumulative':'per 10 seconds')+(by==='player'?'. Dashed lines are '+esc(teamName(1))+' players.':'')+'</p>'+gxXY(lines,xmax)+'</div>';
+  var rows=S.map(function(q){var tot=0,pk=0,pkT=0;q.v.forEach(function(x,i){tot+=x;if(x>pk){pk=x;pkT=i*q.bs}});return {name:q.p.name,cls:q.p.cls||'',team:q.p.team,total:tot,peak:pk,pkT:pkT,pm:tot/Math.max(1,(d.durSum||d.duration||0)/60)}});
   h+='<div class="panel"><h2>Totals</h2>'+table('gxs',[{k:'name',l:'Player',f:function(r){return esc(r.name)}},{k:'cls',l:'Class',f:function(r){return clsPlain(r.cls)}},{k:'team',l:'Team',f:function(r){return esc(teamName(r.team))}},{k:'total',l:'Total',f:function(r){return num(r.total)}},{k:'pm',l:'Per minute',f:function(r){return num(r.pm)}},{k:'peak',l:'Best 10 s',f:function(r){return num(r.peak)}},{k:'pkT',l:'Best at',f:function(r){return dur(r.pkT)}}],rows)+'</div>';
   return h;
 }
@@ -1766,8 +1767,8 @@ function gxCombat(d){
     if(!pl.some(function(o){return o.p.regen}))return h+gxNeed(GXOLD);
     h+='<div class="panel"><h2>Regeneration</h2>'+table('gxrg',[{k:'name',l:'Player',f:function(r){return esc(r.name)}},{k:'cls',l:'Class',f:function(r){return clsPlain(r.cls)}},{k:'he',l:'Health regen',f:function(r){return num(r.he)}},{k:'en',l:'Energy regen',f:function(r){return num(r.en)}},{k:'fo',l:'Focus regen',f:function(r){return num(r.fo)}},{k:'sp',l:'Self heal (PvP)',f:function(r){return num(r.sp)}},{k:'ap',l:'Ally heal (PvP)',f:function(r){return num(r.ap)}}],rows)+'<p class="note">Totals over the match, from the ledger. A class with far more regen than its peers, or a resource that never regenerates, is worth a look.</p></div>';
   }else{
-    var ps2=gxPlSel(d,false),o2=gxPlayers(d).filter(function(o){return o.p.name===ps2.cur})[0];
-    h=h.replace(ps.h,ps2.h);
+    var ms2=gxMatchSel(d),dd=ms2.doc,ps2=gxPlSel(dd,false),o2=gxPlayers(dd).filter(function(o){return o.p.name===ps2.cur})[0];
+    h=h.replace(ps.h,ms2.h+ps2.h);
     if(!o2||!(o2.p.snap&&o2.p.snap.length))return h+gxNeed(GXOLD);
     var sn=o2.p.snap,keys=[];function add(g,src){sn.forEach(function(x){var o=x[src]||{};Object.keys(o).forEach(function(k){if(!keys.some(function(y){return y[0]===g&&y[1]===k}))keys.push([g,k])})})}
     add('Vitals','v');add('Primary','pr');add('Stats','st');
@@ -1785,7 +1786,7 @@ function gxSkillRows(d,name){
     a.resS=Object.keys(a.res).map(function(r){return r+' '+num(a.res[r])}).join(', ');return a});
 }
 function gxSkills(d){
-  var ps=gxPlSel(d,gx.sk!=='seq'),h='<div class="panel" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><h2 style="margin:0">Skills</h2>'+ps.h+'</div>';
+  var useM=gx.sk==='seq'||gx.sk==='cc',ms2=useM?gxMatchSel(d):{doc:d,h:''},dd=ms2.doc,ps=gxPlSel(dd,gx.sk!=='seq'),h='<div class="panel" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><h2 style="margin:0">Skills</h2>'+ms2.h+ps.h+'</div>';
   h+=gxChips('sk',[['usage','Usage'],['time','Over time'],['seq','Sequence'],['cc','CC use'],['acc','Accuracy'],['combo','Combo steps']],gx.sk);
   if(!gxPlayers(d).some(function(o){return (o.p.skills||[]).length}))return h+'<div class="panel">'+gxNeed(GXOLD)+'</div>';
   if(gx.sk==='usage'||gx.sk==='acc'){
@@ -1807,11 +1808,11 @@ function gxSkills(d){
     var S=ks.map(function(k,i){return {name:skName(cl.n[k]),col:GXPAL[i%GXPAL.length],pts:gxBinPts(by[k],10,!gx.bins)}});
     h+='<div class="panel"><h2>Casts over time</h2><label class="chk"><input type="checkbox" data-gxc="bins"'+(gx.bins?' checked':'')+'> Per 10 s bins (not cumulative)</label><p class="note" style="margin:8px 0 0">The nine most cast abilities. A flat line is an ability that stopped being used; a sudden jump is a burst window.</p>'+gxXY(S,Math.max(d.duration||0,1))+'</div>';
   }else if(gx.sk==='seq'){
-    var o=gxPlayers(d).filter(function(o){return o.p.name===ps.cur})[0];h+=o&&d.castLog?castTimeline(d,o.p):'<div class="panel">'+gxNeed('No cast log in this match. '+GXOLD)+'</div>';
+    var o=gxPlayers(dd).filter(function(o){return o.p.name===ps.cur})[0];h+=o&&dd.castLog?castTimeline(dd,o.p):'<div class="panel">'+gxNeed('No cast log in this match. '+GXOLD)+'</div>';
   }else if(gx.sk==='cc'){
-    var cc=d.ccLog;if(!cc||!cc.rows||!cc.rows.length)return h+'<div class="panel"><h2>Crowd control use</h2>'+gxNeed('No crowd control was logged in this match.')+'</div>';
-    var ci=function(k){return cc.cols.indexOf(k)},pid={};(d.pids||[]).forEach(function(x,i){pid[x]=i});
-    var nm=function(id){var q=(d.players||[])[pid[id]!=null?pid[id]:id];return q?q.name:'?'};
+    var cc=dd.ccLog;if(!cc||!cc.rows||!cc.rows.length)return h+'<div class="panel"><h2>Crowd control use</h2>'+gxNeed('No crowd control was logged in this match.')+'</div>';
+    var ci=function(k){return cc.cols.indexOf(k)},pid={};(dd.pids||[]).forEach(function(x,i){pid[x]=i});
+    var nm=function(id){var q=(dd.players||[])[pid[id]!=null?pid[id]:id];return q?q.name:'?'};
     h+='<div class="panel scroll"><h2>Crowd control use</h2><table><thead><tr>'+cc.cols.map(function(c){return '<th scope="col">'+esc(c)+'</th>'}).join('')+'</tr></thead><tbody>'+cc.rows.slice(0,400).map(function(r){return '<tr>'+r.map(function(v,i){var c=cc.cols[i];return '<td>'+(c==='t'?dur(v):/player|source|target/i.test(c)?esc(nm(v)):typeof v==='number'?num(v,v%1?2:0):esc(String(v)))+'</td>'}).join('')+'</tr>'}).join('')+'</tbody></table></div>';
   }else{
     var cl2=d.castLog;if(!cl2||!cl2.r.length||cl2.r[0].length<4)return h+'<div class="panel">'+gxNeed('No combo step data in this match. '+GXOLD)+'</div>';
@@ -1843,18 +1844,18 @@ function gxObj(d){
     var pt=d.pointsByType;if(pt){var tys=[];[0,1].forEach(function(t){Object.keys(pt[t]||{}).forEach(function(k){if(tys.indexOf(k)<0)tys.push(k)})});
       h+='<div class="panel scroll"><h2>Points by source</h2><table><thead><tr><th scope="col">Source</th><th scope="col">'+esc(teamName(0))+'</th><th scope="col">'+esc(teamName(1))+'</th></tr></thead><tbody>'+tys.map(function(k){return '<tr><td>'+esc(k)+'</td><td>'+num((pt[0]||{})[k]||0)+'</td><td>'+num((pt[1]||{})[k]||0)+'</td></tr>'}).join('')+'<tr><td><strong>Total</strong></td><td><strong>'+num((d.teamPoints||{})[0]||0)+'</strong></td><td><strong>'+num((d.teamPoints||{})[1]||0)+'</strong></td></tr></tbody></table></div>'}
   }else if(gx.ob==='cp'){
-    var cps=lg.filter(function(e){return e.k==='cp'}),tl2=d.cpTl||[],own={},cur={},xe=d.duration||0;
-    tl2.forEach(function(e){var o=own[e.cp]||(own[e.cp]={s:{'-1':0,0:0,1:0},cap:{0:0,1:0},last:0,nt:-1});o.s[o.nt]+=e.t-o.last;o.last=e.t;o.nt=e.nt;if(e.nt===0||e.nt===1)o.cap[e.nt]++});
-    Object.keys(own).forEach(function(k){var o=own[k];o.s[o.nt]+=Math.max(0,xe-o.last)});
+    var cps=lg.filter(function(e){return e.k==='cp'}),own={},segs=d.multi?d.cpSegs:[{tl:d.cpTl||[],dur:d.duration||0}];
+    segs.forEach(function(sg){var loc={};sg.tl.forEach(function(e){var o=loc[e.cp]||(loc[e.cp]={s:{'-1':0,0:0,1:0},cap:{0:0,1:0},last:0,nt:-1});o.s[o.nt]+=e.t-o.last;o.last=e.t;o.nt=e.nt;if(e.nt===0||e.nt===1)o.cap[e.nt]++});
+      Object.keys(loc).forEach(function(k){var o=loc[k];o.s[o.nt]+=Math.max(0,sg.dur-o.last);var g=own[k]||(own[k]={s:{'-1':0,0:0,1:0},cap:{0:0,1:0}});[-1,0,1].forEach(function(t){g.s[t]+=o.s[t]});[0,1].forEach(function(t){g.cap[t]+=o.cap[t]})})});
     if(!Object.keys(own).length)return h+'<div class="panel">'+gxNeed('No control point events in this match.')+'</div>';
     h+='<div class="panel scroll"><h2>Control point ownership</h2><table><thead><tr><th scope="col">Point</th><th scope="col">'+esc(teamName(0))+' held</th><th scope="col">'+esc(teamName(1))+' held</th><th scope="col">Neutral</th><th scope="col">Captures</th></tr></thead><tbody>'+Object.keys(own).sort().map(function(k){var o=own[k];return '<tr><td>'+esc(k)+'</td><td>'+dur(o.s[0])+'</td><td>'+dur(o.s[1])+'</td><td>'+dur(o.s[-1])+'</td><td>'+esc(teamName(0))+' '+o.cap[0]+' / '+esc(teamName(1))+' '+o.cap[1]+'</td></tr>'}).join('')+'</tbody></table></div>';
-    h+='<div class="panel scroll"><h2>Capture log</h2><table><thead><tr><th scope="col">Time</th><th scope="col">Point</th><th scope="col">Event</th><th scope="col">By</th></tr></thead><tbody>'+cps.map(function(e){return '<tr><td>'+dur(e.t)+'</td><td>'+esc(e.cp)+'</td><td>'+esc(e.ty==='capture'?'Captured for '+teamName(e.nt):e.ty==='uncapture'?'Lost by '+teamName(e.ot):e.ty||'')+'</td><td>'+esc(e.a||'')+'</td></tr>'}).join('')+'</tbody></table></div>';
+    h+='<div class="panel scroll"><h2>Capture log</h2><table><thead><tr>'+(d.multi?'<th scope="col">Match</th>':'')+'<th scope="col">Time</th><th scope="col">Point</th><th scope="col">Event</th><th scope="col">By</th></tr></thead><tbody>'+cps.map(function(e){return '<tr>'+(d.multi?'<td>'+esc(e.mt||'')+'</td>':'')+'<td>'+dur(e.t)+'</td><td>'+esc(e.cp)+'</td><td>'+esc(e.ty==='capture'?'Captured for '+teamName(e.nt):e.ty==='uncapture'?'Lost by '+teamName(e.ot):e.ty||'')+'</td><td>'+esc(e.a||'')+'</td></tr>'}).join('')+'</tbody></table></div>';
     h+='<div class="panel">'+table('gxcp',[{k:'name',l:'Player',f:function(r){return esc(r.name)}},{k:'caps',l:'Captures',f:function(r){return num(r.caps)}},{k:'unc',l:'Uncaptures',f:function(r){return num(r.unc)}},{k:'sec',l:'Time on point',f:function(r){return r.sec?dur(r.sec):'-'}}],gxPlayers(d).map(function(o){var s=o.p.stats||{};return {name:o.p.name,caps:s.cpCaptures||o.p.cpCaps||0,unc:s.cpUncaptures||0,sec:s.cpSec||o.p.cpTime||0}}))+'</div>';
   }else if(gx.ob==='relic'){
     var rl=lg.filter(function(e){return e.k==='relic'});
     h+='<div class="panel">'+table('gxrl',[{k:'name',l:'Player',f:function(r){return esc(r.name)}},{k:'pk',l:'Pickups',f:function(r){return num(r.pk)}},{k:'rp',l:'Re-pickups',f:function(r){return num(r.rp)}},{k:'cap',l:'Captures',f:function(r){return num(r.cap)}},{k:'dr',l:'Drops',f:function(r){return num(r.dr)}},{k:'ck',l:'Carrier kills',f:function(r){return num(r.ck)}},{k:'cs',l:'Carry time',f:function(r){return r.cs?dur(r.cs):'-'}}],
       gxPlayers(d).map(function(o){var s=o.p.stats||{};return {name:o.p.name,pk:s.relicPickups||o.p.relicPickups||0,rp:s.relicRepickups||0,cap:s.relicCaptures||o.p.relicCaps||0,dr:s.relicDrops||0,ck:s.carrierKills||o.p.carrierKills||0,cs:s.relicCarrySec||0}}))+'</div>';
-    if(rl.length)h+='<div class="panel scroll"><h2>Relic events</h2><table><thead><tr><th scope="col">Time</th><th scope="col">Event</th><th scope="col">Player</th><th scope="col">Team</th></tr></thead><tbody>'+rl.map(function(e){return '<tr><td>'+dur(e.t)+'</td><td>'+esc(e.ty||'')+'</td><td>'+esc(e.a||'')+'</td><td>'+esc(teamName(e.team))+'</td></tr>'}).join('')+'</tbody></table></div>';
+    if(rl.length)h+='<div class="panel scroll"><h2>Relic events</h2><table><thead><tr>'+(d.multi?'<th scope="col">Match</th>':'')+'<th scope="col">Time</th><th scope="col">Event</th><th scope="col">Player</th><th scope="col">Team</th></tr></thead><tbody>'+rl.map(function(e){return '<tr>'+(d.multi?'<td>'+esc(e.mt||'')+'</td>':'')+'<td>'+dur(e.t)+'</td><td>'+esc(e.ty||'')+'</td><td>'+esc(e.a||'')+'</td><td>'+esc(teamName(e.team))+'</td></tr>'}).join('')+'</tbody></table></div>';
   }else if(gx.ob==='mob'){
     var mk=lg.filter(function(e){return e.k==='mob'}),tiers=['Easy','Medium','Hard'],pm={};
     mk.forEach(function(e){var o=pm[e.a]||(pm[e.a]={name:e.a,Easy:0,Medium:0,Hard:0,tot:0});o[e.tier]=(o[e.tier]||0)+1;o.tot++});
@@ -1865,9 +1866,57 @@ function gxObj(d){
     h+='<div class="panel"><h2>Mob kills over time</h2>'+gxXY(S2,Math.max(d.duration||0,1))+'</div>';
   }else{
     var bk=lg.filter(function(e){return e.k==='boss'});
-    h+='<div class="panel"><h2>Boss kills</h2>'+(bk.length?'<table><thead><tr><th scope="col">Time</th><th scope="col">Player</th><th scope="col">Team</th></tr></thead><tbody>'+bk.map(function(e){return '<tr><td>'+dur(e.t)+'</td><td>'+esc(e.a||'')+'</td><td>'+esc(teamName(e.team))+'</td></tr>'}).join('')+'</tbody></table>':gxNeed('No boss kills in this match.'))+'</div>';
+    h+='<div class="panel"><h2>Boss kills</h2>'+(bk.length?'<table><thead><tr>'+(d.multi?'<th scope="col">Match</th>':'')+'<th scope="col">Time</th><th scope="col">Player</th><th scope="col">Team</th></tr></thead><tbody>'+bk.map(function(e){return '<tr>'+(d.multi?'<td>'+esc(e.mt||'')+'</td>':'')+'<td>'+dur(e.t)+'</td><td>'+esc(e.a||'')+'</td><td>'+esc(teamName(e.team))+'</td></tr>'}).join('')+'</tbody></table>':gxNeed('No boss kills in this match.'))+'</div>';
   }
   return h;
+}
+/* ---- Event Graphs: the match explorer over every ledger match in the event. Players are merged by name, times stay match-relative, so a line shows what happened N seconds into each match, added up. ---- */
+function evNumSum(dst,src){Object.keys(src||{}).forEach(function(k){if(typeof src[k]==='number')dst[k]=(dst[k]||0)+src[k]})}
+function evGxDoc(ms){
+  var L=ms.filter(function(m){return m.doc.ledger}).sort(function(a,b){return playedAt(a.doc)-playedAt(b.doc)});
+  if(!L.length)return null;
+  var P={},order=[],sk={n:[],ix:{}},sev={n:[],ix:{}},maxDur=0,sumDur=0,log=[],cpSegs=[],ptype={0:{},1:{}},tp={0:0,1:0},cast=[],evs=[],haveEv=0;
+  function ix(o,name){if(o.ix[name]==null){o.ix[name]=o.n.length;o.n.push(name)}return o.ix[name]}
+  L.forEach(function(m,mi){var d=m.doc,lab=mtitle(d),map={};
+    maxDur=Math.max(maxDur,d.duration||0);sumDur+=d.duration||0;
+    (d.players||[]).forEach(function(p,pi){
+      var a=P[p.name];if(!a){a={name:p.name,cls:p.cls,team:p.team,tc:{},cc:{},stats:{},skills:{},from:{},tl:null,regen:{},heal:{self:{},ally:{}},idx:order.length};P[p.name]=a;order.push(a)}
+      map[pi]=a.idx;a.tc[p.team]=(a.tc[p.team]||0)+1;a.cc[p.cls||'']=(a.cc[p.cls||'']||0)+1;
+      evNumSum(a.stats,p.stats);evNumSum(a.regen,p.regen);if(p.heal){evNumSum(a.heal.self,p.heal.self);evNumSum(a.heal.ally,p.heal.ally)}
+      (p.from||[]).forEach(function(f){a.from[f[0]]=(a.from[f[0]]||0)+f[1]});
+      (p.skills||[]).forEach(function(k){var t=a.skills[k.skill]||(a.skills[k.skill]={skill:k.skill,casts:0,cm:0,pvp:{hits:0,crits:0,kills:0,base:0,pre:0,mit:0,crit:0,res:0,abs:0,hl:0,over:0},pve:{hits:0,crits:0,kills:0,base:0,pre:0,mit:0,crit:0,res:0,abs:0,hl:0,over:0},acc:null,cd:null,res:null,pl:null});
+        t.casts+=k.casts;t.cm+=k.cm||0;evNumSum(t.pvp,k.pvp);evNumSum(t.pve,k.pve);if(k.acc){t.acc=t.acc||{k:k.acc.k,a:0,l:0};t.acc.a+=k.acc.a;t.acc.l+=k.acc.l}
+        if(k.cd)t.cd=k.cd;if(k.res){t.res=t.res||{};evNumSum(t.res,k.res)}if(k.pl){t.pl=t.pl||{n:0,t:0};t.pl.n+=k.pl.n;t.pl.t+=k.pl.t}});
+      if(p.tl){if(!a.tl)a.tl={s:p.tl.s,c:p.tl.c,r:[]};p.tl.r.forEach(function(row,i){var t=a.tl.r[i]||(a.tl.r[i]=row.map(function(){return 0}));row.forEach(function(v,j){t[j]+=v||0})})}
+    });
+    if(d.castLog)d.castLog.r.forEach(function(x){if(map[x[1]]!=null)cast.push([x[0],map[x[1]],ix(sk,d.castLog.n[x[2]]),x[3]==null?1:x[3]])});
+    if(d.scoreEv){haveEv++;d.scoreEv.r.forEach(function(e){evs.push([e[0],e[1],ix(sev,d.scoreEv.n[e[2]]),e[3],mi])})}
+    [0,1].forEach(function(t){tp[t]+=((d.teamPoints||{})[t])||0;var o=(d.pointsByType||{})[t]||{};Object.keys(o).forEach(function(k){ptype[t][k]=(ptype[t][k]||0)+o[k]})});
+    (d.log||[]).forEach(function(e){var c=Object.assign({},e);c.mt=lab;log.push(c)});
+    cpSegs.push({tl:d.cpTl||[],dur:d.duration||0});
+  });
+  var players=order.map(function(a){
+    a.team=+Object.keys(a.tc).sort(function(x,y){return a.tc[y]-a.tc[x]})[0];a.cls=Object.keys(a.cc).sort(function(x,y){return a.cc[y]-a.cc[x]})[0]||'';
+    a.skills=Object.keys(a.skills).map(function(k){return a.skills[k]});
+    a.from=Object.keys(a.from).map(function(k){return [k,a.from[k]]});
+    return a});
+  var grid=[],ts=Math.floor(maxDur/10)+1;
+  for(var i=0;i<=ts;i++){var t=i*10,row=[t,0,0];L.forEach(function(m,mi){evs.forEach(function(e){if(e[4]===mi&&e[0]<=t)row[e[1]+1]+=e[3]})});grid.push(row)}
+  return {multi:true,ledger:true,docs:L,players:players,duration:maxDur,durSum:sumDur,castLog:cast.length?{n:sk.n,r:cast.sort(function(a,b){return a[0]-b[0]})}:null,
+    scoreEv:haveEv?{n:sev.n,r:evs}:null,scoreTl:haveEv?grid:null,pointsByType:ptype,teamPoints:tp,log:log,cpSegs:cpSegs,ccLog:null,cpTl:[],teams:{}};
+}
+/* the single-match views (sequence, CC list, stat snapshots) need one match: a picker chooses which */
+function gxMatchSel(d){
+  if(!d.multi)return {doc:d,h:''};
+  var i=+gx.mm;if(!(i>=0&&i<d.docs.length))i=0;
+  return {doc:d.docs[i].doc,h:'<label class="chk">Match <select data-gxs="mm">'+d.docs.map(function(x,k){return '<option value="'+k+'"'+(k===i?' selected':'')+'>'+esc(mtitle(x.doc))+'</option>'}).join('')+'</select></label>'};
+}
+function viewGraphsEvent(id,ms,extra){
+  var d=evGxDoc(ms);
+  if(!d)return extra;
+  var tabs=[['time','Over time'],['combat','Combat'],['skills','Skills'],['obj','Objectives']],sn=subTabs('gx-ev-'+id,tabs),n=d.docs.length;
+  return '<p class="note" style="margin:0 0 8px">'+(n===ms.length?'All '+n:n+' of '+ms.length)+' match'+(n===1?'':'es')+' with ledger data, added together. Players are merged by name and times are counted from the start of each match.'+(n<ms.length?' The rest have no ledger data and are left out.':'')+'</p>'+
+    '<div class="gxsub">'+sn.h.replace('subnav','subnav sub2')+'</div>'+(sn.cur==='time'?gxTime(d)+extra:sn.cur==='combat'?gxCombat(d):sn.cur==='skills'?gxSkills(d):gxObj(d));
 }
 function viewGraphs(id,d){
   if(!d.ledger)return '';
