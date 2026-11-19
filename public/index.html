@@ -94,6 +94,8 @@ label.chk{display:inline-flex;gap:8px;align-items:center;color:var(--muted);curs
 .vsb i{display:block;height:100%;border-radius:3px}
 @media (max-width:560px){.vsr{grid-template-columns:minmax(0,1fr)}}
 .cols{align-items:start;display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:18px}
+nav.sec{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 16px;border-bottom:1px solid var(--line)}nav.sec a{color:var(--muted);font:600 16px/1 var(--font-d);letter-spacing:.06em;text-transform:uppercase;padding:10px 16px 11px;border-bottom:3px solid transparent;margin-bottom:-1px;text-decoration:none}nav.sec a:hover{color:var(--fg)}nav.sec a[aria-current=page]{color:var(--fg);border-bottom-color:var(--accent)}
+.gxchips{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}.gxchips button{background:var(--panel);border:1px solid var(--line);border-radius:6px;color:var(--fg);font:600 14px/1 var(--font-d);padding:8px 12px;cursor:pointer}.gxchips button:hover{border-color:var(--muted)}.gxchips button[aria-pressed=true]{border-color:var(--accent);box-shadow:inset 0 -3px 0 var(--accent)}.gxsub .subnav{margin-bottom:10px;border-bottom:0}.gxsub .subnav button{font-size:14px;padding:8px 14px;border:1px solid var(--line);border-radius:6px;margin:0 4px 6px 0}.gxsub .subnav button[aria-selected=true]{border-color:var(--accent);background:var(--panel)}
 .skwrap{display:grid;grid-template-columns:128px minmax(0,1fr);gap:18px;align-items:start}.skrail{position:sticky;top:8px;display:flex;flex-direction:column;gap:6px}.skrail button{display:flex;align-items:center;gap:8px;text-align:left;background:none;border:1px solid var(--line);border-radius:6px;color:var(--fg);font:600 14px/1 var(--font-d);letter-spacing:.04em;padding:9px 10px;cursor:pointer}.skrail button:hover{border-color:var(--muted)}.skrail button[aria-pressed=true]{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}.skmain{min-width:0}
 @media (max-width:700px){.skwrap{grid-template-columns:minmax(0,1fr)}.skrail{position:static;flex-direction:row;flex-wrap:wrap;align-items:center}}
 @media (max-width:820px){.cols{grid-template-columns:minmax(0,1fr)}}
@@ -215,16 +217,21 @@ function parseMatchLedger(text,fileName){
       cpCaps:s.cpCaptures||0,cpTime:r1(s.cpSec),tiers:t,pos:posC(p.positions),
       pb:(function(){if(!(tl&&tl.rows&&ci&&ci.a>=0))return null;var r=tl.rows.map(function(x){return Math.round(x[ci.a]||0)});return r.some(Boolean)?{s:tl.binSec||10,r:r}:null})(),
       stats:s,
+      tl:(function(){if(!(tl&&tl.rows&&tl.cols))return null;return {s:tl.binSec||10,c:tl.cols,r:tl.rows.slice(0,2400).map(function(x){return x.map(function(v){return Math.round((v||0)*10)/10})})}})(),
+      regen:p.regen||null,heal:p.heal||null,
+      snap:(p.statSnapshots||[]).slice(0,60).map(function(x){return {t:Math.round(x.t||0),w:x.why||'',al:x.alive?1:0,v:x.vitals||null,pr:x.primary||null,st:x.stats||null}}),
       skills:(p.skills||[]).filter(function(k){return k.casts||((k.pvp||{}).hits)||((k.pve||{}).hits)}).map(function(k){function q(o){o=o||{};return {hits:o.hits||0,crits:o.crits||0,kills:o.kills||0,base:r1(o.base),pre:r1(o.preMitigation),mit:r1(o.mitigated),crit:r1(o.critBonus),res:r1(o.resolved),abs:r1(o.absorbed),hl:r1(o.healthLost),over:r1(o.overkill)}}var ac=k.accuracy,cd=k.cooldown,pc=k.placed;return {skill:String(k.skill||'').replace(/^Aeon\.Ability\./,''),casts:k.casts||0,cm:k.committed||0,pvp:q(k.pvp),pve:q(k.pve),acc:ac&&typeof ac==='object'?{k:ac.kind||'',a:ac.attempts||0,l:ac.landed||0}:null,cd:cd&&typeof cd==='object'?{n:cd.applied||0,a:r1(cd.authoredSec),p:r1(cd.appliedSec)}:null,res:k.resource&&typeof k.resource==='object'?k.resource:null,pl:pc&&typeof pc==='object'?{n:pc.placements||0,t:pc.triggered||0}:null}}),
       from:(p.damageTakenFrom||[]).filter(function(x){return x.player!=null&&byId[x.player]&&x.healthLost>0}).map(function(x){return [byId[x.player].name,Math.round(x.healthLost)]})}});
   players.forEach(function(p){if(p.carrierKills&&p.team>=0)tm(p.team).carrierKills+=p.carrierKills});
   var w=L.winningTeam,result=(w===0||w===1)?{winner:w,src:'log'}:null;
   var types={};['kills','mobKills','bossKills','relicEvents','controlPointEvents','teamScoreEvents'].forEach(function(k){if((L[k]||[]).length)types[k]=L[k].length});
   var castLog=null;
-  if(L.castLog&&L.castLog.rows&&L.castLog.names){var cl=L.castLog,cc=cl.cols||['t','player','skill','step'],ct=cc.indexOf('t'),cp=cc.indexOf('player'),cs=cc.indexOf('skill'),idIx={};
+  if(L.castLog&&L.castLog.rows&&L.castLog.names){var cl=L.castLog,cc=cl.cols||['t','player','skill','step'],ct=cc.indexOf('t'),cp=cc.indexOf('player'),cs=cc.indexOf('skill'),cst=cc.indexOf('step'),idIx={};
     L.players.forEach(function(p,i){idIx[p.id]=i});
-    if(ct>=0&&cp>=0&&cs>=0)castLog={n:cl.names.map(function(x){return String(x).replace(/^Aeon\.Ability\./,'')}),r:cl.rows.slice(0,30000).map(function(x){return [Math.round(x[ct]*10)/10,idIx[x[cp]]==null?-1:idIx[x[cp]],x[cs]]})}}
-  var bal=L.balance||{};return{v:2,ledger:true,castLog:castLog,map:L.map||L.mapName||'',endReason:L.endReason||'',teamPoints:L.teamPoints,pointsByType:L.teamPointsByType||null,scoreTl:scoreTl,scoreCheck:L.scoreCheck||null,meta:{schema:L.schemaVersion==null?L.version:L.schemaVersion,project:bal.projectVersion||'',engine:bal.engineVersion||'',build:bal.buildConfig||'',skillsHash:bal.skillsHash||'',skillsRows:bal.skillsRows==null?'':bal.skillsRows,endedAtUtc:L.endedAtUtc||'',startedLocal:L.startedLocal||''},teams:TM,result:result,types:types,cols:[],name:fileName||'match ledger',uploadedAt:Date.now(),duration:r1(dur),rows:0,bucket:BUCKET,players:players,series:series,log:log,cpTl:cpTl,events:ev.slice(0,200)};
+    if(ct>=0&&cp>=0&&cs>=0)castLog={n:cl.names.map(function(x){return String(x).replace(/^Aeon\.Ability\./,'')}),r:cl.rows.slice(0,30000).map(function(x){return [Math.round(x[ct]*10)/10,idIx[x[cp]]==null?-1:idIx[x[cp]],x[cs],cst>=0?x[cst]:1]})}}
+  var scoreEv=null;if(L.teamScoreEvents&&L.teamScoreEvents.length){var sn0=[];scoreEv={n:sn0,r:L.teamScoreEvents.slice(0,6000).map(function(e){var i=sn0.indexOf(e.type);if(i<0){i=sn0.length;sn0.push(e.type)}return [Math.round(e.t*10)/10,e.team,i,e.points]})}}
+  var ccLog=L.ccLog&&L.ccLog.rows&&L.ccLog.rows.length?{tags:L.ccLog.tags||[],cols:L.ccLog.cols||[],rows:L.ccLog.rows.slice(0,5000)}:null;
+  var bal=L.balance||{};return{v:2,ledger:true,castLog:castLog,scoreEv:scoreEv,ccLog:ccLog,pids:L.players.map(function(p){return p.id}),map:L.map||L.mapName||'',endReason:L.endReason||'',teamPoints:L.teamPoints,pointsByType:L.teamPointsByType||null,scoreTl:scoreTl,scoreCheck:L.scoreCheck||null,meta:{schema:L.schemaVersion==null?L.version:L.schemaVersion,project:bal.projectVersion||'',engine:bal.engineVersion||'',build:bal.buildConfig||'',skillsHash:bal.skillsHash||'',skillsRows:bal.skillsRows==null?'':bal.skillsRows,endedAtUtc:L.endedAtUtc||'',startedLocal:L.startedLocal||''},teams:TM,result:result,types:types,cols:[],name:fileName||'match ledger',uploadedAt:Date.now(),duration:r1(dur),rows:0,bucket:BUCKET,players:players,series:series,log:log,cpTl:cpTl,events:ev.slice(0,200)};
 }
 function parseAnyLog(text,fileName){return /^\s*﻿?\s*\{/.test(text)?parseMatchLedger(text,fileName):parseCombatLog(text,fileName)}
 function parseCombatLog(text,fileName){
@@ -297,8 +304,8 @@ var CCOL={Assassin:'var(--c-assassin)',Hunter:'var(--c-hunter)',Mystic:'var(--c-
 var SERIES=['var(--c-assassin)','var(--c-hunter)','var(--c-mystic)','var(--c-priest)','var(--c-warrior)','var(--accent)'];
 var TABS=[['players','Players'],['classes','Classes'],['skills','Skills'],['factions','Factions'],['map','Heat map'],['matches','Matches'],['events','Events'],['upload','Upload']];
 var $view=document.getElementById('view'),$nav=document.getElementById('nav');
-var remote={},local={},snaps={},snapDraft={name:'',sel:{}},evEdit={id:'',v:''},evMsg='',delSel={},confirmKey='',db=null,user=null,canWrite=true,canEdit=false,loaded=false,dbState='loading';
-var sortState={bkm:{k:'dmg',d:-1},bkskill:{k:'total',d:-1},skills:{k:'total',d:-1},skusers:{k:'total',d:-1},objs:{k:'mobT',d:-1},snplayers:{k:'score',d:-1},snfac:{k:'team',d:1},fplayers:{k:'rating',d:-1},cboard:{k:'rating',d:-1},pside:{k:'name',d:1},adteam:{k:'team',d:1},adcls:{k:'dpm',d:-1},admatch:{k:'t',d:-1},players:{k:'rating',d:-1},match:{k:'dmg',d:-1},classes:{k:'avgDmg',d:-1},pclass:{k:'rating',d:-1},phist:{k:'t',d:-1}};
+var remote={},local={},snaps={},snapDraft={name:'',sel:{}},evEdit={id:'',v:''},evMsg='',delSel={},confirmKey='',db=null,user=null,canWrite=true,canEdit=false,canDesign=false,loaded=false,dbState='loading';
+var sortState={gxs:{k:'total',d:-1},gxsk:{k:'casts',d:-1},gxac:{k:'casts',d:-1},gxrg:{k:'he',d:-1},gxcp:{k:'caps',d:-1},gxrl:{k:'pk',d:-1},gxmb:{k:'tot',d:-1},bkm:{k:'dmg',d:-1},bkskill:{k:'total',d:-1},skills:{k:'total',d:-1},skusers:{k:'total',d:-1},objs:{k:'mobT',d:-1},snplayers:{k:'score',d:-1},snfac:{k:'team',d:1},fplayers:{k:'rating',d:-1},cboard:{k:'rating',d:-1},pside:{k:'name',d:1},adteam:{k:'team',d:1},adcls:{k:'dpm',d:-1},admatch:{k:'t',d:-1},players:{k:'rating',d:-1},match:{k:'dmg',d:-1},classes:{k:'avgDmg',d:-1},pclass:{k:'rating',d:-1},phist:{k:'t',d:-1}};
 var hideBots=true,ratedOnly=false,uploads=[];
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
@@ -1011,7 +1018,7 @@ function viewSnapshot(id){
     return '<details class="cdet"'+(ms.length<=3?'':'')+'><summary><a class="plink" href="#match-'+esc(m.id)+'">'+esc(d.name)+'</a> '+resultTag(d)+' <span class="note" style="margin:0">'+dur(d.duration||0)+'</span></summary><div class="scroll"><table><thead><tr><th scope="col"><button type="button" disabled>Player</button></th><th scope="col"><button type="button" disabled>Team</button></th><th scope="col"><button type="button" disabled>Class</button></th><th scope="col"><button type="button" disabled>Pts</button></th><th scope="col"><button type="button" disabled>K/D</button></th><th scope="col"><button type="button" disabled>Mobs</button></th></tr></thead><tbody>'+pl.map(function(p){return '<tr><td><a class="plink" href="#player-'+slug(p.name)+'">'+esc(p.name)+'</a></td><td>'+teamTag(p.team)+'</td><td>'+(p.cls?clsCell(p.cls):'-')+'</td><td>'+num(p.score)+'</td><td>'+p.kills+'/'+p.deaths+'</td><td>'+p.mobKills+'</td></tr>'}).join('')+'</tbody></table></div>'+(d.partial?'<p class="note">Screenshot summary. The roster may be missing players cut off at the bottom of the screenshot.</p>':'')+'</details>'}).join('')+'</div>'+
     '<div class="panel"><h2>Classes</h2>'+(crow.length?crow.map(function(c){return '<div class="cb" style="grid-template-columns:90px 1fr 70px"><span>'+clsCell(c.cls)+'</span><div class="track"><i style="width:'+Math.round(100*c.picks/Math.max.apply(null,crow.map(function(x){return x.picks})))+'%;background:'+CCOL[c.cls]+'"></i></div><em>'+c.picks+' picks</em></div>'}).join(''):'<p class="note">No class data in these matches.</p>')+'</div></div>';
   st+=evClassTable(crow);
-  var tabs=[['stats','Stats &amp; accolades'],['map','Heat map'],['graphs','Graphs']];if(ms.some(function(m){return anaHas(m.doc)}))tabs.push(['analysis','Analysis']);tabs.push(['log','Event log']);
+  var tabs=[['stats','Stats &amp; accolades'],['map','Heat map']];if(canDesign){tabs.push(['graphs','Graphs']);if(ms.some(function(m){return anaHas(m.doc)}))tabs.push(['analysis','Analysis'])}tabs.push(['log','Event log']);
   var sn=subTabs('event-'+id,tabs);h+=sn.h;
   if(sn.cur==='stats')h+=st;
   else if(sn.cur==='map'){
@@ -1058,9 +1065,8 @@ function copyBugs(){
 var DOC_LIMIT=3.5*1024*1024,DOC_WARN=0.8*DOC_LIMIT;
 function viewAdmin(){
   var h='<div><h1>Admin stats</h1><p class="sub">Overall numbers and automatic checks to find problems in the logs, the game and the balance '+statusLine()+'</p></div>';
-  if(!canEdit)return h+empty('Editors only','This page is for people with edit access to the site.');
-  h+='<div class="panel"><h2>Admin tools</h2><p class="note" style="margin:0 0 10px">Other tools for the team. They open in a new tab.</p><a class="btn" style="display:inline-block;text-decoration:none" href="https://aeon-damage-tester.vercel.app/" target="_blank" rel="noopener noreferrer">Aeon damage tester &#8599;</a></div>';
-  var ms=allMatches();if(!ms.length)return h+accountsPanel()+empty('No matches yet','Upload combat logs on the Upload tab.');
+  if(!canDesign)return h+empty('Designers and admins only','This page is for designers and admins.');
+  var ms=allMatches();if(!ms.length)return h+(canEdit?accountsPanel():'')+empty('No matches yet','Upload combat logs on the Upload tab.');
   var T={matches:ms.length,mins:0,rows:0,dmg:0,kills:0,deaths:0,boss:0,pts:0,relics:0,humans:{},bots:{}};
   var teams={},cls={},bl=[],sizeMax=0;
   var EXPECT_COLS=['Time','Type','Source','Target','Message','Effective','TeamIndex','Killer','Victim','Ability','Critical','MobCampTier','PlayersPresent','ScoreAwarded'],
@@ -1120,9 +1126,7 @@ function viewAdmin(){
   addIssue('bigDoc','High','Stored match near the 3.5 MiB size limit',bigDoc,'The site rejects a match document over 3.5 MiB, so a bigger log would fail to save.');
   var nh=Object.keys(T.humans).length;
   h+='<div class="kpis"><div class="kpi"><b>'+T.matches+'</b><small>Matches</small></div><div class="kpi"><b>'+num(T.mins/60,1)+'</b><small>Hours logged</small></div><div class="kpi"><b>'+nh+'</b><small>Human players</small></div><div class="kpi"><b>'+Object.keys(T.bots).length+'</b><small>Bot names seen</small></div><div class="kpi"><b>'+num(T.dmg)+'</b><small>Player damage</small></div><div class="kpi"><b>'+num(T.kills)+' / '+num(T.deaths)+'</b><small>Kills / deaths</small></div></div>';
-  h+=accountsPanel();
-  h+=snapshotPanel();
-  h+=dataPanel();
+  if(canEdit){h+=accountsPanel();h+=snapshotPanel();h+=dataPanel()}
   var SEV={High:0,Medium:1,Low:2},STL={open:'Open',devs:'With devs',fixed:'Fixed',ignored:'Ignored'},cnt={open:0,devs:0,fixed:0,ignored:0};
   bl.sort(function(a,b){return (SEV[a.sev]-SEV[b.sev])||String(a.mn).localeCompare(String(b.mn))});
   bl.forEach(function(b){b.s=(bugs[b.key]&&bugs[b.key].s)||'open';if(cnt[b.s]==null)b.s='open';cnt[b.s]++});
@@ -1370,6 +1374,7 @@ function skillAgg(){
   return {rows:rows,matches:nm,all:ms.length};
 }
 function viewSkills(){
+  if(!canDesign)return '<div><h1>Skills</h1></div>'+empty('Designers and admins only','Skill breakdowns are for designers and admins.');
   var ms=allMatches();
   if(!ms.length)return '<div><h1>Skills</h1></div>'+empty('No matches yet','Upload a match to see skill usage.');
   var G=skillAgg(),rows=G.rows;
@@ -1527,17 +1532,215 @@ function viewMatch(id){
     {k:'dpm',l:'Dmg/min',f:function(r){return num(r.dpm)}}
   ],rows)+'</div>';
   st+=objPanel(d,(d.players||[]).filter(function(p){return !(hideBots&&isBot(p.name))}));
-  var tabs=[['stats','Stats &amp; accolades'],['break','Breakdown']];if(d.ledger)tabs.push(['map','Heat map']);tabs.push(['graphs','Graphs']);if(anaHas(d))tabs.push(['analysis','Analysis']);tabs.push(['log','Event log']);
+  var tabs=[['stats','Stats &amp; accolades']];if(canDesign)tabs.push(['break','Breakdown']);if(d.ledger)tabs.push(['map','Heat map']);if(canDesign){tabs.push(['graphs','Graphs']);if(anaHas(d))tabs.push(['analysis','Analysis'])}tabs.push(['log','Event log']);
   var sn=subTabs('match-'+id,tabs);h+=sn.h;
   if(sn.cur==='stats')h+=st;
   else if(sn.cur==='break')h+=viewBreakdown(id,d);
   else if(sn.cur==='map'){mapScope=null;h+='<div class="panel"><h2>Heat map and event timeline</h2>'+mapBody(id)+'</div>'+anaMatchSections(id,d,'map')}
-  else if(sn.cur==='graphs')h+=anaMatchSections(id,d,'graphs')+teamDamage(d);
+  else if(sn.cur==='graphs')h+=d.ledger?viewGraphs(id,d):anaMatchSections(id,d,'graphs')+teamDamage(d);
   else if(sn.cur==='analysis')h+=anaMatchSections(id,d,'analysis');
   else h+='<div class="panel"><h2>Events</h2>'+
     ((d.events||[]).length?'<ul class="events">'+d.events.map(function(e){return '<li><time>'+dur(e.t)+'</time><span class="tag'+(e.k==='boss'?' warn':'')+'">'+esc(e.k==='kill'?'Kill':e.k==='boss'?'Boss':'Point')+'</span><span>'+esc(e.x)+'</span></li>'}).join('')+'</ul>':'<p class="note">No kills or captures in this log.</p>')+'</div>';
   return h;
 }
+/* ---- Graphs explorer: Over time, Combat, Skills, Objectives. Built for balancing and for locating bugs: every view is per player or per team, from the ledger's own counters. ---- */
+var gx={metric:'dmg',type:'all',by:'team',bins:false,pl:'',cb:'vs',sk:'usage',ob:'score',sc:'tot',team:0};
+var GXM=[['dmg','Damage dealt'],['taken','Damage taken'],['heal','Healing given'],['healRecv','Healing received'],['ccApplied','Crowd control applied'],['itemUses','Item uses'],['casts','Casts'],['pvpSec','Seconds in PvP'],['objSec','Seconds on objective']];
+var GXPAL=['#e6a23c','#4fa3e0','#9b6bd6','#3fae6a','#e0566b','#d1c45a','#5cc7c0','#b88a64','#8a93a6'];
+function gxChips(key,list,cur){return '<div class="gxchips" role="group">'+list.map(function(x){return '<button type="button" data-gx="'+key+':'+x[0]+'" aria-pressed="'+(String(x[0])===String(cur))+'">'+x[1]+'</button>'}).join('')+'</div>'}
+function gxPlayers(d){var o=[];(d.players||[]).forEach(function(p,i){if(!(hideBots&&isBot(p.name)))o.push({p:p,i:i})});return o}
+function gxPlSel(d,all){var l=gxPlayers(d),cur=gx.pl;if(cur!==''&&!l.some(function(x){return x.p.name===cur}))cur='';if(!all&&cur==='')cur=l[0]?l[0].p.name:'';
+  return {cur:cur,h:'<label class="chk">Players <select data-gxs="pl">'+(all?'<option value="">All players</option>':'')+l.map(function(x){return '<option value="'+esc(x.p.name)+'"'+(x.p.name===cur?' selected':'')+'>'+esc(x.p.name)+(x.p.cls?' ('+esc(x.p.cls)+')':'')+'</option>'}).join('')+'</select></label>'}}
+function gxPcol(p){return CCOL[p.cls]||'var(--accent)'}
+function gxNeed(msg){return '<p class="note">'+msg+'</p>'}
+var GXOLD='This match was saved before this data was kept. Re-upload its original ledger to get it.';
+/* generic line chart: series [{name,col,dash,pts:[[x,y]]}] */
+function gxXY(S,xmax,fmt){
+  var W=900,H=300,PL=62,PR=16,PT=12,PB=30,lo=0,hi=0;
+  S.forEach(function(q){q.pts.forEach(function(a){if(a[1]>hi)hi=a[1];if(a[1]<lo)lo=a[1]})});
+  var top=niceTop(Math.max(hi,-lo,1));if(lo<0)lo=-top;hi=top;
+  var X=function(t){return PL+(W-PL-PR)*t/(xmax||1)},Y=function(v){return PT+(H-PT-PB)*(1-(v-lo)/(hi-lo))};
+  var s='<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Chart over match time">';
+  for(var k=0;k<=4;k++){var v=lo+(hi-lo)*k/4;s+='<line class="grid" x1="'+PL+'" x2="'+(W-PR)+'" y1="'+Y(v).toFixed(1)+'" y2="'+Y(v).toFixed(1)+'"/><text x="'+(PL-8)+'" y="'+(Y(v)+4).toFixed(1)+'" text-anchor="end">'+(fmt?fmt(v):num(v))+'</text>'}
+  var st=xmax>1500?300:xmax>600?120:60;for(var t=0;t<=xmax;t+=st)s+='<line class="grid" x1="'+X(t).toFixed(1)+'" x2="'+X(t).toFixed(1)+'" y1="'+PT+'" y2="'+(H-PB)+'"/><text x="'+X(t).toFixed(1)+'" y="'+(H-10)+'" text-anchor="middle">'+dur(t)+'</text>';
+  if(lo<0)s+='<line x1="'+PL+'" x2="'+(W-PR)+'" y1="'+Y(0).toFixed(1)+'" y2="'+Y(0).toFixed(1)+'" stroke="var(--muted)"/>';
+  S.forEach(function(q){if(q.pts.length)s+='<polyline fill="none" stroke="'+q.col+'" stroke-width="2.2" stroke-linejoin="round"'+(q.dash?' stroke-dasharray="6 4"':'')+' points="'+q.pts.map(function(a){return X(a[0]).toFixed(1)+','+Y(a[1]).toFixed(1)}).join(' ')+'"/>'});
+  s+='</svg><div class="legend">'+S.map(function(q){return '<span><i style="background:'+q.col+'"></i>'+esc(q.name)+'</span>'}).join('')+'</div>';
+  return s;
+}
+/* binned values to points: cumulative runs up, otherwise one point per bin */
+function gxBinPts(v,bs,cum){var a=[],run=0;if(cum)a.push([0,0]);v.forEach(function(x,i){run+=x;a.push(cum?[(i+1)*bs,run]:[(i+.5)*bs,x])});return a}
+function gxSeries(d,m,type){
+  var out=[];
+  gxPlayers(d).forEach(function(o){var p=o.p,v=null,bs=10;
+    if(m==='casts'){var cl=d.castLog;if(cl){var n=Math.floor((d.duration||0)/10)+1;v=[];for(var i=0;i<n;i++)v.push(0);cl.r.forEach(function(x){if(x[1]===o.i){var b=Math.floor(x[0]/10);if(b<n)v[b]++}})}}
+    else if(p.tl){var c=p.tl.c;bs=p.tl.s;var cols=m==='dmg'?(type==='pvp'?['pvpDmg']:type==='pve'?['pveDmg']:['pvpDmg','pveDmg']):[m];
+      var is=cols.map(function(k){return c.indexOf(k)}).filter(function(k){return k>=0});
+      if(is.length)v=p.tl.r.map(function(r){var t=0;is.forEach(function(k){t+=r[k]||0});return t})}
+    if(v)out.push({p:p,i:o.i,v:v,bs:bs})});
+  return out;
+}
+function gxTime(d){
+  var m=GXM.filter(function(x){return x[0]===gx.metric})[0]||GXM[0],isD=m[0]==='dmg';
+  var h='<div class="panel"><h2>Over time</h2><div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><label class="chk">Metric <select data-gxs="metric">'+GXM.map(function(x){return '<option value="'+x[0]+'"'+(x[0]===gx.metric?' selected':'')+'>'+x[1]+'</option>'}).join('')+'</select></label>'+
+    (isD?'<label class="chk">Type <select data-gxs="type"><option value="all"'+(gx.type==='all'?' selected':'')+'>PvP + PvE</option><option value="pvp"'+(gx.type==='pvp'?' selected':'')+'>PvP only</option><option value="pve"'+(gx.type==='pve'?' selected':'')+'>PvE only</option></select></label>':'')+
+    '<span class="gxchips" style="margin:0">'+[['team','By team'],['player','By player']].map(function(x){return '<button type="button" data-gx="by:'+x[0]+'" aria-pressed="'+(gx.by===x[0])+'">'+x[1]+'</button>'}).join('')+'</span>'+
+    '<label class="chk"><input type="checkbox" data-gxc="bins"'+(gx.bins?' checked':'')+'> Per 10 s bins (not cumulative)</label></div>';
+  var S=gxSeries(d,m[0],gx.type);
+  if(!S.length)return h+gxNeed((m[0]==='casts'?'No cast log in this match. ':'')+GXOLD)+'</div>';
+  var cum=!gx.bins,xmax=Math.max(d.duration||0,1),lines;
+  if(gx.by==='team'){lines=[0,1].map(function(t){var arr=[];S.forEach(function(q){if(q.p.team!==t)return;q.v.forEach(function(x,i){arr[i]=(arr[i]||0)+x})});for(var i=0;i<arr.length;i++)arr[i]=arr[i]||0;return {name:teamName(t),col:TEAMS[t].col,v:arr,bs:S[0].bs}}).filter(function(q){return q.v.length})}
+  else lines=S.map(function(q){return {name:q.p.name+(q.p.cls?' ('+q.p.cls+')':''),col:gxPcol(q.p),dash:q.p.team===1,v:q.v,bs:q.bs}});
+  lines.forEach(function(q){q.pts=gxBinPts(q.v,q.bs,cum)});
+  h+='<p class="note" style="margin:10px 0 0"><b>'+esc(m[0]==='dmg'&&gx.type!=='all'?m[1]+' ('+(gx.type==='pvp'?'PvP':'PvE')+')':m[1])+'</b>, '+(cum?'cumulative':'per 10 seconds')+(gx.by==='player'?'. Dashed lines are '+esc(teamName(1))+' players.':'')+'</p>'+gxXY(lines,xmax)+'</div>';
+  var rows=S.map(function(q){var tot=0,pk=0,pkT=0;q.v.forEach(function(x,i){tot+=x;if(x>pk){pk=x;pkT=i*q.bs}});return {name:q.p.name,cls:q.p.cls||'',team:q.p.team,total:tot,peak:pk,pkT:pkT,pm:tot/Math.max(1,(d.duration||0)/60)}});
+  h+='<div class="panel"><h2>Totals</h2>'+table('gxs',[{k:'name',l:'Player',f:function(r){return esc(r.name)}},{k:'cls',l:'Class',f:function(r){return clsPlain(r.cls)}},{k:'team',l:'Team',f:function(r){return esc(teamName(r.team))}},{k:'total',l:'Total',f:function(r){return num(r.total)}},{k:'pm',l:'Per minute',f:function(r){return num(r.pm)}},{k:'peak',l:'Best 10 s',f:function(r){return num(r.peak)}},{k:'pkT',l:'Best at',f:function(r){return dur(r.pkT)}}],rows)+'</div>';
+  return h;
+}
+/* ---- combat ---- */
+function gxSt(p){var s=p.stats||{};return {pvp:s.pvpDamage!=null?s.pvpDamage:p.dmgP||0,pve:s.pveDamage!=null?s.pveDamage:Math.max(0,(p.dmg||0)-(p.dmgP||0)),taken:s.damageTaken!=null?s.damageTaken:p.taken||0,
+  heal:s.pvpHeal!=null?s.pvpHeal:p.heal||0,nonpvp:s.nonPvpHeal||0,recv:s.healReceived!=null?s.healReceived:p.healRecv||0,over:s.overheal||0,shield:s.shieldAbsorbed||0,
+  cca:s.ccApplied||0,ccr:s.ccReceived||0,ccas:s.ccAppliedSec||0,ccrs:s.ccReceivedSec||0}}
+function gxBars(title,keys,pl,fmtd){
+  var all=pl.map(function(o){return {o:o,v:gxSt(o.p)}}),mx=0;all.forEach(function(a){keys.forEach(function(k){if(a.v[k[0]]>mx)mx=a.v[k[0]]})});
+  if(!mx)return '<div class="panel"><h2>'+title+'</h2><p class="note">None recorded in this match.</p></div>';
+  return '<div class="panel"><h2>'+title+'</h2><div class="legend" style="margin:0 0 8px">'+keys.map(function(k){return '<span><i style="background:'+k[2]+'"></i>'+k[1]+'</span>'}).join('')+'</div>'+all.map(function(a){
+    return '<div style="margin:0 0 10px"><div style="margin:0 0 3px">'+clsPlain(a.o.p.cls)+' <strong>'+esc(a.o.p.name)+'</strong> <span class="note" style="margin:0">'+esc(teamName(a.o.p.team))+'</span></div>'+keys.map(function(k){var v=a.v[k[0]]||0;
+      return '<div style="display:grid;grid-template-columns:1fr 70px;gap:8px;align-items:center;margin:2px 0"><span style="display:block;height:11px;width:'+(100*v/mx).toFixed(1)+'%;min-width:'+(v?2:0)+'px;background:'+k[2]+';border-radius:2px"></span><span style="text-align:right;font-size:13px">'+(fmtd?num(v,1):num(v))+'</span></div>'}).join('')+'</div>'}).join('')+'</div>';
+}
+function gxCombat(d){
+  var ps=gxPlSel(d,true),pl=gxPlayers(d).filter(function(o){return !ps.cur||o.p.name===ps.cur}),h='<div class="panel" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><h2 style="margin:0">Combat</h2>'+ps.h+'</div>';
+  h+=gxChips('cb',[['vs','Applied vs received'],['from','Damage taken from'],['regen','Regen'],['snap','Snapshots']],gx.cb);
+  if(gx.cb==='vs'){
+    h+=gxBars('Damage: dealt vs taken',[['pvp','PvP dealt','#4a8fe0'],['pve','PvE dealt','#d19a1f'],['taken','Taken','#d33']],pl);
+    h+=gxBars('Healing and shields',[['heal','Healing given (PvP)','#4a8fe0'],['nonpvp','Healing given (other)','#8fb3e8'],['recv','Healing received','#d33'],['over','Overheal','#d19a1f'],['shield','Shield absorbed','#8a93a6']],pl);
+    h+=gxBars('Crowd control: count',[['cca','Applied','#4a8fe0'],['ccr','Received','#d33']],pl);
+    h+=gxBars('Crowd control: seconds',[['ccas','Applied (s)','#4a8fe0'],['ccrs','Received (s)','#d33']],pl,true);
+  }else if(gx.cb==='from'){
+    var all=gxPlayers(d),byN={},cx={};all.forEach(function(o){byN[o.p.name]=o.p});
+    var cols=all.filter(function(o){return all.some(function(v){return (v.p.from||[]).some(function(f){return f[0]===o.p.name})})});
+    if(!all.some(function(o){return (o.p.from||[]).length}))return h+gxNeed('No damage between players in this match, or '+GXOLD.charAt(0).toLowerCase()+GXOLD.slice(1));
+    var mx=1;all.forEach(function(o){(o.p.from||[]).forEach(function(f){if(f[1]>mx)mx=f[1]})});
+    h+='<div class="panel scroll"><h2>Damage taken, who from</h2><p class="note" style="margin:0 0 8px">Rows are the player who took the damage, columns the player who dealt it. Health lost, after mitigation.</p><table><thead><tr><th scope="col">Victim</th>'+cols.map(function(o){return '<th scope="col">'+esc(o.p.name)+'</th>'}).join('')+'<th scope="col">Total</th></tr></thead><tbody>'+
+      all.map(function(o){var m={},tot=0;(o.p.from||[]).forEach(function(f){m[f[0]]=(m[f[0]]||0)+f[1];tot+=f[1];var a=byN[f[0]];if(a){var k=(a.cls||'?')+'>'+(o.p.cls||'?');cx[k]=(cx[k]||0)+f[1]}});
+        return '<tr><td>'+clsPlain(o.p.cls)+' '+esc(o.p.name)+'</td>'+cols.map(function(c){var v=m[c.p.name]||0;return '<td style="'+(v?'background:rgba(211,51,51,'+(.12+.55*v/mx).toFixed(2)+')':'')+'">'+(v?num(v):'')+'</td>'}).join('')+'<td>'+num(tot)+'</td></tr>'}).join('')+'</tbody></table></div>';
+    var ks=Object.keys(cx).sort(function(a,b){return cx[b]-cx[a]});
+    if(ks.length)h+='<div class="panel scroll"><h2>Class vs class</h2><p class="note" style="margin:0 0 8px">Health lost by the victim class, by the attacking class. A class that dominates this table is a balance candidate.</p><table><thead><tr><th scope="col">Attacker</th><th scope="col">Victim</th><th scope="col">Health lost</th></tr></thead><tbody>'+ks.map(function(k){var a=k.split('>');return '<tr><td>'+clsPlain(a[0])+'</td><td>'+clsPlain(a[1])+'</td><td>'+num(cx[k])+'</td></tr>'}).join('')+'</tbody></table></div>';
+  }else if(gx.cb==='regen'){
+    var rows=pl.map(function(o){var r=o.p.regen||{},h2=o.p.heal||{};return {name:o.p.name,cls:o.p.cls||'',he:r.Health||0,en:r.Energy||0,fo:r.Focus||0,sp:(h2.self||{}).pvp||0,ap:(h2.ally||{}).pvp||0}});
+    if(!pl.some(function(o){return o.p.regen}))return h+gxNeed(GXOLD);
+    h+='<div class="panel"><h2>Regeneration</h2>'+table('gxrg',[{k:'name',l:'Player',f:function(r){return esc(r.name)}},{k:'cls',l:'Class',f:function(r){return clsPlain(r.cls)}},{k:'he',l:'Health regen',f:function(r){return num(r.he)}},{k:'en',l:'Energy regen',f:function(r){return num(r.en)}},{k:'fo',l:'Focus regen',f:function(r){return num(r.fo)}},{k:'sp',l:'Self heal (PvP)',f:function(r){return num(r.sp)}},{k:'ap',l:'Ally heal (PvP)',f:function(r){return num(r.ap)}}],rows)+'<p class="note">Totals over the match, from the ledger. A class with far more regen than its peers, or a resource that never regenerates, is worth a look.</p></div>';
+  }else{
+    var ps2=gxPlSel(d,false),o2=gxPlayers(d).filter(function(o){return o.p.name===ps2.cur})[0];
+    h=h.replace(ps.h,ps2.h);
+    if(!o2||!(o2.p.snap&&o2.p.snap.length))return h+gxNeed(GXOLD);
+    var sn=o2.p.snap,keys=[];function add(g,src){sn.forEach(function(x){var o=x[src]||{};Object.keys(o).forEach(function(k){if(!keys.some(function(y){return y[0]===g&&y[1]===k}))keys.push([g,k])})})}
+    add('Vitals','v');add('Primary','pr');add('Stats','st');
+    h+='<div class="panel scroll"><h2>Stat snapshots: '+esc(o2.p.name)+'</h2><p class="note" style="margin:0 0 8px">Taken at the times shown. A highlighted cell changed since the snapshot before it, so buffs, gear and stat bugs show up as steps.</p><table><thead><tr><th scope="col"></th>'+sn.map(function(x){return '<th scope="col" title="'+esc(x.w)+'">'+dur(x.t)+'</th>'}).join('')+'</tr></thead><tbody><tr><td>Alive</td>'+sn.map(function(x){return '<td>'+(x.al?'yes':'no')+'</td>'}).join('')+'</tr>'+
+      keys.map(function(k,ki){var src=k[0]==='Vitals'?'v':k[0]==='Primary'?'pr':'st',pv=null;return '<tr><td>'+(ki&&keys[ki-1][0]===k[0]?'':'<strong>'+k[0]+'</strong> ')+esc(k[1])+'</td>'+sn.map(function(x){var v=(x[src]||{})[k[1]],ch=pv!=null&&v!==pv;pv=v==null?pv:v;return '<td'+(ch?' style="background:rgba(230,162,60,.25)"':'')+'>'+(v==null?'':num(v,Math.abs(v)<10&&v%1?2:0))+'</td>'}).join('')+'</tr>'}).join('')+'</tbody></table></div>';
+  }
+  return h;
+}
+/* ---- skills ---- */
+function gxSkillRows(d,name){
+  var A={};gxPlayers(d).forEach(function(o){if(name&&o.p.name!==name)return;(o.p.skills||[]).forEach(function(k){var a=A[k.skill]||(A[k.skill]={skill:k.skill,name:skName(k.skill),casts:0,cm:0,hits:0,crits:0,dp:0,de:0,kills:0,att:0,lan:0,cdv:null,res:{}});
+    a.casts+=k.casts;a.cm+=k.cm||0;a.hits+=k.pvp.hits+k.pve.hits;a.crits+=k.pvp.crits+k.pve.crits;a.dp+=k.pvp.hl;a.de+=k.pve.hl;a.kills+=k.pvp.kills+k.pve.kills;
+    if(k.acc){a.att+=k.acc.a;a.lan+=k.acc.l}if(k.cd&&k.cd.p>0)a.cdv=k.cd.p;if(k.res)Object.keys(k.res).forEach(function(r){a.res[r]=(a.res[r]||0)+k.res[r]})})});
+  return Object.keys(A).map(function(n){var a=A[n];a.total=a.dp+a.de;a.hpc=a.casts?a.hits/a.casts:0;a.dpc=a.casts?a.total/a.casts:0;a.crit=a.hits?100*a.crits/a.hits:0;a.accr=a.att>0?100*a.lan/a.att:null;a.cmr=a.casts?100*a.cm/a.casts:null;
+    a.resS=Object.keys(a.res).map(function(r){return r+' '+num(a.res[r])}).join(', ');return a});
+}
+function gxSkills(d){
+  var ps=gxPlSel(d,gx.sk!=='seq'),h='<div class="panel" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><h2 style="margin:0">Skills</h2>'+ps.h+'</div>';
+  h+=gxChips('sk',[['usage','Usage'],['time','Over time'],['seq','Sequence'],['cc','CC use'],['acc','Accuracy'],['combo','Combo steps']],gx.sk);
+  if(!gxPlayers(d).some(function(o){return (o.p.skills||[]).length}))return h+'<div class="panel">'+gxNeed(GXOLD)+'</div>';
+  if(gx.sk==='usage'||gx.sk==='acc'){
+    var rows=gxSkillRows(d,ps.cur);
+    if(gx.sk==='usage')h+='<div class="panel"><h2>Ability usage</h2>'+table('gxsk',[
+      {k:'name',l:'Ability',f:function(r){return '<span title="'+esc(r.skill)+'">'+esc(r.name)+'</span>'}},{k:'casts',l:'Casts',f:function(r){return num(r.casts)}},{k:'cmr',l:'Committed %',f:function(r){return r.cmr==null?'-':num(r.cmr,0)}},
+      {k:'hits',l:'Hits',f:function(r){return num(r.hits)}},{k:'hpc',l:'Hits/cast',f:function(r){return num(r.hpc,2)}},{k:'crit',l:'Crit %',f:function(r){return num(r.crit,1)}},{k:'kills',l:'Kills',f:function(r){return num(r.kills)}},
+      {k:'total',l:'Damage',f:function(r){return num(r.total)}},{k:'dpc',l:'Dmg/cast',f:function(r){return num(r.dpc)}},{k:'cdv',l:'Cooldown',f:function(r){return r.cdv==null?'-':num(r.cdv,1)+'s'}},{k:'resS',l:'Resource spent',f:function(r){return r.resS||'-'}}],rows)+
+      '<p class="note">Committed % is casts that went through to completion. Abilities with casts but no hits are utility or missed.</p></div>';
+    else{var any=rows.some(function(r){return r.att>0});
+      h+='<div class="panel"><h2>Accuracy</h2>'+(any?'':'<p class="note" style="margin-top:0">This game build logs no attempts, so accuracy stays blank. Hits per cast is the closest measure.</p>')+table('gxac',[
+        {k:'name',l:'Ability',f:function(r){return esc(r.name)}},{k:'casts',l:'Casts',f:function(r){return num(r.casts)}},{k:'att',l:'Attempts',f:function(r){return num(r.att)}},{k:'lan',l:'Landed',f:function(r){return num(r.lan)}},{k:'accr',l:'Accuracy %',f:function(r){return r.accr==null?'-':num(r.accr,1)}},{k:'hits',l:'Hits',f:function(r){return num(r.hits)}},{k:'hpc',l:'Hits/cast',f:function(r){return num(r.hpc,2)}}],rows)+'</div>'}
+  }else if(gx.sk==='time'){
+    var cl=d.castLog;if(!cl)return h+'<div class="panel">'+gxNeed('No cast log in this match. '+GXOLD)+'</div>';
+    var n=Math.floor((d.duration||0)/10)+1,by={},sel=gxPlayers(d).filter(function(o){return !ps.cur||o.p.name===ps.cur}).map(function(o){return o.i});
+    cl.r.forEach(function(x){if(sel.indexOf(x[1])<0)return;var a=by[x[2]]||(by[x[2]]=[]);if(!a.length)for(var i=0;i<n;i++)a.push(0);var b=Math.floor(x[0]/10);if(b<n)a[b]++});
+    var ks=Object.keys(by).sort(function(a,b){return by[b].reduce(function(s,v){return s+v},0)-by[a].reduce(function(s,v){return s+v},0)}).slice(0,9);
+    if(!ks.length)return h+'<div class="panel">'+gxNeed('No casts logged.')+'</div>';
+    var S=ks.map(function(k,i){return {name:skName(cl.n[k]),col:GXPAL[i%GXPAL.length],pts:gxBinPts(by[k],10,!gx.bins)}});
+    h+='<div class="panel"><h2>Casts over time</h2><label class="chk"><input type="checkbox" data-gxc="bins"'+(gx.bins?' checked':'')+'> Per 10 s bins (not cumulative)</label><p class="note" style="margin:8px 0 0">The nine most cast abilities. A flat line is an ability that stopped being used; a sudden jump is a burst window.</p>'+gxXY(S,Math.max(d.duration||0,1))+'</div>';
+  }else if(gx.sk==='seq'){
+    var o=gxPlayers(d).filter(function(o){return o.p.name===ps.cur})[0];h+=o&&d.castLog?castTimeline(d,o.p):'<div class="panel">'+gxNeed('No cast log in this match. '+GXOLD)+'</div>';
+  }else if(gx.sk==='cc'){
+    var cc=d.ccLog;if(!cc||!cc.rows||!cc.rows.length)return h+'<div class="panel"><h2>Crowd control use</h2>'+gxNeed('No crowd control was logged in this match.')+'</div>';
+    var ci=function(k){return cc.cols.indexOf(k)},pid={};(d.pids||[]).forEach(function(x,i){pid[x]=i});
+    var nm=function(id){var q=(d.players||[])[pid[id]!=null?pid[id]:id];return q?q.name:'?'};
+    h+='<div class="panel scroll"><h2>Crowd control use</h2><table><thead><tr>'+cc.cols.map(function(c){return '<th scope="col">'+esc(c)+'</th>'}).join('')+'</tr></thead><tbody>'+cc.rows.slice(0,400).map(function(r){return '<tr>'+r.map(function(v,i){var c=cc.cols[i];return '<td>'+(c==='t'?dur(v):/player|source|target/i.test(c)?esc(nm(v)):typeof v==='number'?num(v,v%1?2:0):esc(String(v)))+'</td>'}).join('')+'</tr>'}).join('')+'</tbody></table></div>';
+  }else{
+    var cl2=d.castLog;if(!cl2||!cl2.r.length||cl2.r[0].length<4)return h+'<div class="panel">'+gxNeed('No combo step data in this match. '+GXOLD)+'</div>';
+    var sel2=gxPlayers(d).filter(function(o){return !ps.cur||o.p.name===ps.cur}).map(function(o){return o.i}),cs={},mxs=1;
+    cl2.r.forEach(function(x){if(sel2.indexOf(x[1])<0)return;var a=cs[x[2]]||(cs[x[2]]={});a[x[3]]=(a[x[3]]||0)+1;if(x[3]>mxs)mxs=x[3]});
+    var ks2=Object.keys(cs).filter(function(k){return Object.keys(cs[k]).length>1}).sort(function(a,b){return skName(cl2.n[a]).localeCompare(skName(cl2.n[b]))});
+    if(!ks2.length)return h+'<div class="panel"><h2>Combo steps</h2>'+gxNeed('No multi-step abilities were cast.')+'</div>';
+    h+='<div class="panel scroll"><h2>Combo steps</h2><p class="note" style="margin:0 0 8px">How many times each step of a chained ability was cast. A big drop between steps means the chain is being dropped, or a later step is broken.</p><table><thead><tr><th scope="col">Ability</th>'+Array.apply(null,Array(mxs)).map(function(_,i){return '<th scope="col">Step '+(i+1)+'</th>'}).join('')+'<th scope="col">Finished %</th></tr></thead><tbody>'+
+      ks2.map(function(k){var a=cs[k],f=a[1]||0,l=a[mxs]||0;return '<tr><td>'+esc(skName(cl2.n[k]))+'</td>'+Array.apply(null,Array(mxs)).map(function(_,i){return '<td>'+(a[i+1]||'')+'</td>'}).join('')+'<td>'+(f?num(100*l/f,0):'-')+'</td></tr>'}).join('')+'</tbody></table></div>';
+  }
+  return h;
+}
+/* ---- objectives ---- */
+function gxObj(d){
+  var h=gxChips('ob',[['score','Score'],['cp','Control points'],['relic','Relics'],['mob','Mob kills'],['boss','Boss kills']],gx.ob),lg=d.log||[];
+  if(gx.ob==='score'){
+    h+=gxChips('sc',[['tot','Total'],['src','By source'],['lead','Lead']],gx.sc);
+    var tl=d.scoreTl,xm=Math.max(d.duration||0,1),S;
+    if(gx.sc==='src'){
+      h+=gxChips('team',[[0,esc(teamName(0))],[1,esc(teamName(1))]],gx.team);
+      var ev=d.scoreEv;if(!ev)return h+'<div class="panel">'+gxNeed(GXOLD)+'</div>';
+      var by={};ev.r.forEach(function(e){if(e[1]!==gx.team)return;(by[e[2]]||(by[e[2]]=[])).push([e[0],e[3]])});
+      S=Object.keys(by).map(function(k,i){var run=0,pts=[[0,0]];by[k].forEach(function(e){run+=e[1];pts.push([e[0],run])});pts.push([xm,run]);return {name:ev.n[k],col:GXPAL[i%GXPAL.length],pts:pts}});
+    }else{
+      if(!tl||tl.length<2)return h+'<div class="panel">'+gxNeed('No score timeline in this match.')+'</div>';
+      S=gx.sc==='lead'?[{name:teamName(0)+' lead',col:TEAMS[0].col,pts:tl.map(function(e){return [e[0],e[1]-e[2]]})}]:[0,1].map(function(t){return {name:teamName(t),col:TEAMS[t].col,pts:tl.map(function(e){return [e[0],e[t+1]]})}});
+    }
+    h+='<div class="panel"><h2>Score timeline</h2>'+(gx.sc==='lead'?'<p class="note" style="margin:0 0 6px">Above zero '+esc(teamName(0))+' leads, below zero '+esc(teamName(1))+' does.</p>':'')+gxXY(S,xm)+'</div>';
+    var pt=d.pointsByType;if(pt){var tys=[];[0,1].forEach(function(t){Object.keys(pt[t]||{}).forEach(function(k){if(tys.indexOf(k)<0)tys.push(k)})});
+      h+='<div class="panel scroll"><h2>Points by source</h2><table><thead><tr><th scope="col">Source</th><th scope="col">'+esc(teamName(0))+'</th><th scope="col">'+esc(teamName(1))+'</th></tr></thead><tbody>'+tys.map(function(k){return '<tr><td>'+esc(k)+'</td><td>'+num((pt[0]||{})[k]||0)+'</td><td>'+num((pt[1]||{})[k]||0)+'</td></tr>'}).join('')+'<tr><td><strong>Total</strong></td><td><strong>'+num((d.teamPoints||{})[0]||0)+'</strong></td><td><strong>'+num((d.teamPoints||{})[1]||0)+'</strong></td></tr></tbody></table></div>'}
+  }else if(gx.ob==='cp'){
+    var cps=lg.filter(function(e){return e.k==='cp'}),tl2=d.cpTl||[],own={},cur={},xe=d.duration||0;
+    tl2.forEach(function(e){var o=own[e.cp]||(own[e.cp]={s:{'-1':0,0:0,1:0},cap:{0:0,1:0},last:0,nt:-1});o.s[o.nt]+=e.t-o.last;o.last=e.t;o.nt=e.nt;if(e.nt===0||e.nt===1)o.cap[e.nt]++});
+    Object.keys(own).forEach(function(k){var o=own[k];o.s[o.nt]+=Math.max(0,xe-o.last)});
+    if(!Object.keys(own).length)return h+'<div class="panel">'+gxNeed('No control point events in this match.')+'</div>';
+    h+='<div class="panel scroll"><h2>Control point ownership</h2><table><thead><tr><th scope="col">Point</th><th scope="col">'+esc(teamName(0))+' held</th><th scope="col">'+esc(teamName(1))+' held</th><th scope="col">Neutral</th><th scope="col">Captures</th></tr></thead><tbody>'+Object.keys(own).sort().map(function(k){var o=own[k];return '<tr><td>'+esc(k)+'</td><td>'+dur(o.s[0])+'</td><td>'+dur(o.s[1])+'</td><td>'+dur(o.s[-1])+'</td><td>'+esc(teamName(0))+' '+o.cap[0]+' / '+esc(teamName(1))+' '+o.cap[1]+'</td></tr>'}).join('')+'</tbody></table></div>';
+    h+='<div class="panel scroll"><h2>Capture log</h2><table><thead><tr><th scope="col">Time</th><th scope="col">Point</th><th scope="col">Event</th><th scope="col">By</th></tr></thead><tbody>'+cps.map(function(e){return '<tr><td>'+dur(e.t)+'</td><td>'+esc(e.cp)+'</td><td>'+esc(e.ty==='capture'?'Captured for '+teamName(e.nt):e.ty==='uncapture'?'Lost by '+teamName(e.ot):e.ty||'')+'</td><td>'+esc(e.a||'')+'</td></tr>'}).join('')+'</tbody></table></div>';
+    h+='<div class="panel">'+table('gxcp',[{k:'name',l:'Player',f:function(r){return esc(r.name)}},{k:'caps',l:'Captures',f:function(r){return num(r.caps)}},{k:'unc',l:'Uncaptures',f:function(r){return num(r.unc)}},{k:'sec',l:'Time on point',f:function(r){return r.sec?dur(r.sec):'-'}}],gxPlayers(d).map(function(o){var s=o.p.stats||{};return {name:o.p.name,caps:s.cpCaptures||o.p.cpCaps||0,unc:s.cpUncaptures||0,sec:s.cpSec||o.p.cpTime||0}}))+'</div>';
+  }else if(gx.ob==='relic'){
+    var rl=lg.filter(function(e){return e.k==='relic'});
+    h+='<div class="panel">'+table('gxrl',[{k:'name',l:'Player',f:function(r){return esc(r.name)}},{k:'pk',l:'Pickups',f:function(r){return num(r.pk)}},{k:'rp',l:'Re-pickups',f:function(r){return num(r.rp)}},{k:'cap',l:'Captures',f:function(r){return num(r.cap)}},{k:'dr',l:'Drops',f:function(r){return num(r.dr)}},{k:'ck',l:'Carrier kills',f:function(r){return num(r.ck)}},{k:'cs',l:'Carry time',f:function(r){return r.cs?dur(r.cs):'-'}}],
+      gxPlayers(d).map(function(o){var s=o.p.stats||{};return {name:o.p.name,pk:s.relicPickups||o.p.relicPickups||0,rp:s.relicRepickups||0,cap:s.relicCaptures||o.p.relicCaps||0,dr:s.relicDrops||0,ck:s.carrierKills||o.p.carrierKills||0,cs:s.relicCarrySec||0}}))+'</div>';
+    if(rl.length)h+='<div class="panel scroll"><h2>Relic events</h2><table><thead><tr><th scope="col">Time</th><th scope="col">Event</th><th scope="col">Player</th><th scope="col">Team</th></tr></thead><tbody>'+rl.map(function(e){return '<tr><td>'+dur(e.t)+'</td><td>'+esc(e.ty||'')+'</td><td>'+esc(e.a||'')+'</td><td>'+esc(teamName(e.team))+'</td></tr>'}).join('')+'</tbody></table></div>';
+  }else if(gx.ob==='mob'){
+    var mk=lg.filter(function(e){return e.k==='mob'}),tiers=['Easy','Medium','Hard'],pm={};
+    mk.forEach(function(e){var o=pm[e.a]||(pm[e.a]={name:e.a,Easy:0,Medium:0,Hard:0,tot:0});o[e.tier]=(o[e.tier]||0)+1;o.tot++});
+    if(!mk.length)return h+'<div class="panel">'+gxNeed('No mob kills in this match.')+'</div>';
+    h+='<div class="panel">'+table('gxmb',[{k:'name',l:'Player',f:function(r){return esc(r.name)}}].concat(tiers.map(function(t){return {k:t,l:t,f:function(r){return num(r[t]||0)}}})).concat([{k:'tot',l:'Total',f:function(r){return num(r.tot)}}]),Object.keys(pm).map(function(k){return pm[k]}))+'</div>';
+    var bn=Math.floor((d.duration||0)/60)+1,a=[0,0];for(var i=0;i<bn;i++){}
+    var S2=[0,1].map(function(t){var v=[];for(var i=0;i<bn;i++)v.push(0);mk.forEach(function(e){if(e.team===t){var b=Math.floor(e.t/60);if(b<bn)v[b]++}});return {name:teamName(t),col:TEAMS[t].col,pts:gxBinPts(v,60,true)}});
+    h+='<div class="panel"><h2>Mob kills over time</h2>'+gxXY(S2,Math.max(d.duration||0,1))+'</div>';
+  }else{
+    var bk=lg.filter(function(e){return e.k==='boss'});
+    h+='<div class="panel"><h2>Boss kills</h2>'+(bk.length?'<table><thead><tr><th scope="col">Time</th><th scope="col">Player</th><th scope="col">Team</th></tr></thead><tbody>'+bk.map(function(e){return '<tr><td>'+dur(e.t)+'</td><td>'+esc(e.a||'')+'</td><td>'+esc(teamName(e.team))+'</td></tr>'}).join('')+'</tbody></table>':gxNeed('No boss kills in this match.'))+'</div>';
+  }
+  return h;
+}
+function viewGraphs(id,d){
+  if(!d.ledger)return '';
+  var tabs=[['time','Over time'],['combat','Combat'],['skills','Skills'],['obj','Objectives']],sn=subTabs('gx-'+id,tabs);
+  return '<div class="gxsub">'+sn.h.replace('subnav','subnav sub2')+'</div>'+(sn.cur==='time'?gxTime(d)+anaMatchSections(id,d,'graphs')+teamDamage(d):sn.cur==='combat'?gxCombat(d):sn.cur==='skills'?gxSkills(d):gxObj(d));
+}
+document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('[data-gx]');if(!b)return;var p=b.dataset.gx.split(':');gx[p[0]]=p[0]==='team'?+p[1]:p[1];render()});
+document.addEventListener('change',function(e){var t=e.target;if(!t.dataset)return;if(t.dataset.gxs){gx[t.dataset.gxs]=t.value;render()}else if(t.dataset.gxc){gx[t.dataset.gxc]=t.checked;render()}});
 function ratingChart(h,key){
   if(h.length<2)return '<p class="note">A history line needs two or more matches. This player has '+h.length+'.</p>';
   var W=760,H=230,L=46,R=14,T=12,B=34,vals=h.map(function(x){return x.r}).concat(h.map(function(x){return x[key]}));
@@ -1905,11 +2108,15 @@ document.addEventListener('keydown',function(e){if(e.key==='Enter'){var g=e.targ
 
 function route(){var h=location.hash.replace('#','')||'players';if(h.indexOf('match-')===0)return {t:'match',id:h.slice(6)};if(h.indexOf('player-')===0)return {t:'player',id:h.slice(7)};if(h.indexOf('class-')===0)return {t:'class',id:h.slice(6)};if(h.indexOf('faction-')===0)return {t:'faction',id:h.slice(8)};if(h.indexOf('event-')===0)return {t:'snapshot',id:h.slice(6)};if(h.indexOf('snapshot-')===0)return {t:'snapshot',id:h.slice(9)};if(h==='events'||h==='snapshots')return {t:'snapshots'};return {t:(TABS.some(function(x){return x[0]===h})||h==='admin')?h:'players'}}
 function render(){
-  var r=route();if(r.t==="admin"&&canEdit&&!adminData)loadAdmin();
+  var r=route();if(r.t==="admin"&&canDesign&&!adminData)loadAdmin();
   var cur=r.t==='snapshot'||r.t==='snapshots'?'events':r.t==='match'?'matches':r.t==='player'?'players':r.t==='class'?'classes':r.t==='faction'?'factions':r.t;
-  $nav.innerHTML=TABS.filter(function(x){return x[0]!=='upload'||canEdit}).concat(canEdit?[['admin','Admin']]:[]).map(function(t){return '<a href="#'+t[0]+'"'+(t[0]===cur?' aria-current="page"':'')+'>'+t[1]+'</a>'}).join('');
+  var sec=cur==='matches'||cur==='events'||cur==='map'?'matches':cur==='upload'||cur==='admin'?cur:'players',
+    top=[['players','Players'],['matches','Matches']].concat(canEdit?[['upload','Upload']]:[]).concat(canDesign?[['admin','Admin']]:[]);
+  $nav.innerHTML=top.map(function(t){return '<a href="#'+t[0]+'"'+(t[0]===sec?' aria-current="page"':'')+'>'+t[1]+'</a>'}).join('')+(canDesign?'<a href="https://aeon-damage-tester.vercel.app/" target="_blank" rel="noopener noreferrer">Damage tester <span aria-hidden="true">&#8599;</span></a>':'');
+  var subs=sec==='matches'?[['matches','Matches'],['events','Events'],['map','Heat map']]:sec==='players'?[['players','Players'],['classes','Classes'],['factions','Factions']].concat(canDesign?[['skills','Skills']]:[]):null,
+    subHtml=subs?'<nav class="subnav sec" aria-label="'+(sec==='matches'?'Matches':'Players')+' sections">'+subs.map(function(t){return '<a href="#'+t[0]+'"'+(t[0]===cur?' aria-current="page"':'')+'>'+t[1]+'</a>'}).join('')+'</nav>':'';
   var f=document.activeElement&&document.activeElement.id;
-  $view.innerHTML=r.t==='snapshots'?viewSnapshots():r.t==='player'?viewPlayer(r.id):r.t==='match'?viewMatch(r.id):r.t==='snapshot'?viewSnapshot(r.id):r.t==='class'?viewClass(r.id):r.t==='faction'?viewFaction(+r.id):r.t==='factions'?viewFactions():r.t==='map'?viewMap():r.t==='classes'?viewClasses():r.t==='skills'?viewSkills():r.t==='matches'?viewMatches():r.t==='upload'?viewUpload():r.t==='admin'?viewAdmin():viewPlayers();
+  $view.innerHTML=subHtml+(r.t==='snapshots'?viewSnapshots():r.t==='player'?viewPlayer(r.id):r.t==='match'?viewMatch(r.id):r.t==='snapshot'?viewSnapshot(r.id):r.t==='class'?viewClass(r.id):r.t==='faction'?viewFaction(+r.id):r.t==='factions'?viewFactions():r.t==='map'?viewMap():r.t==='classes'?viewClasses():r.t==='skills'?viewSkills():r.t==='matches'?viewMatches():r.t==='upload'?viewUpload():r.t==='admin'?viewAdmin():viewPlayers());
   if(f){var e=document.getElementById(f);if(e&&e.focus)try{e.focus()}catch(x){}}
 }
 document.addEventListener('change',function(e){var ds=e.target.closest&&e.target.closest('[data-delsel]');if(ds){delSel[ds.dataset.delsel]=ds.checked;confirmKey='';render();return}var c=e.target.closest&&e.target.closest('[data-snapsel]');if(c){snapDraft.sel[c.dataset.snapsel]=c.checked;render()}});
@@ -2012,7 +2219,7 @@ function fetchDoc(kind,it){
 function refresh(force){
   return api('GET','/api/index').then(function(ix){
     me=ix.me&&ix.me.role?ix.me:null;claims=ix.claims||{};pubIds={};(ix.pub||[]).forEach(function(k){pubIds[k]=true});discordOn=!!ix.discord;
-    var was=canEdit;canEdit=!!(me&&me.role==='admin');canWrite=canEdit;if(canEdit!==was)adminData=null;
+    var was=canEdit+'|'+canDesign;canEdit=!!(me&&me.role==='admin');canDesign=!!(me&&(me.role==='admin'||me.role==='designer'));canWrite=canEdit;if(canEdit+'|'+canDesign!==was)adminData=null;
     var sig=JSON.stringify([ix.matches.map(function(x){return x.id+x.v}),ix.snapshots.map(function(x){return x.id+x.v}),claims,me,ix.pub]);
     if(!force&&sig===lastSig&&loaded)return;
     return Promise.all([Promise.all(ix.matches.map(function(it){return fetchDoc('m',it).then(function(d){return [it.id,d]},function(){return null})})),Promise.all(ix.snapshots.map(function(it){return fetchDoc('s',it).then(function(d){return [it.id,d]},function(){return null})}))]).then(function(r){
@@ -2052,7 +2259,7 @@ var AUTHERR={not_configured:'Discord login is not set up yet.',cancelled:'Discor
 function renderAuth(){
   var el=document.getElementById('authbar');if(!el)return;var h='';
   if(me){
-    h+='<span class="who">'+avatarImg(me)+esc(me.name)+(me.role==='admin'?' <span class="tag ok">Admin</span>':'')+'</span>';
+    h+='<span class="who">'+avatarImg(me)+esc(me.name)+(me.role==='admin'?' <span class="tag ok">Admin</span>':me.role==='designer'?' <span class="tag ok">Designer</span>':'')+'</span>';
     if(me.claim)h+='<a class="plink" href="#player-'+slug(me.claim)+'">My player</a>';
     h+='<button class="btn ghost" type="button" data-auth="logout">Log out</button>';
   }else{
@@ -2079,11 +2286,11 @@ function accountsPanel(){
   var h='<div class="panel"><h2>Accounts</h2>';
   if(!adminData)return h+'<p class="note">Loading accounts</p></div>';
   var d=adminData;
-  h+='<p class="note" style="margin-top:0">People who logged in with Discord. Admins can upload and delete logs, set winners, make events and manage accounts. One Discord account can claim one player.</p>';
+  h+='<p class="note" style="margin-top:0">People who logged in with Discord. Users see player and match data and can claim one player. Designers also see breakdowns, graphs and skills and the checks and bugs on this page, but cannot manage accounts or delete matches. Admins can do everything.</p>';
   if(!d.users.length)h+='<p class="note">Nobody has logged in with Discord yet.</p>';
   else h+='<div class="scroll"><table><thead><tr><th scope="col">Discord</th><th scope="col">Claimed player</th><th scope="col">Role</th><th scope="col"></th></tr></thead><tbody>'+d.users.map(function(u){
-    return '<tr><td>'+avatarImg(u)+esc(u.name)+'</td><td>'+(u.claim?'<a class="plink" href="#player-'+slug(u.claim)+'">'+esc(u.claim)+'</a>':'-')+'</td><td>'+(u.admin?'<span class="tag ok">Admin</span>':'<span class="tag">Player</span>')+'</td><td style="text-align:right;white-space:nowrap">'+
-      (u.admin?'<button class="btn ghost" type="button" data-aop="removeAdmin:'+esc(u.id)+'">Remove admin</button>':'<button class="btn" type="button" data-aop="makeAdmin:'+esc(u.id)+'">Make admin</button>')+(u.claim?' <button class="btn ghost" type="button" data-aop="release:'+esc(u.claim)+'">Release claim</button>':'')+'</td></tr>'}).join('')+'</tbody></table></div>';
+    return '<tr><td>'+avatarImg(u)+esc(u.name)+'</td><td>'+(u.claim?'<a class="plink" href="#player-'+slug(u.claim)+'">'+esc(u.claim)+'</a>':'-')+'</td><td>'+(u.admin?'<span class="tag ok">Admin</span>':u.designer?'<span class="tag ok">Designer</span>':'<span class="tag">User</span>')+'</td><td style="text-align:right;white-space:nowrap">'+
+      (u.admin?'<button class="btn ghost" type="button" data-aop="removeAdmin:'+esc(u.id)+'">Remove admin</button>':(u.designer?'<button class="btn ghost" type="button" data-aop="removeDesigner:'+esc(u.id)+'">Remove designer</button>':'<button class="btn ghost" type="button" data-aop="makeDesigner:'+esc(u.id)+'">Make designer</button>')+' <button class="btn" type="button" data-aop="makeAdmin:'+esc(u.id)+'">Make admin</button>')+(u.claim?' <button class="btn ghost" type="button" data-aop="release:'+esc(u.claim)+'">Release claim</button>':'')+'</td></tr>'}).join('')+'</tbody></table></div>';
   return h+'</div>';
 }
 function loadAdmin(){
@@ -2094,7 +2301,7 @@ var ERR={taken:'That player is already claimed.',you_already_claimed:'Your Disco
 document.addEventListener('click',function(e){
   var a=e.target.closest('[data-auth]');
   if(a){var k=a.dataset.auth;if(k==='open'){loginOpen=!loginOpen;authMsg='';renderAuth()}
-    if(k==='logout')api('POST','/api/auth?a=logout').then(function(){me=null;canEdit=false;canWrite=false;adminData=null;lastSig='';renderAuth();return refresh(true)});return}
+    if(k==='logout')api('POST','/api/auth?a=logout').then(function(){me=null;canEdit=false;canDesign=false;canWrite=false;adminData=null;lastSig='';renderAuth();return refresh(true)});return}
   var bf=e.target.closest('[data-bugf]');if(bf){bugFilter=bf.dataset.bugf;bugMsg='';render();return}
   if(e.target.closest('[data-bugcopy]')){copyBugs();return}
   var cl=e.target.closest('[data-claim]');
@@ -2103,7 +2310,7 @@ document.addEventListener('click',function(e){
   if(op){
     var raw=op.dataset.aop,i=raw.indexOf(':'),name=i<0?raw:raw.slice(0,i),arg=i<0?'':raw.slice(i+1);
     var bi=arg.lastIndexOf('|'),body=name==='bug'?{op:'bugStatus',key:arg.slice(0,bi),status:arg.slice(bi+1)}:name==='release'?{op:'release',player:arg}:{op:name,id:arg};
-    bugMsg='';api('POST','/api/admin',body).then(function(){if(name!=='bug')adminData=null;return refresh(true)}).then(function(){if(canEdit)loadAdmin()},function(err){authMsg=ERR[err.code]||'Action failed.';claimMsg=authMsg;render()});
+    bugMsg='';api('POST','/api/admin',body).then(function(){if(name!=='bug')adminData=null;return refresh(true)}).then(function(){if(canDesign)loadAdmin()},function(err){authMsg=ERR[err.code]||'Action failed.';claimMsg=authMsg;render()});
   }
 });
 document.addEventListener('keydown',function(e){if(e.key==='Escape'&&loginOpen){loginOpen=false;renderAuth()}});

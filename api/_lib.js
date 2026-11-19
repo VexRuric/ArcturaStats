@@ -55,7 +55,7 @@ async function getJSON(p) {
 }
 
 /* ---------- account state: one small document, changed one request at a time ---------- */
-const blank = () => ({ users: {}, admins: [], claims: {}, byUser: {}, players: {}, published: {}, bugs: {} });
+const blank = () => ({ users: {}, admins: [], designers: [], claims: {}, byUser: {}, players: {}, published: {}, bugs: {} });
 let chain = Promise.resolve();
 
 /* State is also encrypted (AES-256-GCM, key derived from SESSION_SECRET) before it is written.
@@ -130,10 +130,15 @@ function isAdmin(s, st) {
   if (!s) return false;
   return s.k === 'd' && st.admins.indexOf(s.id) >= 0;
 }
+/* Designers can read the breakdowns and the checks and bugs panel. They cannot change accounts or delete matches. */
+function isDesigner(s, st) {
+  if (!s || s.k !== 'd') return false;
+  return st.admins.indexOf(s.id) >= 0 || (st.designers || []).indexOf(s.id) >= 0;
+}
 function who(s, st) {
   if (!s) return { role: null };
   const u = st.users[s.id]; if (!u) return { role: null };
-  return { role: st.admins.indexOf(s.id) >= 0 ? 'admin' : 'user', via: 'discord', id: s.id, name: u.name, avatar: u.avatar || null, claim: st.byUser[s.id] || null };
+  return { role: st.admins.indexOf(s.id) >= 0 ? 'admin' : (st.designers || []).indexOf(s.id) >= 0 ? 'designer' : 'user', via: 'discord', id: s.id, name: u.name, avatar: u.avatar || null, claim: st.byUser[s.id] || null };
 }
 
 /* ---------- http helpers ---------- */
@@ -169,4 +174,4 @@ const safeEq = (a, b) => { const h = x => crypto.createHash('sha256').update(Str
 const isBot = n => /^SpawnedPlayer_\d+$/i.test(n) || /^(BP_|Roshan)/i.test(n) || /_C_\d+$/.test(n);
 const ID_OK = /^[A-Za-z0-9_-]{1,80}$/;
 
-module.exports = { COOKIE, OCOOKIE, DISCORD, putJSON, delPath, listDocs, getJSON, readState, mutate, sign, unsign, cookies, setCookie, session, isAdmin, who, send, redirect, body, site, handler, safeEq, isBot, ID_OK };
+module.exports = { isDesigner, COOKIE, OCOOKIE, DISCORD, putJSON, delPath, listDocs, getJSON, readState, mutate, sign, unsign, cookies, setCookie, session, isAdmin, who, send, redirect, body, site, handler, safeEq, isBot, ID_OK };
