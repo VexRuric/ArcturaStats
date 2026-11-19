@@ -1358,11 +1358,11 @@ function mapDots(ctx,sel,one,k){
 /* relics rest at their base and travel with the carrier */
 function mapRelics(ctx,one,k){
   if(!mapS.dot.relic)return;var S=one?relicState(one,mapS.ph):{0:{st:'home'},1:{st:'home'}};
-  [0,1].forEach(function(rt){var im=mapImg['relic'+rt],H=RELIC_HOME[rt],hx=mpx(H[0]),hy=mpy(H[1]),st=S[rt],x=hx,y=hy,sz=58*k;
+  [0,1].forEach(function(rt){var im=mapImg['relic'+rt],H=RELIC_HOME[rt],hx=mpx(H[0]),hy=mpy(H[1]),st=S[rt],x=hx,y=hy,sz=58*k,glow=TEAMS[rt].col;
     if(st.st==='ground'){x=mpx(st.x);y=mpy(st.y)}
-    else if(st.st==='carried'){var q=mapPlayerAt(one,st.by,mapS.ph);if(q&&q[3]){x=mpx(q[1]);y=mpy(q[2])-40*k;sz=44*k}}
+    else if(st.st==='carried'){var q=mapPlayerAt(one,st.by,mapS.ph);if(q&&q[3]){x=mpx(q[1]);y=mpy(q[2])+25*k;sz=32*k;glow=TEAMS[st.team]?TEAMS[st.team].col:glow}}
     if(x!==hx||y!==hy){ctx.beginPath();ctx.arc(hx,hy,24*k,0,6.3);ctx.lineWidth=2.5*k;ctx.setLineDash([6*k,5*k]);ctx.strokeStyle=TEAMS[rt].col;ctx.stroke();ctx.setLineDash([])}
-    ctx.save();ctx.shadowColor=TEAMS[rt].col;ctx.shadowBlur=(st.st==='carried'?22:12)*k;
+    ctx.save();ctx.shadowColor=glow;ctx.shadowBlur=(st.st==='carried'?14:12)*k;
     if(im)ctx.drawImage(im,x-sz/2,y-sz/2,sz,sz);else{ctx.beginPath();ctx.arc(x,y,12*k,0,6.3);ctx.fillStyle=TEAMS[rt].col;ctx.fill()}
     ctx.restore()});
 }
@@ -1398,7 +1398,7 @@ function mapDraw(){
   var RS=one&&mapS.dot.relic?relicState(one,mapS.ph):null,carry={};if(RS)[0,1].forEach(function(r){if(RS[r].st==='carried')carry[RS[r].by]=r});
   if(mapS.showPl&&one)(one.players||[]).forEach(function(p){if(hideBots&&isBot(p.name))return;var q=null;(p.pos||[]).forEach(function(s){if(s[0]<=mapS.ph)q=s});if(!q||!q[3])return;
     var c=TEAMS[p.team]?TEAMS[p.team].col:'#888',ci=mapImg[p.cls],px=mpx(q[1]),py=mpy(q[2]),R=(ci?27:11)*K;
-    if(carry[p.name]!==undefined){var gc=TEAMS[carry[p.name]].col;ctx.save();ctx.shadowColor=gc;ctx.shadowBlur=34*K;ctx.lineWidth=7*K;ctx.strokeStyle=gc;for(var g=0;g<2;g++){ctx.beginPath();ctx.arc(px,py,R+7*K,0,6.3);ctx.stroke()}ctx.lineWidth=3*K;ctx.strokeStyle='#fff';ctx.beginPath();ctx.arc(px,py,R+7*K,0,6.3);ctx.stroke();ctx.restore()}
+    if(carry[p.name]!==undefined){var gc=TEAMS[p.team]?TEAMS[p.team].col:'#888';ctx.save();ctx.shadowColor=gc;ctx.shadowBlur=34*K;ctx.lineWidth=7*K;ctx.strokeStyle=gc;for(var g=0;g<2;g++){ctx.beginPath();ctx.arc(px,py,R+7*K,0,6.3);ctx.stroke()}ctx.lineWidth=3*K;ctx.strokeStyle='#fff';ctx.beginPath();ctx.arc(px,py,R+7*K,0,6.3);ctx.stroke();ctx.restore()}
     if(ci){ctx.beginPath();ctx.arc(px,py,R,0,6.3);ctx.fillStyle=c;ctx.fill();ctx.lineWidth=4*K;ctx.strokeStyle='#fff';ctx.stroke();ctx.drawImage(ci,px-21*K,py-21*K,42*K,42*K)}
     else{ctx.beginPath();ctx.arc(px,py,R,0,6.3);ctx.fillStyle=c;ctx.fill();ctx.lineWidth=3*K;ctx.strokeStyle='#fff';ctx.stroke()}
     ctx.font='700 '+(20*K)+'px sans-serif';ctx.textAlign='left';ctx.lineWidth=4*K;ctx.strokeStyle='rgba(0,0,0,.85)';var lx=px+R+5*K;ctx.strokeText(p.name,lx,py+6*K);ctx.fillStyle='#fff';ctx.fillText(p.name,lx,py+6*K)});
