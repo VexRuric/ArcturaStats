@@ -128,7 +128,8 @@ a.fhero:hover{border-color:var(--fc)}a.fhero:focus-visible{outline:2px solid var
 .h2hkey{display:flex;justify-content:space-between;font:600 13px var(--font-d);letter-spacing:.06em;text-transform:uppercase;margin-top:8px}.h2h em.lead{color:var(--accent)}
 .cb2{display:grid;grid-template-columns:110px 1fr 64px;gap:10px;align-items:center}.cb2 em{font-style:normal;text-align:right;font-variant-numeric:tabular-nums}
 .fmatch li{grid-template-columns:62px 92px 1fr}.fsc{font-variant-numeric:tabular-nums;white-space:nowrap}
-.podium{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}.pcard{display:flex;flex-direction:column;gap:4px;border:1px solid var(--line);border-left:4px solid var(--fc);border-radius:6px;padding:12px 14px;background:var(--panel);color:var(--fg);text-decoration:none}.pcard:hover{border-color:var(--fc)}.pcard .pn{color:var(--muted);font:700 13px var(--font-d)}.pcard strong{font-size:18px;overflow-wrap:anywhere}.pcard small{color:var(--muted)}.pcard.story{border-top:3px solid var(--accent)}.pcard.top{border:1px solid var(--accent);border-left:4px solid var(--fc)}.pcard.top strong{font-size:22px}
+.podium{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}.pcard{display:flex;flex-direction:column;gap:4px;border:1px solid var(--line);border-left:4px solid var(--fc);border-radius:6px;padding:12px 14px;background:var(--panel);color:var(--fg);text-decoration:none}.pcard:hover{border-color:var(--fc)}.pcard .pn{color:var(--muted);font:700 13px var(--font-d)}.pcard strong{font-size:18px;overflow-wrap:anywhere}.pcard small{color:var(--muted)}.subnav{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 16px;border-bottom:1px solid var(--line)}.subnav button{background:none;border:0;border-bottom:3px solid transparent;color:var(--muted);font:600 16px/1 var(--font-d);letter-spacing:.06em;text-transform:uppercase;padding:10px 16px 11px;cursor:pointer;margin-bottom:-1px}.subnav button:hover{color:var(--fg)}.subnav button[aria-selected=true]{color:var(--fg);border-bottom-color:var(--accent)}
+.pcard.story{border-top:3px solid var(--accent)}.pcard.top{border:1px solid var(--accent);border-left:4px solid var(--fc)}.pcard.top strong{font-size:22px}
 .accstrip{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:14px}
 .accteams{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,460px),1fr));gap:14px}
 .accteam{background:var(--panel2);border-radius:8px;border-top:4px solid var(--fc);padding:12px 14px;align-self:start}
@@ -285,10 +286,10 @@ function teamName(n){return TEAMS[n]?TEAMS[n].name:'Team '+n}
 function teamTag(n){if(!(n>=0))return '-';var c=TEAMS[n]?TEAMS[n].col:'#555';return '<a class="team" href="#faction-'+n+'" style="background:'+c+';text-decoration:none">'+(TFLAG[n]?'<img class="tflag" alt="" src="'+TFLAG[n]+'">':'')+esc(teamName(n))+'</a>'}
 var CCOL={Assassin:'var(--c-assassin)',Hunter:'var(--c-hunter)',Mystic:'var(--c-mystic)',Priest:'var(--c-priest)',Warrior:'var(--c-warrior)'};
 var SERIES=['var(--c-assassin)','var(--c-hunter)','var(--c-mystic)','var(--c-priest)','var(--c-warrior)','var(--accent)'];
-var TABS=[['players','Players'],['classes','Classes'],['factions','Factions'],['map','Heat map'],['matches','Matches'],['events','Events'],['upload','Upload']];
+var TABS=[['players','Players'],['classes','Classes'],['skills','Skills'],['factions','Factions'],['map','Heat map'],['matches','Matches'],['events','Events'],['upload','Upload']];
 var $view=document.getElementById('view'),$nav=document.getElementById('nav');
 var remote={},local={},snaps={},snapDraft={name:'',sel:{}},evEdit={id:'',v:''},evMsg='',delSel={},confirmKey='',db=null,user=null,canWrite=true,canEdit=false,loaded=false,dbState='loading';
-var sortState={objs:{k:'mobT',d:-1},snplayers:{k:'score',d:-1},snfac:{k:'team',d:1},fplayers:{k:'rating',d:-1},cboard:{k:'rating',d:-1},pside:{k:'name',d:1},adteam:{k:'team',d:1},adcls:{k:'dpm',d:-1},admatch:{k:'t',d:-1},players:{k:'rating',d:-1},match:{k:'dmg',d:-1},classes:{k:'avgDmg',d:-1},pclass:{k:'rating',d:-1},phist:{k:'t',d:-1}};
+var sortState={skills:{k:'total',d:-1},skusers:{k:'total',d:-1},objs:{k:'mobT',d:-1},snplayers:{k:'score',d:-1},snfac:{k:'team',d:1},fplayers:{k:'rating',d:-1},cboard:{k:'rating',d:-1},pside:{k:'name',d:1},adteam:{k:'team',d:1},adcls:{k:'dpm',d:-1},admatch:{k:'t',d:-1},players:{k:'rating',d:-1},match:{k:'dmg',d:-1},classes:{k:'avgDmg',d:-1},pclass:{k:'rating',d:-1},phist:{k:'t',d:-1}};
 var hideBots=true,ratedOnly=false,uploads=[];
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
@@ -938,27 +939,35 @@ function deathMap(ms){
     plainTable(['Area','Total',esc(teamName(0)),esc(teamName(1))],zr.map(function(z){return '<tr><td>'+esc(z.z)+'</td><td>'+z.n+'</td><td>'+z[0]+'</td><td>'+z[1]+'</td></tr>'}).join(''))+'<p class="note">Area is the nearest control point or the center. Deaths to mobs are not in the log with a position.</p></div></div></div>';
 }
 function anaItems(ms){return ms.map(function(m){var d=m.doc,a=anaHas(d)?analyze(d):null;return {id:m.id,m:d.name,f:a?a.fights:[],picks:a?a.picks:0,cb:a?a.cb:null,carries:a?a.carries:[],stacks:a?a.stacks:[],mo:a?a.moments:[],has:!!a}})}
-function anaMatchSections(id,d){
+/* second level navigation on the match and event pages: stats first, heavier views behind their own tab */
+var subSel={};
+function subTabs(key,list){
+  var cur=subSel[key];if(!list.some(function(x){return x[0]===cur}))cur=list[0][0];
+  return {cur:cur,h:'<div class="subnav" role="tablist" aria-label="Page sections">'+list.map(function(x){return '<button type="button" role="tab" data-sub="'+esc(key)+'|'+x[0]+'" aria-selected="'+(x[0]===cur)+'">'+x[1]+'</button>'}).join('')+'</div>'};
+}
+function anaMatchSections(id,d,part){
   var ms=[{id:id,doc:d}],it=anaItems(ms)[0],h='';
   if(!it.has)return h;
-  h+=comebackPanel([it])+(d.scoreTl&&d.scoreTl.length>1?'<div class="panel"><h2>Score over time</h2><div class="evmini">'+evMiniChart(d)+'</div><p class="note"><span style="color:'+TEAMS[0].col+'">&#9632;</span> '+esc(teamName(0))+' <span style="color:'+TEAMS[1].col+'">&#9632;</span> '+esc(teamName(1))+'</p></div>':'');
+  if(part==='map')return deathMap(ms);
+  if(part==='graphs')return comebackPanel([it])+(d.scoreTl&&d.scoreTl.length>1?'<div class="panel"><h2>Score over time</h2><div class="evmini">'+evMiniChart(d)+'</div><p class="note"><span style="color:'+TEAMS[0].col+'">&#9632;</span> '+esc(teamName(0))+' <span style="color:'+TEAMS[1].col+'">&#9632;</span> '+esc(teamName(1))+'</p></div>':'');
   h+=momentsPanel([it],false)+fightsPanel([it],false)+stackPanel([it],false);
   h+=posPanel(anaMatchRows(d),analyze(d),'anapos');
   h+=carriesPanel(it.carries.map(function(c){return Object.assign({m:d.name},c)}));
-  h+=deathMap(ms);
   return h;
 }
-function anaEventSections(ms){
+function anaEventSections(ms,part){
   var l=ms.filter(function(m){return anaHas(m.doc)});if(!l.length)return '';
+  if(part==='map')return deathMap(l);
   var it=anaItems(l),car=[];it.forEach(function(x){x.carries.forEach(function(c){car.push(Object.assign({m:x.m},c))})});
-  return comebackPanel(it)+momentsPanel(it,true)+fightsPanel(it,true)+stackPanel(it,true)+posPanel(anaEventRows(l),null,'anaevpos')+carriesPanel(car)+deathMap(l);
+  if(part==='graphs')return comebackPanel(it);
+  return momentsPanel(it,true)+fightsPanel(it,true)+stackPanel(it,true)+posPanel(anaEventRows(l),null,'anaevpos')+carriesPanel(car);
 }
 function viewSnapshot(id){
   var s=snaps[id];
   if(!s)return '<div><h1>Event not found</h1></div>'+empty(dbState==='loading'?'Loading':'No event with that id','It may have been deleted, or it is still loading.');
   var ms=(s.matchIds||[]).map(function(k){return allMatches().filter(function(m){return m.id===k})[0]}).filter(Boolean).sort(function(a,b){return playedAt(a.doc)-playedAt(b.doc)});
   var missing=(s.matchIds||[]).length-ms.length;
-  var h='<div class="bar"><div><p class="sub" style="margin:0">'+(canEdit?'<a class="plink" href="#admin">Admin</a>':'<a class="plink" href="#events">Events</a>')+' / Event '+pubTag(id)+'</p><h1>'+esc(s.name)+'</h1><p class="sub">'+ms.length+' match'+(ms.length===1?'':'es')+', created '+esc(new Date(s.createdAt||0).toLocaleDateString())+(missing?' <span class="tag warn">'+missing+' match'+(missing===1?'':'es')+' no longer stored</span>':'')+'</p></div><div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><label class="chk"><input type="checkbox" id="botsChk"'+(hideBots?' checked':'')+'> Hide bot players</label>'+(canEdit?'<button class="btn ghost" type="button" data-expev="'+esc(id)+'">Export JSON</button>'+pubBtn(id)+'<button class="btn ghost" type="button" data-snapdel="'+esc(id)+'">Delete event</button>':'')+'</div></div>';
+  var h='<div class="bar"><div><p class="sub" style="margin:0">'+(canEdit?'<a class="plink" href="#admin">Admin</a>':'<a class="plink" href="#events">Events</a>')+' / Event '+pubTag(id)+'</p><h1>'+esc(s.name)+'</h1><p class="sub">'+ms.length+' match'+(ms.length===1?'':'es')+', created '+esc(new Date(s.createdAt||0).toLocaleDateString())+(missing?' <span class="tag warn">'+missing+' match'+(missing===1?'':'es')+' no longer stored</span>':'')+'</p></div><div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><label class="chk"><input type="checkbox" id="botsChk"'+(hideBots?' checked':'')+'> Hide bot players</label><button class="btn ghost" type="button" data-card="copy">Copy stats image</button><button class="btn ghost" type="button" data-card="save">Save PNG</button><span class="note" id="cardMsg" role="status" style="margin:0"></span>'+(canEdit?'<button class="btn ghost" type="button" data-expev="'+esc(id)+'">Export JSON</button>'+pubBtn(id)+'<button class="btn ghost" type="button" data-snapdel="'+esc(id)+'">Delete event</button>':'')+'</div></div>';
   if(canEdit)h+='<div class="panel" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><label for="evName" class="note" style="margin:0">Event name</label><input id="evName" type="text" maxlength="80" value="'+esc(evEdit.id===id?evEdit.v:s.name)+'" style="flex:1 1 260px;padding:8px 10px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--fg);font:inherit"><button class="btn" type="button" data-evrename="'+esc(id)+'">Save name</button>'+(evMsg?'<span class="note err" role="alert" style="margin:0">'+esc(evMsg)+'</span>':'')+'</div>';
   if(!ms.length)return h+empty('No matches','Every match in this event has been removed.');
   var F={0:{w:0,l:0,dr:0,u:0,k:0,sc:0,mob:0,m:0},1:{w:0,l:0,dr:0,u:0,k:0,sc:0,mob:0,m:0}},P={},C={},mins=0,K=0;
@@ -977,11 +986,9 @@ function viewSnapshot(id){
   h+='<div class="fac">'+[0,1].map(function(f){var a=F[f];return '<a class="fcard'+(a.w>a.l?' win':'')+'" href="#faction-'+f+'" style="--fc:'+TEAMS[f].col+'33;text-decoration:none;color:var(--fg)"><img alt="" src="'+TFLAG[f]+'"><div><b>'+esc(teamName(f))+'</b><p class="note" style="margin:6px 0 0"><strong style="font-size:22px;color:var(--fg)">'+a.w+'</strong> wins, '+a.l+' losses'+(a.dr?', '+a.dr+' draws':'')+(a.u?', '+a.u+' unrecorded':'')+'</p><p class="note" style="margin:2px 0 0">'+a.k+' kills, '+num(a.sc)+' points, '+num(a.mob)+' mob kills</p></div></a>'}).join('')+'</div>';
   h+='<div class="kpis"><div class="kpi"><b>'+ms.length+'</b><small>Matches</small></div><div class="kpi"><b>'+prow.length+'</b><small>Players</small></div><div class="kpi"><b>'+num(mins,0)+' min</b><small>Total match time</small></div><div class="kpi"><b>'+K+'</b><small>Player kills</small></div><div class="kpi"><b>'+(mvp?esc(mvp.name):'-')+'</b><small>Most points'+(mvp?' ('+num(mvp.score)+')':'')+'</small></div></div>';
   var hasMap=ms.some(function(m){return m.doc.ledger&&(m.doc.players||[]).some(function(p){return p.pos&&p.pos.length})});
-  h+=accoladePanel(anaEventRows(ms),true,'Event accolades',ms);
-  h+=evTopCards(prow);
-  if(hasMap){mapScope=ms.map(function(m){return m.id});h+='<div class="panel"><h2>Event heat map</h2>'+mapBody('')+'</div>'}else h+='<div class="panel"><h2>Event heat map</h2><p class="note">No match in this event has position data. Re-upload its Match Ledger files to get a heat map.</p></div>';
-  h+=evScoreSources(ms)+evMatchTable(ms)+evProgress(ms)+evControl(ms)+anaEventSections(ms);
-  h+='<div class="panel"><h2>Players across the event</h2>'+table('snplayers',[
+  { var evw=F[0].w===F[1].w?null:(F[0].w>F[1].w?0:1);if(evw!=null&&TFLAG[evw])h+='<div class="sbn l" aria-hidden="true"><img alt="" src="'+TFLAG[evw]+'"></div><div class="sbn r" aria-hidden="true"><img alt="" src="'+TFLAG[evw]+'"></div>'; }
+  var st=accoladePanel(anaEventRows(ms),true,'Event accolades',ms)+evTopCards(prow)+evMatchTable(ms);
+  st+='<div class="panel"><h2>Players across the event</h2>'+table('snplayers',[
     {k:'name',l:'Player',f:function(r){return '<a class="plink" href="#player-'+slug(r.name)+'">'+esc(r.name)+'</a>'}},
     {k:'main',l:'Class',f:function(r){return r.main?clsCell(r.main):'-'}},
     {k:'games',l:'Games'},{k:'wr',l:'W-L',f:function(r){return r.w+'-'+r.l+(r.wr>=0?' ('+num(r.wr)+'%)':'')}},
@@ -990,10 +997,19 @@ function viewSnapshot(id){
     {k:'mob',l:'Mobs'},{k:'ms',l:'Mobs S/M/L/B',f:function(r){return r.ms+r.mm+r.ml+r.mb?r.ms+'/'+r.mm+'/'+r.ml+'/'+r.mb:'-'}},{k:'cp',l:'CP caps'},{k:'rp',l:'Relic P/R/C/K',f:function(r){return r.rp+r.rr+r.rc+r.rk?r.rp+'/'+r.rr+'/'+r.rc+'/'+r.rk:'-'}},
     {k:'dpm',l:'Dmg/min',f:function(r){return r.dpm<0?'-':num(r.dpm)}}],prow)+'<p class="note">W-L counts games where the player\'s side won or lost. Dmg/min and class only cover matches that have combat log damage; screenshot summaries do not.</p></div>';
   var crow=Object.keys(C).map(function(k){var c=C[k];c.dpm=c.mins?c.dmg/c.mins:-1;c.kdr=c.d?c.k/c.d:c.k;c.avg=c.score/c.picks;return c});
-  h+='<div class="cols"><div class="panel"><h2>Matches</h2>'+ms.map(function(m){var d=m.doc,pl=(d.players||[]).filter(function(p){return !(hideBots&&isBot(p.name))}).slice().sort(function(a,b){return b.score-a.score});
+  st+='<div class="cols"><div class="panel"><h2>Matches</h2>'+ms.map(function(m){var d=m.doc,pl=(d.players||[]).filter(function(p){return !(hideBots&&isBot(p.name))}).slice().sort(function(a,b){return b.score-a.score});
     return '<details class="cdet"'+(ms.length<=3?'':'')+'><summary><a class="plink" href="#match-'+esc(m.id)+'">'+esc(d.name)+'</a> '+resultTag(d)+' <span class="note" style="margin:0">'+dur(d.duration||0)+'</span></summary><div class="scroll"><table><thead><tr><th scope="col"><button type="button" disabled>Player</button></th><th scope="col"><button type="button" disabled>Team</button></th><th scope="col"><button type="button" disabled>Class</button></th><th scope="col"><button type="button" disabled>Pts</button></th><th scope="col"><button type="button" disabled>K/D</button></th><th scope="col"><button type="button" disabled>Mobs</button></th></tr></thead><tbody>'+pl.map(function(p){return '<tr><td><a class="plink" href="#player-'+slug(p.name)+'">'+esc(p.name)+'</a></td><td>'+teamTag(p.team)+'</td><td>'+(p.cls?clsCell(p.cls):'-')+'</td><td>'+num(p.score)+'</td><td>'+p.kills+'/'+p.deaths+'</td><td>'+p.mobKills+'</td></tr>'}).join('')+'</tbody></table></div>'+(d.partial?'<p class="note">Screenshot summary. The roster may be missing players cut off at the bottom of the screenshot.</p>':'')+'</details>'}).join('')+'</div>'+
     '<div class="panel"><h2>Classes</h2>'+(crow.length?crow.map(function(c){return '<div class="cb" style="grid-template-columns:90px 1fr 70px"><span>'+clsCell(c.cls)+'</span><div class="track"><i style="width:'+Math.round(100*c.picks/Math.max.apply(null,crow.map(function(x){return x.picks})))+'%;background:'+CCOL[c.cls]+'"></i></div><em>'+c.picks+' picks</em></div>'}).join(''):'<p class="note">No class data in these matches.</p>')+'</div></div>';
-  h+=evClassTable(crow);
+  st+=evClassTable(crow);
+  var tabs=[['stats','Stats &amp; accolades'],['map','Heat map'],['graphs','Graphs']];if(ms.some(function(m){return anaHas(m.doc)}))tabs.push(['analysis','Analysis']);
+  var sn=subTabs('event-'+id,tabs);h+=sn.h;
+  if(sn.cur==='stats')h+=st;
+  else if(sn.cur==='map'){
+    if(hasMap){mapScope=ms.map(function(m){return m.id});h+='<div class="panel"><h2>Event heat map</h2>'+mapBody('')+'</div>'}else h+='<div class="panel"><h2>Event heat map</h2><p class="note">No match in this event has position data. Re-upload its Match Ledger files to get a heat map.</p></div>';
+    h+=anaEventSections(ms,'map');
+  }
+  else if(sn.cur==='graphs')h+=(ms.some(function(m){return dmgPlayers(m.doc).length})?classVs(null,ms.map(function(m){return m.doc})):'')+evProgress(ms)+evControl(ms)+evScoreSources(ms)+anaEventSections(ms,'graphs');
+  else h+=anaEventSections(ms,'analysis');
   return h;
 }
 function delMatches(ids){
@@ -1169,9 +1185,17 @@ function classStats(d){
   pl.forEach(function(p){var c=p.cls||'Unknown',o=cls[c]||(cls[c]={0:{n:[],dmg:0,heal:0,sec:0},1:{n:[],dmg:0,heal:0,sec:0}});o[p.team].n.push(p.name);o[p.team].dmg+=dmgSum(d.series[p.name]);o[p.team].heal+=p.heal||0;o[p.team].sec+=est?(d.duration||0):(al[p.name]||0)});
   return {pl:pl,cls:cls,est:est};
 }
+/* the same numbers over several matches (an event): players are unique names, damage and alive time are summed */
+function classStatsMulti(docs){
+  var cls={},pl=[],est=false;
+  docs.forEach(function(d){var cs=classStats(d);if(cs.est)est=true;pl=pl.concat(cs.pl);
+    Object.keys(cs.cls).forEach(function(c){var o=cls[c]||(cls[c]={0:{n:[],dmg:0,heal:0,sec:0},1:{n:[],dmg:0,heal:0,sec:0}});
+      [0,1].forEach(function(t){var x=cs.cls[c][t];x.n.forEach(function(n){if(o[t].n.indexOf(n)<0)o[t].n.push(n)});o[t].dmg+=x.dmg;o[t].heal+=x.heal;o[t].sec+=x.sec})})});
+  return {pl:pl,cls:cls,est:est,multi:true};
+}
 function classRate(x){return x.n.length&&x.sec>0?(x.dmg+x.heal)/(x.sec/60):null}
-function classVs(d){
-  var cs=classStats(d);if(!cs.pl.length)return '';
+function classVs(d,docs){
+  var cs=docs?classStatsMulti(docs):classStats(d);if(!cs.pl.length)return '';
   var cls=cs.cls,est=cs.est,rate=classRate;
   var rows=Object.keys(cls).sort(function(a,b){return cls[b][0].dmg+cls[b][1].dmg-cls[a][0].dmg-cls[a][1].dmg}).map(function(c){var o=cls[c],r0=rate(o[0])||0,r1=rate(o[1])||0,mx=Math.max(r0,r1);
     function side(t){var x=o[t],col=TEAMS[t].col,head='<div class="note" style="margin:0 0 4px"><span style="color:'+col+'">&#9632;</span> '+esc(teamName(t))+'</div>';
@@ -1180,12 +1204,12 @@ function classVs(d){
       return '<div class="vst">'+head+'<div>'+x.n.map(function(n){return '<a class="plink" href="#player-'+slug(n)+'">'+esc(n)+'</a>'}).join(', ')+'</div>'+
         '<div class="vsn">'+(r==null?'-':num(r))+' <span class="note">damage + healing per min alive</span></div>'+
         '<div class="vsb"><i style="width:'+w+'%;background:'+col+';background:color-mix(in srgb,'+col+' 60%,var(--fg))"></i></div>'+
-        '<div class="note" style="margin:4px 0 0">'+num(x.dmg)+' damage'+(x.heal>0?' &middot; '+num(x.heal)+' healing':'')+(est?'':' &middot; '+dur(x.sec/x.n.length)+' alive each')+'</div></div>'}
+        '<div class="note" style="margin:4px 0 0">'+num(x.dmg)+' damage'+(x.heal>0?' &middot; '+num(x.heal)+' healing':'')+(est||cs.multi?'':' &middot; '+dur(x.sec/x.n.length)+' alive each')+'</div></div>'}
     var edge='<span class="note" style="margin:0">-</span>';
     if(o[0].n.length&&o[1].n.length&&(r0>0||r1>0)){var w=r0>=r1?0:1,lo=Math.min(r0,r1),hi=Math.max(r0,r1);edge='Edge: <strong style="color:color-mix(in srgb,'+TEAMS[w].col+' 55%,var(--fg))">'+esc(teamName(w))+'</strong> '+(lo>0?'+'+Math.round((hi-lo)/lo*100)+'%':'only')}
     else if(o[0].n.length!==o[1].n.length)edge='<span class="note" style="margin:0">Only '+esc(teamName(o[0].n.length?0:1))+' has a '+esc(c)+'</span>';
     return '<div class="vsr"><div class="vsh"><span>'+clsCell(c==='Unknown'?'':c)+'</span><span>'+edge+'</span></div>'+side(0)+side(1)+'</div>'}).join('');
-  return '<div class="panel"><h2>Damage by class, team against team</h2><div class="vs">'+rows+'</div><p class="note">Each class is lined up against the same class on the other team. The big number is damage plus healing divided by the minutes the players were alive (from position samples), so healers are not marked down for healing instead of hitting, dying early does not count against someone, and a team with two of a class is not ahead just for having more. Healing is effective healing from players, without passive regen, and a point of healing counts the same as a point of damage, so read the damage and healing lines too. The bars and Edge compare that rate.'+(est?' This log has no position samples, so alive time is not known and the rate uses the whole match instead.':'')+'</p></div>';
+  return '<div class="panel"><h2>Damage by class, team against team</h2><div class="vs">'+rows+'</div><p class="note">Each class is lined up against the same class on the other team. The big number is damage plus healing divided by the minutes the players were alive (from position samples), so healers are not marked down for healing instead of hitting, dying early does not count against someone, and a team with two of a class is not ahead just for having more. Healing is effective healing from players, without passive regen, and a point of healing counts the same as a point of damage, so read the damage and healing lines too. The bars and Edge compare that rate.'+(cs.multi?' Totals over every match in the event.':'')+(est?' This log has no position samples, so alive time is not known and the rate uses the whole match instead.':'')+'</p></div>';
 }
 function teamDamage(d){
   if(!Object.keys(d.series||{}).length)return '<div class="panel"><h2>Damage dealt per 30 seconds</h2><p class="note">No damage dealt in this log.</p></div>';
@@ -1256,6 +1280,16 @@ function buildStatCard(d){
   var H=y+30;
   return {W:W,H:H,svg:'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" font-family="Barlow, Segoe UI, Roboto, Arial, sans-serif"><rect width="'+W+'" height="'+H+'" fill="'+C.bg+'"/>'+o+'</svg>'};
 }
+function evMergedDoc(ms,name){
+  var P={},tp={0:0,1:0},w={0:0,1:0},dur=0;
+  ms.forEach(function(m){var d=m.doc;dur+=d.duration||0;[0,1].forEach(function(t){tp[t]+=((d.teams||{})[t]||{}).points||0;if(hasResult(d)&&d.result.winner===t)w[t]++});
+    (d.players||[]).forEach(function(p){var a=P[p.name]||(P[p.name]={name:p.name,cls:p.cls,team:p.team,tc:{}});a.tc[p.team]=(a.tc[p.team]||0)+1;
+      Object.keys(p).forEach(function(k){if(typeof p[k]==='number'&&k!=='team')a[k]=(a[k]||0)+p[k]})})});
+  var pl=Object.keys(P).map(function(n){var a=P[n];a.team=+Object.keys(a.tc).sort(function(x,y){return a.tc[y]-a.tc[x]})[0];delete a.tc;return a});
+  var tm={};[0,1].forEach(function(t){var r={points:tp[t],kills:0,relics:0};pl.forEach(function(p){if(p.team===t){r.kills+=p.kills||0;r.relics+=p.relicCaps||0}});tm[t]=r});
+  var res=w[0]===w[1]?null:{winner:w[0]>w[1]?0:1,src:'log'};
+  return {name:(name||'Event')+'  ('+w[0]+' - '+w[1]+')',duration:dur,players:pl,teams:tm,result:res};
+}
 function statCardPng(d){
   var c=buildStatCard(d);
   return new Promise(function(res,rej){
@@ -1268,7 +1302,9 @@ function statCardPng(d){
 function cardMsg(t){var el=document.getElementById('cardMsg');if(el){el.textContent=t;setTimeout(function(){if(el.textContent===t)el.textContent=''},4000)}}
 document.addEventListener('click',function(e){
   var b=e.target.closest&&e.target.closest('[data-card]');if(!b)return;
-  var h=location.hash.replace('#',''),id=h.indexOf('match-')===0?h.slice(6):'',m=allMatches().filter(function(x){return x.id===id})[0];if(!m)return;
+  var h=location.hash.replace('#',''),id=h.indexOf('match-')===0?h.slice(6):'',m=allMatches().filter(function(x){return x.id===id})[0];
+  if(!m&&(h.indexOf('event-')===0||h.indexOf('snapshot-')===0)){var sid=h.slice(h.indexOf('-')+1),sn=snaps[sid];if(sn){var evm=(sn.matchIds||[]).map(function(k){return allMatches().filter(function(x){return x.id===k})[0]}).filter(Boolean);if(evm.length)m={doc:evMergedDoc(evm,sn.name)}}}
+  if(!m)return;
   var mode=b.dataset.card;
   statCardPng(m.doc).then(function(blob){
     if(mode==='copy'){
@@ -1285,6 +1321,51 @@ function themeIcon(){var b=document.getElementById('themeBtn');if(!b)return;var 
   b.innerHTML=l?'<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>':'<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></svg>'}
 (function(){var s=null;try{s=localStorage.getItem('arcturaTheme')}catch(x){}if(s==='light'||s==='dark')document.documentElement.setAttribute('data-theme',s);themeIcon();
   document.addEventListener('click',function(e){if(!(e.target.closest&&e.target.closest('#themeBtn')))return;var n=themeNow()==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('arcturaTheme',n)}catch(x){}themeIcon();if(typeof render==='function')try{render()}catch(x){}})})();
+/* ---- Skills tab: what the stored match data supports (per player skill stats: casts, hits, crits, kills, damage pipeline) ---- */
+var skFilter={cls:'all',match:'all'};
+function skName(n){return String(n||'').split('.').pop()||'?'}
+function skillAgg(){
+  var ms=allMatches().filter(function(m){return skFilter.match==='all'||m.id===skFilter.match}),A={},users={},nm=0,nps=0;
+  ms.forEach(function(m){var any=false;(m.doc.players||[]).forEach(function(p){
+    if(hideBots&&isBot(p.name))return;if(skFilter.cls!=='all'&&p.cls!==skFilter.cls)return;
+    (p.skills||[]).forEach(function(k){any=true;var a=A[k.skill]||(A[k.skill]={skill:k.skill,name:skName(k.skill),casts:0,hitsP:0,hitsE:0,crits:0,kills:0,dp:0,de:0,mit:0,pre:0,pl:{}});
+      a.casts+=k.casts;a.hitsP+=k.pvp.hits;a.hitsE+=k.pve.hits;a.crits+=k.pvp.crits+k.pve.crits;a.kills+=k.pvp.kills+k.pve.kills;a.dp+=k.pvp.hl;a.de+=k.pve.hl;a.mit+=k.pvp.mit+k.pve.mit;a.pre+=k.pvp.pre+k.pve.pre;
+      var u=a.pl[p.name]=(a.pl[p.name]||0)+k.pvp.hl+k.pve.hl;nps++});});if(any)nm++});
+  var rows=Object.keys(A).map(function(n){var a=A[n];a.hits=a.hitsP+a.hitsE;a.total=a.dp+a.de;a.dpc=a.casts?a.total/a.casts:0;a.hpc=a.casts?a.hits/a.casts:0;a.crit=a.hits?100*a.crits/a.hits:0;a.mitp=a.pre?100*a.mit/a.pre:0;a.np=Object.keys(a.pl).length;
+    a.top=Object.keys(a.pl).sort(function(x,y){return a.pl[y]-a.pl[x]}).slice(0,3).map(function(x){return x+' '+num(a.pl[x])}).join(', ');return a});
+  return {rows:rows,matches:nm,all:ms.length};
+}
+function viewSkills(){
+  var ms=allMatches();
+  if(!ms.length)return '<div><h1>Skills</h1></div>'+empty('No matches yet','Upload a match to see skill usage.');
+  var G=skillAgg(),rows=G.rows,cls=['all'].concat(CLASSES);
+  var h='<div class="bar"><div><h1>Skills</h1><p class="sub">'+G.matches+' of '+G.all+' match'+(G.all===1?'':'es')+' with skill data. Casts, hits, crits, kills and damage per skill, from the combat ledger.</p></div>'+
+    '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><label class="chk">Class <select id="skCls">'+cls.map(function(c){return '<option value="'+c+'"'+(skFilter.cls===c?' selected':'')+'>'+(c==='all'?'All classes':c)+'</option>'}).join('')+'</select></label>'+
+    '<label class="chk">Match <select id="skMatch"><option value="all">All matches</option>'+ms.map(function(m){return '<option value="'+esc(m.id)+'"'+(skFilter.match===m.id?' selected':'')+'>'+esc(m.doc.name||m.id)+'</option>'}).join('')+'</select></label></div></div>';
+  if(!rows.length)return h+empty('No skill data','These matches have no per-skill stats (older or imported summaries), or the filter excludes everyone.');
+  var top=rows.slice().sort(function(a,b){return b.total-a.total}).slice(0,12),mx=Math.max(1,top[0].total);
+  h+='<div class="panel"><h2>Top skills by damage</h2><p class="note" style="margin:0 0 10px"><b>PvP</b> damage and <b>PvE</b> damage are split in each bar; hover for the numbers.</p>'+
+    top.map(function(a){var w=100*a.total/mx,wp=a.total?100*a.dp/a.total:0;
+      return '<div style="display:grid;grid-template-columns:170px 1fr 90px;gap:10px;align-items:center;margin:4px 0" title="'+esc(a.skill+'\nPvP '+num(a.dp)+' / PvE '+num(a.de)+'\n'+num(a.casts)+' casts')+'"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(a.name)+'</span>'+
+      '<span style="display:block;height:16px;width:'+w.toFixed(1)+'%;min-width:3px;border-radius:3px;overflow:hidden;display:flex"><i style="width:'+wp.toFixed(1)+'%;background:var(--accent)"></i><i style="flex:1;background:var(--c-mystic)"></i></span><span style="text-align:right">'+num(a.total)+'</span></div>'}).join('')+
+    '<p class="note" style="margin:8px 0 0"><i style="display:inline-block;width:10px;height:10px;background:var(--accent);border-radius:2px"></i> PvP &nbsp; <i style="display:inline-block;width:10px;height:10px;background:var(--c-mystic);border-radius:2px"></i> PvE</p></div>';
+  h+='<div class="panel"><h2>All skills</h2>'+table('skills',[
+    {k:'name',l:'Skill',f:function(r){return '<span title="'+esc(r.skill)+'">'+esc(r.name)+'</span>'}},
+    {k:'np',l:'Players',f:function(r){return '<span title="'+esc(r.top)+'">'+num(r.np)+'</span>'}},
+    {k:'casts',l:'Casts',f:function(r){return num(r.casts)}},
+    {k:'hits',l:'Hits',f:function(r){return num(r.hits)}},
+    {k:'hpc',l:'Hits/cast',f:function(r){return num(r.hpc,2)}},
+    {k:'crit',l:'Crit %',f:function(r){return num(r.crit,1)}},
+    {k:'kills',l:'Kills',f:function(r){return num(r.kills)}},
+    {k:'dp',l:'PvP dmg',f:function(r){return num(r.dp)}},
+    {k:'de',l:'PvE dmg',f:function(r){return num(r.de)}},
+    {k:'total',l:'Total dmg',f:function(r){return num(r.total)}},
+    {k:'dpc',l:'Dmg/cast',f:function(r){return num(r.dpc)}},
+    {k:'mitp',l:'Mitigated %',f:function(r){return num(r.mitp,1)}}],rows)+
+    '<p class="note">Hover a skill for its full id and the Players count for the top users. Utility skills show casts with no damage. Accuracy, cooldowns and cast timelines are not in the stored data.</p></div>';
+  return h;
+}
+document.addEventListener('change',function(e){var id=e.target.id;if(id==='skCls'){skFilter.cls=e.target.value;render()}else if(id==='skMatch'){skFilter.match=e.target.value;render()}});
 function viewMatch(id){
   var m=allMatches().filter(function(x){return x.id===id})[0];
   if(!m)return '<div><h1>Match not found</h1></div>'+empty('No match with that id','It may have been removed, or it is still loading.');
@@ -1302,12 +1383,12 @@ function viewMatch(id){
   else if(hasResult(d)&&R.winner==='draw'&&tp[0]!=null)fin='Level on '+num(tp[0])+' points';
   var endTxt=d.endReason?(d.endReason==='normal'?'Ended normally':'Ended: '+esc(d.endReason))+' at '+dur(d.duration||0):'';
   var showSet=canEdit&&m.saved&&!fromLog;
-  h+='<div class="panel"><h2>Result</h2><p style="margin:6px 0 10px;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center">'+(hasResult(d)?'<span style="font:700 22px var(--font-d)">'+(R.winner==='draw'?'Draw':esc(teamName(R.winner))+' won')+'</span>'+(fin?'<span>'+fin+'</span>':'')+(endTxt?'<span class="note" style="margin:0">'+endTxt+'</span>':'')+(fromLog?'':'<span class="tag">set by hand</span>'):resultTag(d))+'</p>'+facs+
+  var st='<div class="panel"><h2>Result</h2><p style="margin:6px 0 10px;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center">'+(hasResult(d)?'<span style="font:700 22px var(--font-d)">'+(R.winner==='draw'?'Draw':esc(teamName(R.winner))+' won')+'</span>'+(fin?'<span>'+fin+'</span>':'')+(endTxt?'<span class="note" style="margin:0">'+endTxt+'</span>':'')+(fromLog?'':'<span class="tag">set by hand</span>'):resultTag(d))+'</p>'+facs+
     (showSet?'<div style="display:flex;gap:8px;flex-wrap:wrap"><span class="note" style="margin:0;align-self:center">Set winner</span>'+[0,1].map(function(k){return '<button class="btn" type="button" style="background:'+TEAMS[k].col+';color:#fff" data-res="'+esc(id)+':'+k+'">'+teamName(k)+' won</button>'}).join('')+'<button class="btn ghost" type="button" data-res="'+esc(id)+':draw">Draw</button><button class="btn ghost" type="button" data-res="'+esc(id)+':clear">Clear</button></div>'
       :(hasResult(d)||canEdit&&m.saved?'':'<p class="note" style="margin:0">'+(m.saved?'The combat log has no match result row.':'Save the match first to set a winner.')+'</p>'))+'</div>';
   if(hasResult(d)&&TFLAG[R.winner])h+='<div class="sbn l" aria-hidden="true"><img alt="" src="'+TFLAG[R.winner]+'"></div><div class="sbn r" aria-hidden="true"><img alt="" src="'+TFLAG[R.winner]+'"></div>';
-  h+=accoladePanel(anaMatchRows(d),false,'Match accolades',[{id:id,doc:d}]);
-  h+='<div class="panel">'+table('match',[
+  st+=accoladePanel(anaMatchRows(d),false,'Match accolades',[{id:id,doc:d}]);
+  st+='<div class="panel">'+table('match',[
     {k:'name',l:'Player',f:function(r){return '<a class="plink" href="#player-'+slug(r.name)+'">'+esc(r.name)+'</a>'}},
     {k:'team',l:'Team',f:function(r){return teamTag(r.team)}},
     {k:'cls',l:'Class',f:function(r){return clsCell(r.cls)}},
@@ -1325,11 +1406,14 @@ function viewMatch(id){
     {k:'mitP',l:'PvP hits mitigated',f:function(r){return r.mitP==null?'-':num(r.mitP)}},
     {k:'dpm',l:'Dmg/min',f:function(r){return num(r.dpm)}}
   ],rows)+'</div>';
-  h+=objPanel(d,(d.players||[]).filter(function(p){return !(hideBots&&isBot(p.name))}));
-  if(d.ledger){mapScope=null;h+='<div class="panel"><h2>Heat map and event timeline</h2>'+mapBody(id)+'</div>'}
-  h+=anaMatchSections(id,d);
-  h+=teamDamage(d);
-  h+='<div class="panel"><h2>Events</h2>'+
+  st+=objPanel(d,(d.players||[]).filter(function(p){return !(hideBots&&isBot(p.name))}));
+  var tabs=[['stats','Stats &amp; accolades']];if(d.ledger)tabs.push(['map','Heat map']);tabs.push(['graphs','Graphs']);if(anaHas(d))tabs.push(['analysis','Analysis']);tabs.push(['log','Event log']);
+  var sn=subTabs('match-'+id,tabs);h+=sn.h;
+  if(sn.cur==='stats')h+=st;
+  else if(sn.cur==='map'){mapScope=null;h+='<div class="panel"><h2>Heat map and event timeline</h2>'+mapBody(id)+'</div>'+anaMatchSections(id,d,'map')}
+  else if(sn.cur==='graphs')h+=anaMatchSections(id,d,'graphs')+teamDamage(d);
+  else if(sn.cur==='analysis')h+=anaMatchSections(id,d,'analysis');
+  else h+='<div class="panel"><h2>Events</h2>'+
     ((d.events||[]).length?'<ul class="events">'+d.events.map(function(e){return '<li><time>'+dur(e.t)+'</time><span class="tag'+(e.k==='boss'?' warn':'')+'">'+esc(e.k==='kill'?'Kill':e.k==='boss'?'Boss':'Point')+'</span><span>'+esc(e.x)+'</span></li>'}).join('')+'</ul>':'<p class="note">No kills or captures in this log.</p>')+'</div>';
   return h;
 }
@@ -1704,13 +1788,14 @@ function render(){
   var cur=r.t==='snapshot'||r.t==='snapshots'?'events':r.t==='match'?'matches':r.t==='player'?'players':r.t==='class'?'classes':r.t==='faction'?'factions':r.t;
   $nav.innerHTML=TABS.filter(function(x){return x[0]!=='upload'||canEdit}).concat(canEdit?[['admin','Admin']]:[]).map(function(t){return '<a href="#'+t[0]+'"'+(t[0]===cur?' aria-current="page"':'')+'>'+t[1]+'</a>'}).join('');
   var f=document.activeElement&&document.activeElement.id;
-  $view.innerHTML=r.t==='snapshots'?viewSnapshots():r.t==='player'?viewPlayer(r.id):r.t==='match'?viewMatch(r.id):r.t==='snapshot'?viewSnapshot(r.id):r.t==='class'?viewClass(r.id):r.t==='faction'?viewFaction(+r.id):r.t==='factions'?viewFactions():r.t==='map'?viewMap():r.t==='classes'?viewClasses():r.t==='matches'?viewMatches():r.t==='upload'?viewUpload():r.t==='admin'?viewAdmin():viewPlayers();
+  $view.innerHTML=r.t==='snapshots'?viewSnapshots():r.t==='player'?viewPlayer(r.id):r.t==='match'?viewMatch(r.id):r.t==='snapshot'?viewSnapshot(r.id):r.t==='class'?viewClass(r.id):r.t==='faction'?viewFaction(+r.id):r.t==='factions'?viewFactions():r.t==='map'?viewMap():r.t==='classes'?viewClasses():r.t==='skills'?viewSkills():r.t==='matches'?viewMatches():r.t==='upload'?viewUpload():r.t==='admin'?viewAdmin():viewPlayers();
   if(f){var e=document.getElementById(f);if(e&&e.focus)try{e.focus()}catch(x){}}
 }
 document.addEventListener('change',function(e){var ds=e.target.closest&&e.target.closest('[data-delsel]');if(ds){delSel[ds.dataset.delsel]=ds.checked;confirmKey='';render();return}var c=e.target.closest&&e.target.closest('[data-snapsel]');if(c){snapDraft.sel[c.dataset.snapsel]=c.checked;render()}});
 document.addEventListener('input',function(e){if(e.target&&e.target.id==='snapName')snapDraft.name=e.target.value;if(e.target&&e.target.id==='evName'){var rt=route();evEdit={id:rt.t==='snapshot'?rt.id:'',v:e.target.value};evMsg=''}});
 document.addEventListener('toggle',function(e){var d=e.target;if(d&&d.classList&&d.classList.contains('cdet'))openCls[d.dataset.cls]=d.open},true);
 document.addEventListener('click',function(e){
+  var sb=e.target.closest('[data-sub]');if(sb){var q=sb.dataset.sub,i=q.lastIndexOf('|');subSel[q.slice(0,i)]=q.slice(i+1);render();return}
   var t=e.target.closest('[data-sort]');if(t){var p=t.dataset.sort.split(':'),s=sortState[p[0]];s.d=s.k===p[1]?-s.d:(p[1]==='name'||p[1]==='main'||p[1]==='cls'?1:p[1]==='t'?-1:-1);s.k=p[1];render();return}
   var g=e.target.closest('[data-go]');if(g&&!e.target.closest('a,input,label,button')){location.hash=g.dataset.go;return}
   var sv=e.target.closest('[data-save]');if(sv){save(+sv.dataset.save);return}
