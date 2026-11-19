@@ -701,6 +701,8 @@ function analyze(d){
       else if(v.from){hit=v.from.some(function(f){return f[0]===p.name})}
       var ok=hit!==null?(hit&&near!==false):near===true;
       if(ok){e.as.push(p.name);r.players[p.name].ea++;r.assistMode=hit!==null?'damage':(r.assistMode==='damage'?'damage':'near')}})});
+  /* assisters took part in the fight too: add them on the killer's side, with the fight counted for them */
+  r.fights.forEach(function(f){f.ks.forEach(function(e){(e.as||[]).forEach(function(n){if(!n||n in f.who)return;f.who[n]=e.team;var s=r.players[n];if(!s)return;s.nf++;if(f.win>=0){if(e.team===f.win)s.fw++;else s.fl++}})});f.n=Object.keys(f.who).length});
   /* camp stacking: more kills at one camp, in one go, than a single spawn holds */
   (function(){var byCamp={};
     (d.log||[]).forEach(function(e){if(e.k!=='mob'||!e.tier||!MOB_BATCH[e.tier]||(hideBots&&isBot(e.a)))return;var c=mobSpot(e);if(!c)return;var key=c[0]+','+c[1];(byCamp[key]||(byCamp[key]=[])).push({e:e,c:c})});
@@ -810,10 +812,10 @@ function carriesPanel(list){
   return '<div class="panel"><h2>Relic carries and chasing</h2>'+plainTable(['Match','Carrier','Team','Picked up','Held','Ended','Enemies near','Time chased'],rows)+'<p class="note">Chased time adds up every enemy that was within '+ANA.chase+' m of the carrier, sampled every few seconds. The log has no per hit target, so this is time in range, not damage dealt to the carrier.</p></div>';
 }
 function fightCol(t){return TEAMS[t]?TEAMS[t].col:'inherit'}
-function fightWho(f){var st={};Object.keys(f.who).forEach(function(n){st[n]={k:0,d:0,a:0}});
-  f.ks.forEach(function(e){if(st[e.a])st[e.a].k++;if(st[e.b])st[e.b].d++;(e.as||[]).forEach(function(n){if(st[n])st[n].a++;else if(n)st[n]={k:0,d:0,a:1}})});
-  var names=Object.keys(st).sort(function(a,b){return (f.who[a]===0?0:1)-(f.who[b]===0?0:1)||st[b].k-st[a].k});
-  return names.map(function(n){var x=st[n];return '<div><span style="color:'+fightCol(f.who[n])+'">'+esc(n)+'</span> <span class="note" style="margin:0">'+x.k+' / '+x.d+' / '+x.a+'</span></div>'}).join('')}
+function fightWho(f){var st={},tm={};Object.keys(f.who).forEach(function(n){st[n]={k:0,d:0,a:0};tm[n]=f.who[n]});
+  f.ks.forEach(function(e){if(st[e.a])st[e.a].k++;if(st[e.b])st[e.b].d++;(e.as||[]).forEach(function(n){if(st[n])st[n].a++;else if(n){st[n]={k:0,d:0,a:1};tm[n]=e.team}})});
+  var names=Object.keys(st).sort(function(a,b){return (tm[a]===0?0:1)-(tm[b]===0?0:1)||st[b].k-st[a].k});
+  return names.map(function(n){var x=st[n];return '<div><span style="color:'+fightCol(tm[n])+'">'+esc(n)+'</span> <span class="note" style="margin:0">'+x.k+' / '+x.d+' / '+x.a+'</span></div>'}).join('')}
 function fightFeed(f){return f.ks.map(function(e){var sk=(e.sk||'').split('.').pop();if(sk==='None')sk='';
   return '<div><span class="note" style="margin:0">'+dur(e.t)+'</span> <span style="color:'+fightCol(e.team)+'">'+esc(e.a)+'</span> &#9656; <span style="color:'+fightCol(1-e.team)+'">'+esc(e.b)+'</span>'+(sk?' <span class="note" style="margin:0">'+esc(sk)+'</span>':'')+((e.as&&e.as.length)?' <span class="note" style="margin:0">(assist '+e.as.map(esc).join(', ')+')</span>':'')+'</div>'}).join('')}
 var MOMENT_NAME={stand:'Stand out fight',last:'Last stand',chase:'Relic chaser',boss:'Solo boss',bsteal:'Boss stealer',mob:'Mob stealer',okill:'Outnumbered kill',relic:'Long relic hold'},MOMENT_ORDER={stand:0,last:1,chase:2,boss:3,bsteal:4,mob:5,okill:6,relic:7};
