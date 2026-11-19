@@ -1288,7 +1288,7 @@ function mapLoad(){
 function mapMatches(){return allMatches().filter(function(m){var d=m.doc;return (!mapScope||mapScope.indexOf(m.id)>=0)&&d.ledger&&(d.players||[]).some(function(p){return p.pos&&p.pos.length})}).sort(function(a,b){return playedAt(b.doc)-playedAt(a.doc)})}
 function mapSel(){var all=mapMatches();return mapS.match==='all'?all:all.filter(function(m){return m.id===mapS.match})}
 function mapZone(x,y){var best='',bd=1e9;Object.keys(MAPZONES).forEach(function(k){var z=MAPZONES[k],d=Math.hypot(x-z[0],y-z[1]);if(d<bd){bd=d;best=k}});return (bd<45?'At ':'Near ')+best}
-var MAPMODES=[['pos','Player presence (time spent)'],['kill','Kills (where the victim fell)'],['death','Deaths'],['mob','Mob kills'],['obj','Objectives (control points, relic, boss)']];
+var MAPMODES=[['pos','Player presence (time spent)'],['kill','Kills (where the killer stood)'],['death','Deaths (where the player fell)'],['mob','Mob kills'],['obj','Objectives (control points, relic, boss)']];
 function mapPass(e){
   if(e.t<mapS.t0||e.t>mapS.t1)return false;
   var who=e.k==='death'?e.b:e.a;
@@ -1297,12 +1297,15 @@ function mapPass(e){
   if(mapS.player&&who!==mapS.player)return false;
   return true;
 }
+/* kills are logged where the victim fell; the Kills mode plots where the killer stood instead (nearest living position sample within 6 seconds), falling back to the victim's spot */
+function mapKillerAt(p,t){if(!p||!p.pos)return null;var b=null,bd=1e9;p.pos.forEach(function(z){var dt=Math.abs(z[0]-t);if(z[3]&&dt<bd){bd=dt;b=z}});return b&&bd<=6?[b[1],b[2]]:null}
 function mapPoints(){
   var out=[],md=mapS.mode;
   mapSel().forEach(function(m){var d=m.doc;
     if(md==='pos'){(d.players||[]).forEach(function(p){if(hideBots&&isBot(p.name))return;if(mapS.team!=='all'&&p.team!==+mapS.team)return;if(mapS.player&&p.name!==mapS.player)return;
       (p.pos||[]).forEach(function(q){if(q[3]&&q[0]>=mapS.t0&&q[0]<=mapS.t1&&(!mapS.upto||q[0]<=mapS.ph))out.push([q[1],q[2]])})});return}
-    (d.log||[]).forEach(function(e){var ok=md==='obj'?(e.k==='cp'||e.k==='relic'||e.k==='boss'):e.k===md;if(!ok||!mapPass(e)||(mapS.upto&&e.t>mapS.ph))return;var q=[e.x,e.y];if(e.k==='mob'){var bc=mobSpot(e);if(bc)q=[bc[0],bc[1]]}else if(e.k==='boss')q=[0,0];else if(e.k==='cp'&&MAPZONES[e.cp])q=MAPZONES[e.cp];out.push(q)})});
+    var PM={};(d.players||[]).forEach(function(p){PM[p.name]=p});
+    (d.log||[]).forEach(function(e){var ok=md==='obj'?(e.k==='cp'||e.k==='relic'||e.k==='boss'):e.k===md;if(!ok||!mapPass(e)||(mapS.upto&&e.t>mapS.ph))return;var q=[e.x,e.y];if(e.k==='kill'&&md==='kill'){var kp=mapKillerAt(PM[e.a],e.t);if(kp)q=kp}if(e.k==='mob'){var bc=mobSpot(e);if(bc)q=[bc[0],bc[1]]}else if(e.k==='boss')q=[0,0];else if(e.k==='cp'&&MAPZONES[e.cp])q=MAPZONES[e.cp];out.push(q)})});
   return out;
 }
 function mapHeat(ctx,pts){
