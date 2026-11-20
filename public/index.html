@@ -1442,7 +1442,7 @@ function classVs(d,docs){
   return '<div class="panel"><h2>Damage by class, team against team</h2><div class="vs">'+rows+'</div><p class="note">Each class is lined up against the same class on the other team. The big number is damage plus healing divided by the minutes the players were alive (from position samples), so healers are not marked down for healing instead of hitting, dying early does not count against someone, and a team with two of a class is not ahead just for having more. Healing is effective healing from players, without passive regen, and a point of healing counts the same as a point of damage, so read the damage and healing lines too. The bars and Edge compare that rate.'+(cs.multi?' Totals over every match in the event.':'')+(est?' This log has no position samples, so alive time is not known and the rate uses the whole match instead.':'')+'</p></div>';
 }
 function teamDamage(d){
-  if(!Object.keys(d.series||{}).length)return '<div class="panel"><h2>Damage dealt per 30 seconds'+(gx.type!=='all'?' ('+(gx.type==='pvp'?'PvP':'PvE')+')':'')+'</h2><p class="note">'+(gx.type!=='all'?'This match has no PvP and PvE timeline. It was saved before timelines were kept. An admin can rebuild it from its stored raw ledger (Admin, Match handler, Rebuild all matches).':'No damage dealt in this log.')+'</p></div>'+(gx.type!=='all'?classVs(d):'');
+  if(!Object.keys(d.series||{}).length)return '<div class="panel"><h2>Damage dealt per 30 seconds'+(gx.type!=='all'?' ('+(gx.type==='pvp'?'PvP':'PvE')+')':'')+'</h2><p class="note">'+(gx.type!=='all'?'This match has no PvP and PvE timeline. '+GXOLD:'No damage dealt in this log.')+'</p></div>'+(gx.type!=='all'?classVs(d):'');
   var mx=0;dmgPlayers(d).forEach(function(p){d.series[p.name].forEach(function(v){if(v>mx)mx=v})});var top=niceTop(mx);
   var h='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px;margin-bottom:18px">';
   [0,1].forEach(function(t){h+='<div class="panel" style="margin:0;border-top:4px solid '+TEAMS[t].col+'"><h2><span style="color:'+TEAMS[t].col+'">&#9632;</span> '+esc(teamName(t))+': damage dealt per 30 seconds</h2>'+chart(d,t,top)+'</div>'});
@@ -2075,14 +2075,15 @@ function gxMatchSel(d){
   return {doc:d.docs[i].doc,h:'<label class="chk">Match <select data-gxs="mm">'+d.docs.map(function(x,k){return '<option value="'+k+'"'+(k===i?' selected':'')+'>'+esc(mtitle(x.doc))+'</option>'}).join('')+'</select></label>'};
 }
 function viewGraphsEvent(id,ms,extra){
-  var d=evGxDoc(ms);
+  gxOldText();var d=evGxDoc(ms);
   if(!d)return extra;
   var tabs=[['time','Over time'],['combat','Combat'],['skills','Skills'],['obj','Objectives']],sn=subTabs('gx-ev-'+id,tabs),n=d.docs.length;
   return '<p class="note" style="margin:0 0 8px">'+(n===ms.length?'All '+n:n+' of '+ms.length)+' match'+(n===1?'':'es')+' with ledger data, added together. Players are merged by name and times are counted from the start of each match.'+(n<ms.length?' The rest have no ledger data and are left out.':'')+'</p>'+
     '<div class="gxsub">'+sn.h.replace('subnav','subnav sub2')+'</div>'+(sn.cur==='obj'?'':gxTypeBar(sn.cur))+(sn.cur==='time'?gxTime(d)+extra:sn.cur==='combat'?gxCombat(d):sn.cur==='skills'?gxSkills(d):gxObj(d));
 }
+function gxOldText(){GXOLD='This match was stored before this data was kept. '+(canEdit?'Click Rebuild from raw ledger at the top of this page, or Rebuild all matches under Admin, Match handler.':'An admin can rebuild it from its stored raw ledger.')}
 function viewGraphs(id,d){
-  if(!d.ledger)return '';
+  gxOldText();if(!d.ledger)return '';
   var tabs=[['time','Over time'],['combat','Combat'],['skills','Skills'],['obj','Objectives']],sn=subTabs('gx-'+id,tabs);
   return '<div class="gxsub">'+sn.h.replace('subnav','subnav sub2')+'</div>'+(sn.cur==='obj'?'':gxTypeBar(sn.cur))+(sn.cur==='time'?gxTime(d)+anaMatchSections(id,d,'graphs')+teamDamage(gxTyped(d)):sn.cur==='combat'?gxCombat(d):sn.cur==='skills'?gxSkills(d):gxObj(d));
 }
