@@ -98,6 +98,7 @@ label.chk{display:inline-flex;gap:8px;align-items:center;color:var(--muted);curs
 .mlist{display:grid;gap:10px}.mcard{position:relative;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1.5fr) minmax(0,1fr);gap:14px;align-items:center;padding:14px 16px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}.mcard:hover{border-color:var(--muted)}.mcard .mlink{color:var(--fg);font:600 19px var(--font-d);text-decoration:none;border:0}.mcard .mlink::after{content:'';position:absolute;inset:0}.mcard small{display:block;color:var(--muted);margin-top:3px}.mcard .mfile{opacity:.7;overflow-wrap:anywhere}.mscore{display:flex;gap:12px;align-items:center;flex-wrap:wrap;font:600 18px var(--font-d)}.mscore .mt{display:inline-flex;align-items:center;gap:6px}.mscore .mt i{width:10px;height:10px;border-radius:2px}.mscore .mt.l{color:var(--muted)}.mscore .mt.w{color:var(--fg)}.mscore .n{font-variant-numeric:tabular-nums}.mscore .vs{color:var(--muted);font-size:13px;text-transform:uppercase}.mme{display:flex;flex-direction:column;gap:2px;align-items:flex-start}.mfbar{display:flex;gap:12px 16px;flex-wrap:wrap;align-items:center}.mfbar input[type=search]{flex:1 1 220px;min-width:0}.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 @media (max-width:700px){.mcard{grid-template-columns:minmax(0,1fr);gap:8px}}
 .skgrp>summary{cursor:pointer;display:flex;align-items:center;flex-wrap:wrap;margin:-4px 0 8px}.skgrp:not([open])>summary{margin:0}.skx{background:none;border:0;color:var(--muted);cursor:pointer;font-size:15px;padding:6px 8px;line-height:1}.skx:hover{color:var(--fg)}.skdrill td{background:rgba(255,255,255,.03)}.skdrill table{margin:4px 0 10px}
+tr[style*="--tc"]{background:color-mix(in srgb,var(--tc) 18%,transparent)}tr[style*="--tc"] td:first-child{box-shadow:inset 4px 0 0 var(--tc)}a.tname{margin:0 0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;text-decoration:none;color:var(--muted)}
 nav.sec{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 16px;border-bottom:1px solid var(--line)}nav.sec a{color:var(--muted);font:600 16px/1 var(--font-d);letter-spacing:.06em;text-transform:uppercase;padding:10px 16px 11px;border-bottom:3px solid transparent;margin-bottom:-1px;text-decoration:none}nav.sec a:hover{color:var(--fg)}nav.sec a[aria-current=page]{color:var(--fg);border-bottom-color:var(--accent)}
 .gxchips{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}.gxchips button{background:var(--panel);border:1px solid var(--line);border-radius:6px;color:var(--fg);font:600 14px/1 var(--font-d);padding:8px 12px;cursor:pointer}.gxchips button:hover{border-color:var(--muted)}.gxchips button[aria-pressed=true]{border-color:var(--accent);box-shadow:inset 0 -3px 0 var(--accent)}.gxsub .subnav{margin-bottom:10px;border-bottom:0}.gxsub .subnav button{font-size:14px;padding:8px 14px;border:1px solid var(--line);border-radius:6px;margin:0 4px 6px 0}.gxsub .subnav button[aria-selected=true]{border-color:var(--accent);background:var(--panel)}
 .skwrap{display:grid;grid-template-columns:128px minmax(0,1fr);gap:18px;align-items:start}.skrail{position:sticky;top:8px;display:flex;flex-direction:column;gap:6px}.skrail button{display:flex;align-items:center;gap:8px;text-align:left;background:none;border:1px solid var(--line);border-radius:6px;color:var(--fg);font:600 14px/1 var(--font-d);letter-spacing:.04em;padding:9px 10px;cursor:pointer}.skrail button:hover{border-color:var(--muted)}.skrail button[aria-pressed=true]{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}.skmain{min-width:0}
@@ -137,7 +138,7 @@ a.fhero:hover{border-color:var(--fc)}a.fhero:focus-visible{outline:2px solid var
 .h2hkey{display:flex;justify-content:space-between;font:600 13px var(--font-d);letter-spacing:.06em;text-transform:uppercase;margin-top:8px}.h2h em.lead{color:var(--accent)}
 .cb2{display:grid;grid-template-columns:110px 1fr 64px;gap:10px;align-items:center}.cb2 em{font-style:normal;text-align:right;font-variant-numeric:tabular-nums}
 .fmatch li{grid-template-columns:62px 92px 1fr}.fsc{font-variant-numeric:tabular-nums;white-space:nowrap}
-.podium{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}.pcard{display:flex;flex-direction:column;gap:4px;border:1px solid var(--line);border-left:4px solid var(--fc);border-radius:6px;padding:12px 14px;background:var(--panel);color:var(--fg);text-decoration:none}.pcard:hover{border-color:var(--fc)}.pcard .pn{color:var(--muted);font:700 13px var(--font-d)}.pcard strong{font-size:18px;overflow-wrap:anywhere}.pcard small{color:var(--muted)}.bkx{border-collapse:collapse;font-size:13px}.bkx th,.bkx td{padding:6px 10px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}.bkx th{color:var(--muted);font-weight:600;max-width:120px;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom}
+.podium{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}.pcard{display:flex;flex-direction:column;gap:4px;border:1px solid var(--line);border-left:4px solid var(--fc);border-radius:6px;padding:12px 14px;background:var(--panel);color:var(--fg);text-decoration:none}.pcard:hover{border-color:var(--fc)}.pcard .pn{color:var(--muted);font:700 13px var(--font-d)}.pcard strong{font-size:18px;overflow-wrap:anywhere}.pcard small{color:var(--muted)}.bkx{border-collapse:collapse;font-size:13px}.bkx th,.bkx td{padding:6px 10px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}.bkx th{color:var(--muted);font-weight:600;min-width:84px;max-width:118px;white-space:normal;line-height:1.2;vertical-align:bottom}.bkx th:nth-child(2),.bkx td:nth-child(2){text-align:right}.bkx th:first-child,.bkx td:first-child{position:sticky;left:0;z-index:1;background:var(--panel);text-align:left}
 .subnav{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 16px;border-bottom:1px solid var(--line)}.subnav button{background:none;border:0;border-bottom:3px solid transparent;color:var(--muted);font:600 16px/1 var(--font-d);letter-spacing:.06em;text-transform:uppercase;padding:10px 16px 11px;cursor:pointer;margin-bottom:-1px}.subnav button:hover{color:var(--fg)}.subnav button[aria-selected=true]{color:var(--fg);border-bottom-color:var(--accent)}
 .pcard.story{border-top:3px solid var(--accent)}.pcard.top{border:1px solid var(--accent);border-left:4px solid var(--fc)}.pcard.top strong{font-size:22px}
 .accstrip{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:14px}
@@ -148,7 +149,7 @@ a.fhero:hover{border-color:var(--fc)}a.fhero:focus-visible{outline:2px solid var
 .accteam .podium{grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}
 .accteam summary{cursor:pointer;color:var(--muted);font-size:13px;margin-top:10px}
 @media (max-width:820px){.versus{grid-template-columns:1fr}.vs{justify-self:center}.fbanner{height:84px}.fname{font-size:21px}.frec b{font-size:32px}}
-.mctl{display:flex;flex-wrap:wrap;gap:12px 16px;align-items:end}.mfld{display:flex;flex-direction:column;gap:4px;min-width:150px;flex:1 1 150px;color:var(--muted);font-size:13px}.mfld select,.mfld input[type=number]{background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:7px;font:inherit}.mfld input[type=range]{width:100%}.mchk{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;flex:1 1 100%}
+.mctl{display:flex;flex-wrap:wrap;gap:12px 16px;align-items:end}.mfld{display:flex;flex-direction:column;gap:4px;min-width:150px;flex:1 1 150px;color:var(--muted);font-size:13px}.chk select{background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:6px 8px;font:inherit}.mfld select,.mfld input[type=number]{background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:7px;font:inherit}.mfld input[type=range]{width:100%}.mchk{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;flex:1 1 100%}
 .mapgrid{display:grid;grid-template-columns:minmax(0,520px) minmax(0,1fr);gap:18px;align-items:start;margin-top:14px}.mapwrap{position:sticky;top:8px;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:#000}.mapwrap canvas{display:block;width:100%;height:auto}.mapside{display:flex;flex-direction:column;gap:14px;min-width:0}
 .mstrip{display:grid;grid-template-columns:60px 1fr;gap:10px;align-items:center;margin:8px 0}.mtr{position:relative;height:18px;background:var(--panel2);border-radius:4px;overflow:hidden;cursor:pointer;border:1px solid var(--line)}.mtr i{position:absolute;top:0;bottom:0}.mtr b{position:absolute;top:-2px;bottom:-2px;width:2px;background:#fff;box-shadow:0 0 0 1px #000}
 @media (max-width:980px){.mapgrid{grid-template-columns:minmax(0,1fr)}.mapwrap{position:relative}}
@@ -222,7 +223,7 @@ function parseMatchLedger(text,fileName){
       pb:(function(){if(!(tl&&tl.rows&&ci&&ci.a>=0))return null;var r=tl.rows.map(function(x){return Math.round(x[ci.a]||0)});return r.some(Boolean)?{s:tl.binSec||10,r:r}:null})(),
       stats:s,
       tl:(function(){if(!(tl&&tl.rows&&tl.cols))return null;return {s:tl.binSec||10,c:tl.cols,r:tl.rows.slice(0,2400).map(function(x){return x.map(function(v){return Math.round((v||0)*10)/10})})}})(),
-      regen:p.regen||null,heal:p.heal||null,
+      regen:p.regen||null,healx:p.heal||null,
       snap:(p.statSnapshots||[]).slice(0,60).map(function(x){return {t:Math.round(x.t||0),w:x.why||'',al:x.alive?1:0,v:x.vitals||null,pr:x.primary||null,st:x.stats||null}}),
       skills:(p.skills||[]).filter(function(k){return k.casts||((k.pvp||{}).hits)||((k.pve||{}).hits)}).map(function(k){function q(o){o=o||{};return {hits:o.hits||0,crits:o.crits||0,kills:o.kills||0,base:r1(o.base),pre:r1(o.preMitigation),mit:r1(o.mitigated),crit:r1(o.critBonus),res:r1(o.resolved),abs:r1(o.absorbed),hl:r1(o.healthLost),over:r1(o.overkill)}}var ac=k.accuracy,cd=k.cooldown,pc=k.placed;return {skill:String(k.skill||'').replace(/^Aeon\.Ability\./,''),casts:k.casts||0,cm:k.committed||0,pvp:q(k.pvp),pve:q(k.pve),acc:ac&&typeof ac==='object'?{k:ac.kind||'',a:ac.attempts||0,l:ac.landed||0}:null,cd:cd&&typeof cd==='object'?{n:cd.applied||0,a:r1(cd.authoredSec),p:r1(cd.appliedSec)}:null,res:k.resource&&typeof k.resource==='object'?k.resource:null,pl:pc&&typeof pc==='object'?{n:pc.placements||0,t:pc.triggered||0}:null}}),
       from:(p.damageTakenFrom||[]).filter(function(x){return x.player!=null&&byId[x.player]&&x.healthLost>0}).map(function(x){return [byId[x.player].name,Math.round(x.healthLost)]})}});
@@ -381,12 +382,12 @@ function classAgg(){
 }
 
 /* ---- sortable table ---- */
-function table(id,cols,rows,onclickKey){
+function table(id,cols,rows,onclickKey,rowStyle){
   var st=sortState[id];
   rows=rows.slice().sort(function(a,b){var x=a[st.k],y=b[st.k];if(typeof x==='string')return st.d*x.localeCompare(y);return st.d*((x||0)-(y||0))});
   var h='<div class="scroll"><table><thead><tr><th class="rank" scope="col"><button type="button" disabled>#</button></th>'+cols.map(function(c){
     var s=st.k===c.k;return '<th scope="col"'+(s?' aria-sort="'+(st.d<0?'descending':'ascending')+'"':'')+'><button type="button" data-sort="'+id+':'+c.k+'">'+esc(c.l)+(s?(st.d<0?' ▾':' ▴'):'')+'</button></th>'}).join('')+'</tr></thead><tbody>';
-  rows.forEach(function(r,i){h+='<tr'+(onclickKey?' class="click" tabindex="0" data-go="'+esc(r[onclickKey])+'"':'')+'><td class="rank">'+(i+1)+'</td>'+cols.map(function(c){return '<td>'+(c.f?c.f(r):esc(r[c.k]))+'</td>'}).join('')+'</tr>'});
+  rows.forEach(function(r,i){h+='<tr'+(onclickKey?' class="click" tabindex="0" data-go="'+esc(r[onclickKey])+'"':'')+(rowStyle?' style="'+rowStyle(r)+'"':'')+'><td class="rank">'+(i+1)+'</td>'+cols.map(function(c){return '<td>'+(c.f?c.f(r):esc(r[c.k]))+'</td>'}).join('')+'</tr>'});
   return h+'</tbody></table></div>';
 }
 
@@ -1621,7 +1622,7 @@ function viewBreakdown(id,d){
     cols.forEach(function(c){mx[c]=Math.max.apply(null,pl.map(function(p){return cell[p.name][c]||0}))||1});
     var order=pl.slice().sort(function(a,b){return (a.team-b.team)||((b.dmg||0)-(a.dmg||0))});
     h+='<div class="panel"><h2>Ability matrix</h2><div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><label class="chk">Show <select id="bkMetric">'+Object.keys(M).map(function(k){return '<option value="'+k+'"'+(mk===k?' selected':'')+'>'+M[k][0]+'</option>'}).join('')+'</select></label><span class="note" style="margin:0">Players down, the match top '+cols.length+' abilities across. Darker means more of that ability than the rest of the lobby.</span></div>'+
-      '<div class="scroll"><table class="bkx"><thead><tr><th scope="col" style="text-align:left">Player</th>'+cols.map(function(c){return '<th scope="col" title="'+esc(c)+'">'+esc(skName(c))+'</th>'}).join('')+'</tr></thead><tbody>'+
+      '<div class="scroll"><table class="bkx"><thead><tr><th scope="col" style="text-align:left">Player</th>'+cols.map(function(c){return '<th scope="col" title="'+esc(c)+'">'+esc(skName(c).replace(/([a-z])([A-Z])/g,'$1 $2'))+'</th>'}).join('')+'</tr></thead><tbody>'+
       order.map(function(p){return '<tr><td style="text-align:left;white-space:nowrap"><span style="color:'+(TEAMS[p.team]?TEAMS[p.team].col:'var(--muted)')+'">&#9632;</span> <a class="plink" href="#player-'+slug(p.name)+'">'+esc(p.name)+'</a></td>'+cols.map(function(c){var v=cell[p.name][c]||0;return '<td'+(v?' style="background:color-mix(in srgb,var(--accent) '+Math.round(8+62*v/mx[c])+'%,transparent)"':'')+'>'+(v?num(v):'')+'</td>'}).join('')+'</tr>'}).join('')+'</tbody></table></div></div>';
   }
   return h;
@@ -1650,8 +1651,7 @@ function viewMatch(id){
   if(hasResult(d)&&TFLAG[R.winner])h+='<div class="sbn l" aria-hidden="true"><img alt="" src="'+TFLAG[R.winner]+'"></div><div class="sbn r" aria-hidden="true"><img alt="" src="'+TFLAG[R.winner]+'"></div>';
   st+=accoladePanel(anaMatchRows(d),false,'Match accolades',[{id:id,doc:d}]);
   st+='<div class="panel">'+table('match',[
-    {k:'name',l:'Player',f:function(r){return '<a class="plink" href="#player-'+slug(r.name)+'">'+esc(r.name)+'</a>'}},
-    {k:'team',l:'Team',f:function(r){return teamTag(r.team)}},
+    {k:'name',l:'Player',f:function(r){return '<a class="plink" href="#player-'+slug(r.name)+'">'+esc(r.name)+'</a> <a class="note tname" href="#faction-'+r.team+'">'+esc(teamName(r.team))+'</a>'}},
     {k:'cls',l:'Class',f:function(r){return clsCell(r.cls)}},
     {k:'rating',l:'Match rating',f:function(r){return '<strong>'+num(r.rating)+'</strong>'}},
     {k:'score',l:'Score',f:function(r){return num(r.score)}},
@@ -1666,7 +1666,7 @@ function viewMatch(id){
     {k:'mitig',l:'Absorbed',f:function(r){return num(r.mitig)}},
     {k:'mitP',l:'PvP hits mitigated',f:function(r){return r.mitP==null?'-':num(r.mitP)}},
     {k:'dpm',l:'Dmg/min',f:function(r){return num(r.dpm)}}
-  ],rows)+'</div>';
+  ],rows,null,function(r){return TEAMS[r.team]?'--tc:'+TEAMS[r.team].col:''})+'</div>';
   st+=objPanel(d,(d.players||[]).filter(function(p){return !(hideBots&&isBot(p.name))}));
   var tabs=[['stats','Stats &amp; accolades']];if(canDesign)tabs.push(['break','Breakdown']);if(d.ledger)tabs.push(['map','Heat map']);if(canDesign){tabs.push(['graphs','Graphs']);if(anaHas(d))tabs.push(['analysis','Analysis'])}tabs.push(['log','Event log']);
   var sn=subTabs('match-'+id,tabs);h+=sn.h;
@@ -1764,7 +1764,7 @@ function gxCombat(d){
     var ks=Object.keys(cx).sort(function(a,b){return cx[b]-cx[a]});
     if(ks.length)h+='<div class="panel scroll"><h2>Class vs class</h2><p class="note" style="margin:0 0 8px">Health lost by the victim class, by the attacking class. A class that dominates this table is a balance candidate.</p><table><thead><tr><th scope="col">Attacker</th><th scope="col">Victim</th><th scope="col">Health lost</th></tr></thead><tbody>'+ks.map(function(k){var a=k.split('>');return '<tr><td>'+clsPlain(a[0])+'</td><td>'+clsPlain(a[1])+'</td><td>'+num(cx[k])+'</td></tr>'}).join('')+'</tbody></table></div>';
   }else if(gx.cb==='regen'){
-    var rows=pl.map(function(o){var r=o.p.regen||{},h2=o.p.heal||{};return {name:o.p.name,cls:o.p.cls||'',he:r.Health||0,en:r.Energy||0,fo:r.Focus||0,sp:(h2.self||{}).pvp||0,ap:(h2.ally||{}).pvp||0}});
+    var rows=pl.map(function(o){var r=o.p.regen||{},h2=o.p.healx||{};return {name:o.p.name,cls:o.p.cls||'',he:r.Health||0,en:r.Energy||0,fo:r.Focus||0,sp:(h2.self||{}).pvp||0,ap:(h2.ally||{}).pvp||0}});
     if(!pl.some(function(o){return o.p.regen}))return h+gxNeed(GXOLD);
     h+='<div class="panel"><h2>Regeneration</h2>'+table('gxrg',[{k:'name',l:'Player',f:function(r){return esc(r.name)}},{k:'cls',l:'Class',f:function(r){return clsPlain(r.cls)}},{k:'he',l:'Health regen',f:function(r){return num(r.he)}},{k:'en',l:'Energy regen',f:function(r){return num(r.en)}},{k:'fo',l:'Focus regen',f:function(r){return num(r.fo)}},{k:'sp',l:'Self heal (PvP)',f:function(r){return num(r.sp)}},{k:'ap',l:'Ally heal (PvP)',f:function(r){return num(r.ap)}}],rows)+'<p class="note">Totals over the match, from the ledger. A class with far more regen than its peers, or a resource that never regenerates, is worth a look.</p></div>';
   }else{
@@ -1881,9 +1881,9 @@ function evGxDoc(ms){
   L.forEach(function(m,mi){var d=m.doc,lab=mtitle(d),map={};
     maxDur=Math.max(maxDur,d.duration||0);sumDur+=d.duration||0;
     (d.players||[]).forEach(function(p,pi){
-      var a=P[p.name];if(!a){a={name:p.name,cls:p.cls,team:p.team,tc:{},cc:{},stats:{},skills:{},from:{},tl:null,regen:{},heal:{self:{},ally:{}},idx:order.length};P[p.name]=a;order.push(a)}
+      var a=P[p.name];if(!a){a={name:p.name,cls:p.cls,team:p.team,tc:{},cc:{},stats:{},skills:{},from:{},tl:null,regen:{},healx:{self:{},ally:{}},idx:order.length};P[p.name]=a;order.push(a)}
       map[pi]=a.idx;a.tc[p.team]=(a.tc[p.team]||0)+1;a.cc[p.cls||'']=(a.cc[p.cls||'']||0)+1;
-      evNumSum(a.stats,p.stats);evNumSum(a.regen,p.regen);if(p.heal){evNumSum(a.heal.self,p.heal.self);evNumSum(a.heal.ally,p.heal.ally)}
+      evNumSum(a.stats,p.stats);evNumSum(a.regen,p.regen);if(p.healx){evNumSum(a.healx.self,p.healx.self);evNumSum(a.healx.ally,p.healx.ally)}
       (p.from||[]).forEach(function(f){a.from[f[0]]=(a.from[f[0]]||0)+f[1]});
       (p.skills||[]).forEach(function(k){var t=a.skills[k.skill]||(a.skills[k.skill]={skill:k.skill,casts:0,cm:0,pvp:{hits:0,crits:0,kills:0,base:0,pre:0,mit:0,crit:0,res:0,abs:0,hl:0,over:0},pve:{hits:0,crits:0,kills:0,base:0,pre:0,mit:0,crit:0,res:0,abs:0,hl:0,over:0},acc:null,cd:null,res:null,pl:null});
         t.casts+=k.casts;t.cm+=k.cm||0;evNumSum(t.pvp,k.pvp);evNumSum(t.pve,k.pve);if(k.acc){t.acc=t.acc||{k:k.acc.k,a:0,l:0};t.acc.a+=k.acc.a;t.acc.l+=k.acc.l}
