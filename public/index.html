@@ -179,11 +179,12 @@ function parseMatchLedger(text,fileName){
   if(!L||!Array.isArray(L.players)||L.teamPoints==null)throw new Error('Not a match ledger: no players or teamPoints.');
   var BUCKET=30,r1=function(v){return Math.round((+v||0)*10)/10},TM={},tm=function(k){return TM[k]||(TM[k]={kills:0,points:0,relics:0,carrierKills:0})};
   var byId={};L.players.forEach(function(p){byId[p.id]=p});
+  var ENVK='Mob or environment',skl=function(x){x=String(x||'').replace(/^Aeon\.Ability\./,'');return x==='None'?'':x};
   var dur=+L.durationSec||+L.durationSeconds||0;
   Object.keys(L.teamPoints).forEach(function(k){tm(+k).points=+L.teamPoints[k]||0});
   var ev=[],tiers={},bossK={};
   (L.kills||[]).forEach(function(k){var a=byId[k.killer],v=byId[k.victim];if(a&&!k.selfKill)tm(a.team).kills++;
-    ev.push({t:r1(k.t),k:'kill',x:(a?a.name:'?')+' killed '+(v?v.name:'?')+(k.skill?' with '+k.skill.replace(/^Aeon\.Ability\./,''):'')})});
+    ev.push({t:r1(k.t),k:'kill',x:(a?a.name:ENVK)+' killed '+(v?v.name:'?')+(skl(k.skill)?' with '+skl(k.skill):'')})});
   (L.mobKills||[]).forEach(function(m){var t=tiers[m.killer]||(tiers[m.killer]={Easy:0,Medium:0,Hard:0});if(t[m.tier]!==undefined)t[m.tier]++});
   (L.bossKills||[]).forEach(function(b){bossK[b.killer]=(bossK[b.killer]||0)+1;var a=byId[b.killer];ev.push({t:r1(b.t),k:'boss',x:(a?a.name:'?')+' killed '+String(b.boss||'boss').replace(/_C$/,'')})});
   var carriers={};
@@ -196,11 +197,12 @@ function parseMatchLedger(text,fileName){
   function at(id,t,alive){var a=posOf[id]||[],b=null;for(var i=0;i<a.length;i++){if(a[i][0]<=t){if(!alive||a[i][3])b=a[i]}else break}return b||(alive?null:a[0])||null}
   var log=[],cpTl=[];
   function nm(i){return byId[i]?byId[i].name:'?'}
+  function nmk(i){return byId[i]?byId[i].name:(i===-1?ENVK:'?')}
   function tmOf(i){return byId[i]?byId[i].team:-1}
   function lg(e,q){if(q){e.x=Math.round(q[1]);e.y=Math.round(q[2])}e.t=r1(e.t);if(e.x!=null)log.push(e)}
   (L.kills||[]).forEach(function(k){var q=at(k.victim,k.t,true)||at(k.victim,k.t,false);
-    lg({t:k.t,k:'kill',a:nm(k.killer),b:nm(k.victim),team:tmOf(k.killer),sk:(k.skill||'').replace(/^Aeon\.Ability\./,'')},q);
-    lg({t:k.t,k:'death',a:nm(k.killer),b:nm(k.victim),team:tmOf(k.victim)},q)});
+    lg({t:k.t,k:'kill',a:nmk(k.killer),b:nm(k.victim),team:tmOf(k.killer),sk:skl(k.skill)},q);
+    lg({t:k.t,k:'death',a:nmk(k.killer),b:nm(k.victim),team:tmOf(k.victim)},q)});
   (L.mobKills||[]).forEach(function(m){lg({t:m.t,k:'mob',a:nm(m.killer),team:tmOf(m.killer),tier:m.tier},at(m.killer,m.t,false))});
   (L.bossKills||[]).forEach(function(b){lg({t:b.t,k:'boss',a:nm(b.killer),team:tmOf(b.killer)},at(b.killer,b.t,false))});
   (L.relicEvents||[]).forEach(function(e){lg({t:e.t,k:'relic',a:nm(e.player),team:tmOf(e.player),ty:e.type,rt:e.relicTeam},at(e.player,e.t,false))});
@@ -227,7 +229,7 @@ function parseMatchLedger(text,fileName){
       regen:p.regen||null,healx:p.heal||null,
       it:(function(){var o=p.items,a=[];if(o&&typeof o==='object')Object.keys(o).forEach(function(n){var x=o[n];if(!x||typeof x!=='object'||!x.uses)return;var hh=x.health&&typeof x.health==='object'?(+x.health.pvp||0)+(+x.health.out||0):0;a.push({k:String(n).replace(/^Aeon\.Ability\./,''),u:x.uses||0,h:r1(hh),o:r1(x.overheal)})});return a.length?a:null})(),
       snap:(p.statSnapshots||[]).slice(0,60).map(function(x){return {t:Math.round(x.t||0),w:x.why||'',al:x.alive?1:0,v:x.vitals||null,pr:x.primary||null,st:x.stats||null}}),
-      skills:(p.skills||[]).filter(function(k){return k.casts||((k.pvp||{}).hits)||((k.pve||{}).hits)||((k.heal||{}).heals)}).map(function(k){function q(o){o=o||{};return {hits:o.hits||0,crits:o.crits||0,kills:o.kills||0,base:r1(o.base),pre:r1(o.preMitigation),mit:r1(o.mitigated),crit:r1(o.critBonus),res:r1(o.resolved),abs:r1(o.absorbed),hl:r1(o.healthLost),over:r1(o.overkill)}}var ac=k.accuracy,cd=k.cooldown,pc=k.placed;var hq=k.heal&&typeof k.heal==='object'&&k.heal.heals?{n:k.heal.heals||0,c:k.heal.crits||0,e:r1(k.heal.effective),o:r1(k.heal.overheal),s:r1(k.heal.selfEffective),r:r1(k.heal.resolved)}:null;return {skill:String(k.skill||'').replace(/^Aeon\.Ability\./,''),casts:k.casts||0,cm:k.committed||0,pvp:q(k.pvp),pve:q(k.pve),he:hq,acc:ac&&typeof ac==='object'?{k:ac.kind||'',a:ac.attempts||0,l:ac.landed||0}:null,cd:cd&&typeof cd==='object'?{n:cd.applied||0,a:r1(cd.authoredSec),p:r1(cd.appliedSec)}:null,res:k.resource&&typeof k.resource==='object'?k.resource:null,pl:pc&&typeof pc==='object'?{n:pc.placements||0,t:pc.triggered||0}:null}}),
+      skills:(p.skills||[]).filter(function(k){return k.casts||((k.pvp||{}).hits)||((k.pve||{}).hits)||((k.heal||{}).heals)}).map(function(k){function q(o){o=o||{};return {hits:o.hits||0,crits:o.crits||0,kills:o.kills||0,base:r1(o.base),pre:r1(o.preMitigation),mit:r1(o.mitigated),crit:r1(o.critBonus),res:r1(o.resolved),abs:r1(o.absorbed),hl:r1(o.healthLost),over:r1(o.overkill)}}var ac=k.accuracy,cd=k.cooldown,pc=k.placed;var hq=k.heal&&typeof k.heal==='object'&&k.heal.heals?{n:k.heal.heals||0,c:k.heal.crits||0,e:r1(k.heal.effective),o:r1(k.heal.overheal),s:r1(k.heal.selfEffective),r:r1(k.heal.resolved)}:null;return {skill:String(k.skill||'').replace(/^Aeon\.Ability\./,''),casts:k.casts||0,cm:k.committed||0,pvp:q(k.pvp),pve:q(k.pve),he:hq,acc:ac&&typeof ac==='object'?(function(t){return {k:ac.kind||'',a:t.attempts||0,l:t.landed||0}})(ac.allSteps&&typeof ac.allSteps==='object'?ac.allSteps:ac):null,nk:!ac&&k.accuracyKind==null?1:0,cd:cd&&typeof cd==='object'?{n:cd.applied||0,a:r1(cd.authoredSec),p:r1(cd.appliedSec)}:null,res:k.resource&&typeof k.resource==='object'?k.resource:null,pl:pc&&typeof pc==='object'?{n:pc.placements||0,t:pc.triggered||0}:null}}),
       from:(p.damageTakenFrom||[]).filter(function(x){return x.player!=null&&byId[x.player]&&x.healthLost>0}).map(function(x){return [byId[x.player].name,Math.round(x.healthLost)]})}});
   players.forEach(function(p){if(p.carrierKills&&p.team>=0)tm(p.team).carrierKills+=p.carrierKills});
   var w=L.winningTeam,result=(w===0||w===1)?{winner:w,src:'log'}:null;
@@ -1085,20 +1087,23 @@ function viewAdmin(){
   function addIssue(id,sev,check,items,detail){
     var g={},o=[];items.forEach(function(x){var k=x.m||'all';if(!g[k]){g[k]={key:id+':'+k,id:id,sev:sev,check:check,detail:detail,m:x.m||null,mn:x.mn||'All matches',ctx:x.m?matchCtx(x.m):'',who:[]};o.push(g[k])}if(x.t)g[k].who.push(x.t)});
     o.forEach(function(b){bl.push(b)})}
-  var ovSkill=[],ovItem=[],scoreBad=[],noRes=[],oldFmt=[],noClass=[],noTeam=[],priest0=[],killNoDmg=[],short=[],bigDoc=[],hits=[],practice=[],noCols=[],noCore=[],noOther=[],oddType=[],blankType=[];
+  var ssZero=[],commitHi=[],noKind=[],noSkill=[],ovSkill=[],ovItem=[],scoreBad=[],noRes=[],oldFmt=[],noClass=[],noTeam=[],priest0=[],killNoDmg=[],short=[],bigDoc=[],hits=[],practice=[],noCols=[],noCore=[],noOther=[],oddType=[],blankType=[];
   ms.forEach(function(m){var d=m.doc;T.mins+=(d.duration||0)/60;T.rows+=d.rows||0;
     var sz=JSON.stringify(d).length;if(sz>sizeMax)sizeMax=sz;if(sz>DOC_WARN)bigDoc.push({m:m.id,mn:mtitle(d)});
     if(!hasResult(d))noRes.push({m:m.id,mn:mtitle(d),t:d.ledger?(d.endReason||'no end reason'):''});if(d.scoreCheck&&d.scoreCheck.ok===false)scoreBad.push({m:m.id,mn:mtitle(d),t:'reported '+JSON.stringify(d.scoreCheck.reported)+' vs sum of types '+JSON.stringify(d.scoreCheck.sumOfTypes)});if(!d.v||d.v<2)oldFmt.push({m:m.id,mn:mtitle(d)});if((d.duration||0)<300)short.push({m:m.id,mn:mtitle(d)});if(isPractice(d))practice.push({m:m.id,mn:mtitle(d)});
-    if(d.cols&&!d.summary)EXPECT_COLS.forEach(function(c){if(d.cols.indexOf(c)<0)noCols.push({m:m.id,mn:mtitle(d),t:c})});
+    if(d.cols&&!d.summary&&!d.ledger)EXPECT_COLS.forEach(function(c){if(d.cols.indexOf(c)<0)noCols.push({m:m.id,mn:mtitle(d),t:c})});
     if(d.types&&!d.summary&&(d.rows||0)>0){
       CORE_TYPES.forEach(function(t){if(!d.types[t]&&!(t==='DamageDealt'&&d.noDmg))noCore.push({m:m.id,mn:mtitle(d),t:t})});
       OTHER_TYPES.forEach(function(t){if(!d.types[t])noOther.push({m:m.id,mn:mtitle(d),t:t})});
       Object.keys(d.types).forEach(function(t){if(t==='')blankType.push({m:m.id,mn:mtitle(d),t:d.types[t]+' rows'});else if(KNOWN_TYPES.indexOf(t)<0)oddType.push({m:m.id,mn:mtitle(d),t:t+' ('+d.types[t]+')'})})}
     var tms=d.teams||{};Object.keys(tms).forEach(function(k){var a=teams[k]||(teams[k]={team:+k,matches:0,w:0,l:0,dr:0,kills:0,points:0,relics:0});a.matches++;a.kills+=tms[k].kills;a.points+=tms[k].points;a.relics+=tms[k].relics;var o=outcome(d,+k);if(o==='win')a.w++;else if(o==='loss')a.l++;else if(o==='draw')a.dr++});
+    var fromSum={};(d.players||[]).forEach(function(q){(q.from||[]).forEach(function(f){fromSum[f[0]]=(fromSum[f[0]]||0)+f[1]})});
     (d.players||[]).forEach(function(p){
       if(isBot(p.name)){T.bots[p.name]=1;return}T.humans[p.name]=1;
       T.dmg+=p.dmg;T.kills+=p.kills;T.deaths+=p.deaths;T.boss+=p.bossKills;
       if(!p.cls)noClass.push({m:m.id,mn:mtitle(d),t:p.name});if(p.team==null||p.team<0)noTeam.push({m:m.id,mn:mtitle(d),t:p.name});
+      (p.skills||[]).forEach(function(k){var nmk=p.name+' '+skName(k.skill);if(k.acc&&k.acc.k==='Skillshot'&&k.casts>=5&&!k.acc.a)ssZero.push({m:m.id,mn:mtitle(d),t:nmk+' ('+k.casts+' casts, '+(k.pvp.hits+k.pve.hits)+' hits)'});if(k.cm>k.casts)commitHi.push({m:m.id,mn:mtitle(d),t:nmk+' committed '+k.cm+', cast '+k.casts});if(k.nk)noKind.push({m:m.id,mn:mtitle(d),t:nmk+' ('+k.casts+' casts, '+(k.pvp.hits+k.pve.hits)+' hits)'})});
+      (function(){var sk=0;(p.skills||[]).forEach(function(k){sk+=k.pvp.hl});var fs=fromSum[p.name]||0;if(fs-sk>=100&&fs-sk>0.03*fs)noSkill.push({m:m.id,mn:mtitle(d),t:p.name+' '+Math.round(fs-sk)+' of '+Math.round(fs)+' damage'})})();
       (p.skills||[]).forEach(function(k){var x=k.he;if(x&&x.o>=500&&x.e+x.o>0&&x.o/(x.e+x.o)>=0.5)ovSkill.push({m:m.id,mn:mtitle(d),t:p.name+' '+skName(k.skill)+' '+Math.round(100*x.o/(x.e+x.o))+'% ('+Math.round(x.o)+' wasted)'})});
       (p.it||[]).forEach(function(x){if(x.o>=300&&x.h+x.o>0&&x.o/(x.h+x.o)>=0.5)ovItem.push({m:m.id,mn:mtitle(d),t:p.name+' '+x.k+' '+Math.round(100*x.o/(x.h+x.o))+'% ('+Math.round(x.o)+' wasted)'})});
       if(p.cls==='Priest'&&!p.heal)priest0.push({m:m.id,mn:mtitle(d),t:p.name});
@@ -1119,6 +1124,10 @@ function viewAdmin(){
   addIssue('noCore','Medium','Core event type missing from the log',noCore,'The log has no rows of this type at all. Damage, kills and deaths drive almost every stat.');
   addIssue('noTeam','Medium','Player has no team in the log',noTeam,'TeamIndex is only written on some rows (kills, captures, relics). A player with none of those has no side, so they cannot get team wins.');
   addIssue('noClass','Medium','Player class could not be inferred',noClass,'Class comes from spawn and regen effect names. The log should carry the class directly.');
+  addIssue('skillshot0','Medium','A skillshot was cast but no attempts were recorded',ssZero,'The skill has casts but its accuracy block shows zero attempts, so accuracy cannot be measured and its hits may be missing from the skill. AimedShot does this in every match so far.');
+  addIssue('commitHi','Low','A skill committed more than it was cast',commitHi,'Committed (resources spent) is higher than casts, which should not happen. The cast counter may not see every start of a charged or multi-step skill.');
+  addIssue('nokind','Low','A skill has no accuracy kind',noKind,'Every other skill reports an accuracy block or a kind such as Unset or Utility. These report neither, so their accuracy cannot be graded. ArcaneWall and Voidsnare do this.');
+  addIssue('noskill','Medium','A player dealt damage that none of their skills account for',noSkill,'What victims lost to this player (damageTakenFrom) is higher than the sum of the damage on the player\'s own skills, so some hits are not credited to any skill. Skills for those hits are missing from the skill list, or are not counted.');
   addIssue('ovskill','Low','A heal skill spent half or more of its healing as overheal',ovSkill,'The heal landed on targets that were nearly full, so most of it did nothing. Compare the skill cost and cooldown with its real effect. If it happens in every match, the heal may be too big for the health pools, auto targeting may be picking full health allies, or the heal may be applying to the caster by mistake.');
   addIssue('ovitem','Low','A potion or food was mostly overheal',ovItem,'Consumable health that went past the maximum. Players may be drinking at near full health, or the item may restore far more than the pool needs. Check the item value against the class health pool.');
   addIssue('priest0','Medium','Priest with zero healing logged',priest0,'Healing to other players is not reaching the combat log, or the Priest never healed. Both need a look.');
@@ -1792,6 +1801,16 @@ function viewMatch(id){
 var gx={mm:0,metric:'dmg',type:'all',by:'team',bins:false,pl:'',cb:'vs',sk:'usage',ob:'score',sc:'tot',team:0};
 var GXM=[['dmg','Damage dealt'],['taken','Damage taken'],['heal','Healing given'],['healRecv','Healing received'],['ccApplied','Crowd control applied'],['itemUses','Item uses'],['casts','Casts'],['pvpSec','Seconds in PvP'],['objSec','Seconds on objective']];
 var GXPAL=['#e6a23c','#4fa3e0','#9b6bd6','#3fae6a','#e0566b','#d1c45a','#5cc7c0','#b88a64','#8a93a6'];
+/* One switch for the whole explorer. Damage dealt, damage taken, healing given, and skill hits, crits, kills and damage are recorded by type. Everything else is not, and the note under the switch says so for the tab you are on. */
+function gxTypeBar(tab){
+  var note={time:'Splits damage dealt. Other metrics are not recorded as PvP or PvE, so they show both.',
+    combat:'Splits damage dealt and taken and healing given. Healing received, overheal, shields and crowd control are not recorded by type, so they show under All only.',
+    skills:'Splits hits, crits, kills and damage. Casts, accuracy, the sequence and combo steps are not recorded by type, so they stay the same.'}[tab]||'';
+  return '<div class="panel" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding-top:10px;padding-bottom:10px"><strong>Show</strong>'+
+    '<span class="gxchips" style="margin:0" role="group" aria-label="Damage type">'+[['all','All'],['pvp','PvP'],['pve','PvE']].map(function(x){return '<button type="button" data-gx="type:'+x[0]+'" aria-pressed="'+(gx.type===x[0])+'">'+x[1]+'</button>'}).join('')+'</span>'+
+    (note?'<span class="note" style="margin:0">'+note+'</span>':'')+'</div>';
+}
+function gxTakenPvp(p){var f=p.from,t=0;if(Array.isArray(f))f.forEach(function(x){t+=x[1]||0});else if(f&&typeof f==='object')Object.keys(f).forEach(function(k){t+=f[k]||0});return t}
 function gxChips(key,list,cur){return '<div class="gxchips" role="group">'+list.map(function(x){return '<button type="button" data-gx="'+key+':'+x[0]+'" aria-pressed="'+(String(x[0])===String(cur))+'">'+x[1]+'</button>'}).join('')+'</div>'}
 function gxPlayers(d){var o=[];(d.players||[]).forEach(function(p,i){if(!(hideBots&&isBot(p.name)))o.push({p:p,i:i})});return o}
 function gxPlSel(d,all){var l=gxPlayers(d),cur=gx.pl;if(cur!==''&&!l.some(function(x){return x.p.name===cur}))cur='';if(!all&&cur==='')cur=l[0]?l[0].p.name:'';
@@ -1828,7 +1847,6 @@ function gxSeries(d,m,type){
 function gxTime(d){
   var m=GXM.filter(function(x){return x[0]===gx.metric})[0]||GXM[0],isD=m[0]==='dmg',by=gx.by==='match'&&!d.multi?'team':gx.by;
   var h='<div class="panel"><h2>Over time</h2><div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><label class="chk">Metric <select data-gxs="metric">'+GXM.map(function(x){return '<option value="'+x[0]+'"'+(x[0]===gx.metric?' selected':'')+'>'+x[1]+'</option>'}).join('')+'</select></label>'+
-    (isD?'<label class="chk">Type <select data-gxs="type"><option value="all"'+(gx.type==='all'?' selected':'')+'>PvP + PvE</option><option value="pvp"'+(gx.type==='pvp'?' selected':'')+'>PvP only</option><option value="pve"'+(gx.type==='pve'?' selected':'')+'>PvE only</option></select></label>':'')+
     '<span class="gxchips" style="margin:0">'+[['team','By team'],['player','By player']].concat(d.multi?[['match','By match']]:[]).map(function(x){return '<button type="button" data-gx="by:'+x[0]+'" aria-pressed="'+(by===x[0])+'">'+x[1]+'</button>'}).join('')+'</span>'+
     '<label class="chk"><input type="checkbox" data-gxc="bins"'+(gx.bins?' checked':'')+'> Per 10 s bins (not cumulative)</label></div>';
   var S=gxSeries(d,m[0],gx.type);
@@ -1838,14 +1856,14 @@ function gxTime(d){
   else if(by==='team'){lines=[0,1].map(function(t){var arr=[];S.forEach(function(q){if(q.p.team!==t)return;q.v.forEach(function(x,i){arr[i]=(arr[i]||0)+x})});for(var i=0;i<arr.length;i++)arr[i]=arr[i]||0;return {name:teamName(t),col:TEAMS[t].col,v:arr,bs:S[0].bs}}).filter(function(q){return q.v.length})}
   else lines=S.map(function(q){return {name:q.p.name+(q.p.cls?' ('+q.p.cls+')':''),col:gxPcol(q.p),dash:q.p.team===1,v:q.v,bs:q.bs}});
   lines.forEach(function(q){q.pts=gxBinPts(q.v,q.bs,cum)});
-  h+='<p class="note" style="margin:10px 0 0"><b>'+esc(m[0]==='dmg'&&gx.type!=='all'?m[1]+' ('+(gx.type==='pvp'?'PvP':'PvE')+')':m[1])+'</b>, '+(cum?'cumulative':'per 10 seconds')+(by==='player'?'. Dashed lines are '+esc(teamName(1))+' players.':'')+'</p>'+gxXY(lines,xmax)+'</div>';
+  h+='<p class="note" style="margin:10px 0 0"><b>'+esc(m[0]==='dmg'&&gx.type!=='all'?m[1]+' ('+(gx.type==='pvp'?'PvP':'PvE')+')':m[1])+'</b>, '+(cum?'cumulative':'per 10 seconds')+(by==='player'?'. Dashed lines are '+esc(teamName(1))+' players.':'')+(!isD&&gx.type!=='all'?' This metric is not recorded as PvP or PvE, so it shows both.':'')+'</p>'+gxXY(lines,xmax)+'</div>';
   var rows=S.map(function(q){var tot=0,pk=0,pkT=0;q.v.forEach(function(x,i){tot+=x;if(x>pk){pk=x;pkT=i*q.bs}});return {name:q.p.name,cls:q.p.cls||'',team:q.p.team,total:tot,peak:pk,pkT:pkT,pm:tot/Math.max(1,(d.durSum||d.duration||0)/60)}});
   h+='<div class="panel"><h2>Totals</h2>'+table('gxs',[{k:'name',l:'Player',f:function(r){return esc(r.name)}},{k:'cls',l:'Class',f:function(r){return clsPlain(r.cls)}},{k:'team',l:'Team',f:function(r){return esc(teamName(r.team))}},{k:'total',l:'Total',f:function(r){return num(r.total)}},{k:'pm',l:'Per minute',f:function(r){return num(r.pm)}},{k:'peak',l:'Best 10 s',f:function(r){return num(r.peak)}},{k:'pkT',l:'Best at',f:function(r){return dur(r.pkT)}}],rows)+'</div>';
   return h;
 }
 /* ---- combat ---- */
 function gxSt(p){var s=p.stats||{};return {pvp:s.pvpDamage!=null?s.pvpDamage:p.dmgP||0,pve:s.pveDamage!=null?s.pveDamage:Math.max(0,(p.dmg||0)-(p.dmgP||0)),taken:s.damageTaken!=null?s.damageTaken:p.taken||0,
-  heal:s.pvpHeal!=null?s.pvpHeal:p.heal||0,nonpvp:s.nonPvpHeal||0,recv:s.healReceived!=null?s.healReceived:p.healRecv||0,over:s.overheal||0,shield:s.shieldAbsorbed||0,
+  takenP:gxTakenPvp(p),takenE:Math.max(0,(s.damageTaken!=null?s.damageTaken:p.taken||0)-gxTakenPvp(p)),heal:s.pvpHeal!=null?s.pvpHeal:p.heal||0,nonpvp:s.nonPvpHeal||0,recv:s.healReceived!=null?s.healReceived:p.healRecv||0,over:s.overheal||0,shield:s.shieldAbsorbed||0,
   cca:s.ccApplied||0,ccr:s.ccReceived||0,ccas:s.ccAppliedSec||0,ccrs:s.ccReceivedSec||0}}
 function gxBars(title,keys,pl,fmtd){
   var all=pl.map(function(o){return {o:o,v:gxSt(o.p)}}),mx=0;all.forEach(function(a){keys.forEach(function(k){if(a.v[k[0]]>mx)mx=a.v[k[0]]})});
@@ -1873,11 +1891,19 @@ function gxCombat(d){
   var ps=gxPlSel(d,true),pl=gxPlayers(d).filter(function(o){return !ps.cur||o.p.name===ps.cur}),h='<div class="panel" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><h2 style="margin:0">Combat</h2>'+ps.h+'</div>';
   h+=gxChips('cb',[['vs','Applied vs received'],['from','Damage taken from'],['regen','Regen'],['snap','Snapshots']],gx.cb);
   if(gx.cb==='vs'){
+    if(gx.type==='pvp'){
+      h+=gxBars('PvP damage: dealt vs taken',[['pvp','PvP dealt','#4a8fe0'],['takenP','Taken from players','#d33']],pl);
+      h+=gxBars('Healing given to players',[['heal','Healing given (PvP)','#4a8fe0']],pl);
+    }else if(gx.type==='pve'){
+      h+=gxBars('PvE damage: dealt vs taken',[['pve','PvE dealt (mobs and boss)','#d19a1f'],['takenE','Taken from mobs and boss','#d33']],pl);
+      h+=gxBars('Healing given outside PvP',[['nonpvp','Healing given (other)','#8fb3e8']],pl);
+    }else{
     h+=gxBars('Damage: dealt vs taken',[['pvp','PvP dealt','#4a8fe0'],['pve','PvE dealt','#d19a1f'],['taken','Taken','#d33']],pl);
     h+=gxBars('Healing and shields',[['heal','Healing given (PvP)','#4a8fe0'],['nonpvp','Healing given (other)','#8fb3e8'],['recv','Healing received','#d33'],['over','Overheal','#d19a1f'],['shield','Shield absorbed','#8a93a6']],pl);
     h+=gxHeal(pl);
     h+=gxBars('Crowd control: count',[['cca','Applied','#4a8fe0'],['ccr','Received','#d33']],pl);
     h+=gxBars('Crowd control: seconds',[['ccas','Applied (s)','#4a8fe0'],['ccrs','Received (s)','#d33']],pl,true);
+    }
   }else if(gx.cb==='from'){
     var all=gxPlayers(d),byN={},cx={};all.forEach(function(o){byN[o.p.name]=o.p});
     var cols=all.filter(function(o){return all.some(function(v){return (v.p.from||[]).some(function(f){return f[0]===o.p.name})})});
@@ -1905,8 +1931,8 @@ function gxCombat(d){
 }
 /* ---- skills ---- */
 function gxSkillRows(d,name){
-  var A={};gxPlayers(d).forEach(function(o){if(name&&o.p.name!==name)return;(o.p.skills||[]).forEach(function(k){var a=A[k.skill]||(A[k.skill]={skill:k.skill,name:skName(k.skill),casts:0,cm:0,hits:0,crits:0,dp:0,de:0,kills:0,att:0,lan:0,cdv:null,res:{}});
-    a.casts+=k.casts;a.cm+=k.cm||0;a.hits+=k.pvp.hits+k.pve.hits;a.crits+=k.pvp.crits+k.pve.crits;a.dp+=k.pvp.hl;a.de+=k.pve.hl;a.kills+=k.pvp.kills+k.pve.kills;
+  var A={};gxPlayers(d).forEach(function(o){if(name&&o.p.name!==name)return;(o.p.skills||[]).forEach(function(k){var tp=gx.type!=='pve',te=gx.type!=='pvp';if(gx.type!=='all'&&!((tp?k.pvp.hits:0)+(te?k.pve.hits:0)))return;var a=A[k.skill]||(A[k.skill]={skill:k.skill,name:skName(k.skill),casts:0,cm:0,hits:0,crits:0,dp:0,de:0,kills:0,att:0,lan:0,cdv:null,res:{}});
+    a.casts+=k.casts;a.cm+=k.cm||0;a.hits+=(tp?k.pvp.hits:0)+(te?k.pve.hits:0);a.crits+=(tp?k.pvp.crits:0)+(te?k.pve.crits:0);a.dp+=tp?k.pvp.hl:0;a.de+=te?k.pve.hl:0;a.kills+=(tp?k.pvp.kills:0)+(te?k.pve.kills:0);
     if(k.acc){a.att+=k.acc.a;a.lan+=k.acc.l}if(k.cd&&k.cd.p>0)a.cdv=k.cd.p;if(k.res)Object.keys(k.res).forEach(function(r){a.res[r]=(a.res[r]||0)+k.res[r]})})});
   return Object.keys(A).map(function(n){var a=A[n];a.total=a.dp+a.de;a.hpc=a.casts?a.hits/a.casts:0;a.dpc=a.casts?a.total/a.casts:0;a.crit=a.hits?100*a.crits/a.hits:0;a.accr=a.att>0?100*a.lan/a.att:null;a.cmr=a.casts?100*a.cm/a.casts:null;
     a.resS=Object.keys(a.res).map(function(r){return r+' '+num(a.res[r])}).join(', ');return a});
@@ -2042,12 +2068,12 @@ function viewGraphsEvent(id,ms,extra){
   if(!d)return extra;
   var tabs=[['time','Over time'],['combat','Combat'],['skills','Skills'],['obj','Objectives']],sn=subTabs('gx-ev-'+id,tabs),n=d.docs.length;
   return '<p class="note" style="margin:0 0 8px">'+(n===ms.length?'All '+n:n+' of '+ms.length)+' match'+(n===1?'':'es')+' with ledger data, added together. Players are merged by name and times are counted from the start of each match.'+(n<ms.length?' The rest have no ledger data and are left out.':'')+'</p>'+
-    '<div class="gxsub">'+sn.h.replace('subnav','subnav sub2')+'</div>'+(sn.cur==='time'?gxTime(d)+extra:sn.cur==='combat'?gxCombat(d):sn.cur==='skills'?gxSkills(d):gxObj(d));
+    '<div class="gxsub">'+sn.h.replace('subnav','subnav sub2')+'</div>'+(sn.cur==='obj'?'':gxTypeBar(sn.cur))+(sn.cur==='time'?gxTime(d)+extra:sn.cur==='combat'?gxCombat(d):sn.cur==='skills'?gxSkills(d):gxObj(d));
 }
 function viewGraphs(id,d){
   if(!d.ledger)return '';
   var tabs=[['time','Over time'],['combat','Combat'],['skills','Skills'],['obj','Objectives']],sn=subTabs('gx-'+id,tabs);
-  return '<div class="gxsub">'+sn.h.replace('subnav','subnav sub2')+'</div>'+(sn.cur==='time'?gxTime(d)+anaMatchSections(id,d,'graphs')+teamDamage(d):sn.cur==='combat'?gxCombat(d):sn.cur==='skills'?gxSkills(d):gxObj(d));
+  return '<div class="gxsub">'+sn.h.replace('subnav','subnav sub2')+'</div>'+(sn.cur==='obj'?'':gxTypeBar(sn.cur))+(sn.cur==='time'?gxTime(d)+anaMatchSections(id,d,'graphs')+teamDamage(d):sn.cur==='combat'?gxCombat(d):sn.cur==='skills'?gxSkills(d):gxObj(d));
 }
 document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('[data-gx]');if(!b)return;var p=b.dataset.gx.split(':');gx[p[0]]=p[0]==='team'?+p[1]:p[1];render()});
 document.addEventListener('change',function(e){var t=e.target;if(!t.dataset)return;if(t.dataset.gxs){gx[t.dataset.gxs]=t.value;render()}else if(t.dataset.gxc){gx[t.dataset.gxc]=t.checked;render()}});
