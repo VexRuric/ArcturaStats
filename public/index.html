@@ -1121,6 +1121,7 @@ function viewAdmin(){
   addIssue('killNoDmg','Low','Kills with no damage dealt',killNoDmg,'Kill credit is awarded without any logged damage, so the log or the credit is wrong.');
   addIssue('oddType','Low','Event type the stats do not use',oddType,'New or renamed event types. The parser ignores them. If they should count, the parser needs updating.');
   addIssue('noOther','Low','Support or objective event type missing',noOther,'Fine for a short test, a gap for a full match.');
+  addIssue('stillfarm','Low','A player stood still for a minute while mobs died out of reach of their camps (AFK or stale position?)',ms.reduce(function(a,m){suspectOf(m.doc).forEach(function(q){a.push({m:m.id,mn:mtitle(m.doc),t:q.p})});return a},[]),'The position did not change while mob kills landed far from any camp of that tier. Most likely the player was AFK with auto attack on, so the kills inflate their stats without telling us where the mobs were. The heat map leaves the idle time and those kills out by default. If the player was not AFK, check that the game keeps updating the position of a player who stands still.');
   addIssue('summary','Low','Imported from a summary, not a combat log',ms.filter(function(m){return m.doc.summary}).map(function(m){return {m:m.id,mn:mtitle(m.doc)}}),'No hit, crit or best hit data. Re-upload the real combat log if you have it.');
   addIssue('short','Low','Match shorter than 5 minutes',short,'Probably a crash, a restart or a test.');
   addIssue('practice','Low','Practice match (no other human player)',practice,'Left out of rated numbers when Rated matches only is on.');
@@ -2028,7 +2029,7 @@ var MAPW=1400,MAPH=1654;
 var MAPC=(function(){var d={x0:710.6,sx:3.45,y0:798.5,sy:3.45};try{var s=JSON.parse(localStorage.getItem('arctura-mapcal3')||'null');if(s&&s.sx&&s.sy)d=s}catch(e){}return d})();
 function mpx(x){return MAPC.x0+x*MAPC.sx}function mpy(y){return MAPC.y0+y*MAPC.sy}
 var MAPZONES={North:[0,-150],South:[0,150],West:[-150,0],East:[150,0],Center:[0,0]};
-var mapS={match:'all',mode:'pos',team:'all',player:'',types:{kill:1,mob:1,boss:1,relic:1,cp:1},t0:0,t1:99999,ph:0,showCp:true,showPl:true,upto:false,timer:0,dot:{mob:0,boss:0,relic:0,cp:0,kill:0,arrow:0,mark:0,killer:0},focus:null,radius:26,raf:0};
+var mapS={match:'all',mode:'pos',team:'all',player:'',types:{kill:1,mob:1,boss:1,relic:1,cp:1},t0:0,t1:99999,ph:0,showCp:true,showPl:true,upto:false,timer:0,dot:{mob:0,boss:0,relic:0,cp:0,kill:0,arrow:0,mark:0,killer:0},focus:null,radius:26,raf:0,hideSus:true};
 var mapImg={},mapImgState=0;
 function mapLoad(){
   if(mapImgState)return;mapImgState=1;
@@ -2036,7 +2037,7 @@ function mapLoad(){
   ks.forEach(function(k){var i=new Image();i.onload=i.onerror=function(){mapImg[k]=i.width?i:null;if(++n===ks.length){mapImgState=2;mapUpdate()}};i.src='/map/'+names[k]});
 }
 function mapMatches(){return allMatches().filter(function(m){var d=m.doc;return (!mapScope||mapScope.indexOf(m.id)>=0)&&d.ledger&&(d.players||[]).some(function(p){return p.pos&&p.pos.length})}).sort(function(a,b){return playedAt(b.doc)-playedAt(a.doc)})}
-function mapSel(){var all=mapMatches();return mapS.match==='all'?all:all.filter(function(m){return m.id===mapS.match})}
+function mapSel(){var all=mapMatches(),r=mapS.match==='all'?all:all.filter(function(m){return m.id===mapS.match});r.forEach(function(m){suspectOf(m.doc)});return r}
 function mapZone(x,y){var best='',bd=1e9;Object.keys(MAPZONES).forEach(function(k){var z=MAPZONES[k],d=Math.hypot(x-z[0],y-z[1]);if(d<bd){bd=d;best=k}});return (bd<45?'At ':'Near ')+best}
 var MAPMODES=[['pos','Presence'],['kill','Kills & deaths'],['mob','Mob kills'],['obj','Objectives']];
 function mapPass(e){
@@ -2053,9 +2054,9 @@ function mapPoints(){
   var out=[],md=mapS.mode;
   mapSel().forEach(function(m){var d=m.doc;
     if(md==='pos'){(d.players||[]).forEach(function(p){if(hideBots&&isBot(p.name))return;if(mapS.team!=='all'&&p.team!==+mapS.team)return;if(mapS.player&&p.name!==mapS.player)return;
-      (p.pos||[]).forEach(function(q){if(q[3]&&q[0]>=mapS.t0&&q[0]<=mapS.t1&&(!mapS.upto||q[0]<=mapS.ph))out.push([q[1],q[2]])})});return}
+      (p.pos||[]).forEach(function(q){if(q[3]&&q[0]>=mapS.t0&&q[0]<=mapS.t1&&(!mapS.upto||q[0]<=mapS.ph)&&!(mapS.hideSus&&susHas(p,q[0])))out.push([q[1],q[2]])})});return}
     var PM={};(d.players||[]).forEach(function(p){PM[p.name]=p});
-    (d.log||[]).forEach(function(e){var ok=md==='obj'?(e.k==='cp'||e.k==='relic'||e.k==='boss'):e.k===md;if(!ok||!mapPass(e)||(mapS.upto&&e.t>mapS.ph))return;var q=[e.x,e.y];if(e.k==='mob'){var bc=mobSpot(e);if(bc)q=[bc[0],bc[1]]}else if(e.k==='boss')q=[0,0];else if(e.k==='cp'&&MAPZONES[e.cp])q=MAPZONES[e.cp];out.push(q)})});
+    (d.log||[]).forEach(function(e){var ok=md==='obj'?(e.k==='cp'||e.k==='relic'||e.k==='boss'):e.k===md;if(!ok||!mapPass(e)||(mapS.upto&&e.t>mapS.ph)||(e.k==='mob'&&susKill(PM[e.a],e.t)))return;var q=[e.x,e.y];if(e.k==='mob'){var bc=mobSpot(e);if(bc)q=[bc[0],bc[1]]}else if(e.k==='boss')q=[0,0];else if(e.k==='cp'&&MAPZONES[e.cp])q=MAPZONES[e.cp];out.push(q)})});
   return out;
 }
 function mapHeat(ctx,pts){
@@ -2081,6 +2082,22 @@ function mapCpPx(k){var z=MAPZONES[k];return z?[mpx(z[0]),mpy(z[1])]:null}
 /* mobs leash at 20 m, and one map unit is one metre. Each camp holds one tier, and mobs die to ranged attacks, so a kill goes to the nearest camp of the kill's own tier within CAMP_REACH of where the killer stood (a player shooting from a control point is the usual case). With no tier, or no same-tier camp that close, it goes to the nearest camp. */
 var CAMP_LEASH=20,CAMP_REACH=70;
 function mobSpot(e){var bc=null,bd=1e9,bt=null,btd=1e9;MAPCAMPS.forEach(function(c){var d=Math.hypot(c[0]-e.x,c[1]-e.y);if(d<bd){bd=d;bc=c}if(e.tier&&c[2]===e.tier&&d<btd){btd=d;bt=c}});return bt&&btd<=CAMP_REACH?bt:bc}
+/* Stationary players. Someone who stands still for a minute while three or more of their mob kills land out of reach of every camp of that tier is most likely AFK with auto attack on (or their position has stopped updating). Their position is real, so it stays on the kill maps, but their idle time is not presence, and the kills that are out of reach cannot be placed on a camp. The maps can leave those out. Flagged only: the stored data is untouched. */
+function hideProp(o,k,v){try{Object.defineProperty(o,k,{value:v,writable:true,enumerable:false,configurable:true})}catch(x){o[k]=v}}
+function suspectOf(d){
+  if(d.__sus)return d.__sus;var runs=[];
+  (d.players||[]).forEach(function(p){var mine=[],lost=[],pos=p.pos||[];
+    var i=0;while(i<pos.length){var a=pos[i];if(!a[3]){i++;continue}var j=i;while(j+1<pos.length&&pos[j+1][3]&&Math.hypot(pos[j+1][1]-a[1],pos[j+1][2]-a[2])<=6)j++;
+      var t0=a[0],t1=pos[j][0];
+      if(t1-t0>=60){var ks=(d.log||[]).filter(function(e){return e.k==='mob'&&e.a===p.name&&e.t>=t0&&e.t<=t1&&e.x!=null}),
+          oo=ks.filter(function(e){var bd=1e9;MAPCAMPS.forEach(function(c){if(!e.tier||c[2]===e.tier){var q=Math.hypot(c[0]-e.x,c[1]-e.y);if(q<bd)bd=q}});return bd>CAMP_REACH});
+        if(oo.length>=3){mine.push([t0,t1]);oo.forEach(function(e){lost.push(e.t)});runs.push({p:p.name,t0:t0,t1:t1,x:a[1],y:a[2],kills:ks.length,out:oo.length})}}
+      i=j+1}
+    hideProp(p,'__sus',mine);hideProp(p,'__susK',lost)});
+  hideProp(d,'__sus',runs);return runs;
+}
+function susHas(p,t){return !!(p&&p.__sus&&p.__sus.some(function(r){return t>=r[0]-2.5&&t<=r[1]+2.5}))}
+function susKill(p,t){return !!(mapS.hideSus&&p&&p.__susK&&p.__susK.some(function(k){return Math.abs(k-t)<0.05}))}
 var MAPTIER={Easy:['#4ade80',9],Medium:['#fb923c',11],Hard:['#ef4444',14]};
 var RELIC_HOME={0:[132,-60],1:[-132,60]};
 function mapK(){return Math.max(0.35,1/mapZ().z)}
@@ -2098,7 +2115,7 @@ function mapPlayerAt(d,name,t){var q=null;(d.players||[]).forEach(function(p){if
 function mapDots(ctx,sel,one,k){
   /* mob camps: each camp stays at its home spot and is marked when a mob there dies */
   if(mapS.dot.mob){var cnt={};
-    sel.forEach(function(m){(m.doc.log||[]).forEach(function(e){if(e.k!=='mob'||!mapPass(e)||(mapS.upto&&e.t>mapS.ph))return;var c=mobSpot(e);if(c){var key=c[0]+','+c[1];cnt[key]=(cnt[key]||0)+1}})});
+    sel.forEach(function(m){var PMs={};(m.doc.players||[]).forEach(function(p){PMs[p.name]=p});(m.doc.log||[]).forEach(function(e){if(e.k!=='mob'||!mapPass(e)||(mapS.upto&&e.t>mapS.ph)||susKill(PMs[e.a],e.t))return;var c=mobSpot(e);if(c){var key=c[0]+','+c[1];cnt[key]=(cnt[key]||0)+1}})});
     MAPCAMPS.forEach(function(c){var T=MAPTIER[c[2]],x=mpx(c[0]),y=mpy(c[1]),n=cnt[c[0]+','+c[1]]||0,r=T[1]*k;
       ctx.save();ctx.beginPath();ctx.arc(x,y,CAMP_LEASH*MAPC.sx,0,6.3);ctx.setLineDash([7*k,7*k]);ctx.lineWidth=1.6*k;ctx.strokeStyle=T[0];ctx.globalAlpha=.6;ctx.stroke();ctx.restore();
       ctx.beginPath();ctx.arc(x,y,r+4*k,0,6.3);ctx.lineWidth=2.5*k;ctx.strokeStyle='rgba(0,0,0,.7)';ctx.stroke();ctx.lineWidth=1.5*k;ctx.strokeStyle=T[0];ctx.globalAlpha=n?1:.6;ctx.stroke();ctx.globalAlpha=1;
@@ -2231,6 +2248,8 @@ function mapDyn(){
   var sel=mapSel(),one=mapS.match!=='all'&&sel.length===1?sel[0].doc:null,rows=mapRows();
   var cnt={kill:0,mob:0,boss:0,relic:0,cp:0};rows.forEach(function(r){cnt[r.e.k]++});
   var h=!mapFull?'':'<div class="kpis"><div class="kpi"><b>'+sel.length+'</b><small>Match'+(sel.length===1?'':'es')+'</small></div><div class="kpi"><b>'+cnt.kill+'</b><small>Kills</small></div><div class="kpi"><b>'+cnt.mob+'</b><small>Mob kills</small></div><div class="kpi"><b>'+cnt.boss+'</b><small>Boss kills</small></div><div class="kpi"><b>'+cnt.cp+'</b><small>Control point changes</small></div><div class="kpi"><b>'+cnt.relic+'</b><small>Relic events</small></div></div>';
+  var sr=[];sel.forEach(function(m){suspectOf(m.doc).forEach(function(q){sr.push({m:m,q:q})})});
+  if(sr.length)h+='<div class="panel"><h2>Stationary players</h2><p class="note" style="margin-top:0">These players stood still for a minute or more while mobs died out of reach of their camps. They were probably AFK with auto attack on, or their position stopped updating. Their idle time and the kills that cannot be placed on a camp are '+(mapS.hideSus?'left off the maps':'drawn')+'.</p><ul class="events">'+sr.slice(0,8).map(function(x){var q=x.q;return '<li><time>'+dur(q.t0)+'</time><span><strong>'+esc(q.p)+'</strong> at ('+q.x+', '+q.y+') until '+dur(q.t1)+', '+q.kills+' mob kill'+(q.kills===1?'':'s')+', '+q.out+' out of reach'+(mapS.match==='all'?' <span class="note" style="margin:0">'+esc(mtitle(x.m.doc))+'</span>':'')+'</span></li>'}).join('')+'</ul>'+(sr.length>8?'<p class="note">And '+(sr.length-8)+' more.</p>':'')+'<label class="chk"><input type="checkbox" id="mapSus"'+(mapS.hideSus?' checked':'')+'> Leave their idle time and unplaceable kills off the maps</label></div>';
   if(one&&mapFull)h+='<div class="panel"><h2>Control point ownership</h2><p class="note" style="margin-top:0">Click a bar to move the playhead. Purple is Elysiant, green is Ze\'kar, dark is neutral.</p>'+mapStrips(one)+'</div>';
   var cap=400;
   if(mapS.mode==='kill'){h+=deathZones(sel);return h}
@@ -2296,6 +2315,7 @@ document.addEventListener('change',function(e){var t=e.target;if(!t)return;
   else if(t.id==='mapTeam'){mapS.team=t.value;mapSched()}
   else if(t.id==='mapPlayer'){mapS.player=t.value;mapSched()}
   else if(t.id==='mapCp'){mapS.showCp=t.checked;mapSched()}
+  else if(t.id==='mapSus'){mapS.hideSus=t.checked;mapSched()}
   else if(t.id==='mapPl'){mapS.showPl=t.checked;mapSched()}
   else if(t.id==='mapUpto'){mapS.upto=t.checked;mapSched()}
   else if(t.dataset&&t.dataset.mapdot){mapS.dot[t.dataset.mapdot]=t.checked?1:0;mapSched()}
