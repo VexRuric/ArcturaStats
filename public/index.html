@@ -2772,7 +2772,7 @@ function viewDzBuilds(){
   h+='<div class="panel scroll"><h2>Skills that changed</h2><p class="note" style="margin:0 0 8px">Damage and healing skills that moved 10% or more, biggest first. Skills with under 10 casts, and utility skills with no damage or healing, are left out.</p>'+
     (shown.length?'<table><thead><tr>'+['Class','Skill','Damage/cast','Casts/min','Crit %','Accuracy %','Cooldown (s)','Damage'].map(dzTh).join('')+'</tr></thead><tbody>'+
     shown.slice(0,cap).map(function(x){var a=x.a,b=x.b;
-      if(!a||!b)return '<tr><td>'+clsPlain(x.cls)+'</td><td>'+esc(x.name)+'</td><td colspan="6" style="text-align:left"><strong style="color:#d19a1f">'+(a?'Removed':'Added')+'</strong> <span class="note" style="margin:0">'+(a?'only in the before build':'only in the after build')+'</span></td><td>'+num((a||b).dmg)+'</td></tr>';
+      if(!a||!b)return '<tr><td>'+clsPlain(x.cls)+'</td><td>'+esc(x.name)+'</td><td colspan="5" style="text-align:left"><strong style="color:#d19a1f">'+(a?'Removed':'Added')+'</strong> <span class="note" style="margin:0">'+(a?'only in the before build':'only in the after build')+'</span></td><td>'+num((a||b).dmg)+'</td></tr>';
       return '<tr><td>'+clsPlain(x.cls)+'</td><td>'+esc(x.name)+'</td><td>'+dzDelta(a.dpc,b.dpc,0)+'</td><td>'+dzDelta(a.cpm,b.cpm,2)+'</td><td>'+dzDelta(a.crit,b.crit,0)+'</td><td>'+dzDelta(a.acc,b.acc,0)+'</td><td>'+dzDelta(a.cdp,b.cdp,1)+'</td><td>'+dzDelta(a.dmg,b.dmg,0)+'</td></tr>'}).join('')+'</tbody></table>'+(shown.length>15?'<p style="margin:8px 0 0"><button class="btn ghost" type="button" data-dzmore="1">'+(dz.more?'Show fewer':'Show all '+shown.length)+'</button></p>':''):'<p class="note" style="margin:0">No skill moved by 10% or more.</p>')+'</div>';
   return h;
 }
