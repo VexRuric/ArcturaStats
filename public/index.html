@@ -2076,9 +2076,11 @@ var MAPDOT={mob:['Mob kills','#ff8a00'],boss:['Boss kills','#ff2bd6'],relic:['Re
 /* what each map tab shows: its own dots, and whether the control point owners and players at the playhead apply */
 var MAPUI={pos:{dots:[],cp:1,pl:1},kill:{dots:['mark','killer','arrow'],cp:0,pl:0},mob:{dots:['mob','boss'],cp:0,pl:0},obj:{dots:['cp','relic','boss'],cp:1,pl:1}};
 function mapPreset(md){var d={mob:0,boss:0,relic:0,cp:0,kill:0,arrow:0,mark:0,killer:0};(MAPUI[md]||MAPUI.pos).dots.forEach(function(k){d[k]=1});return d}
-var MAPCAMPS=[[-86,131,"Hard"],[-74,-141,"Hard"],[-45,-47,"Hard"],[45,47,"Hard"],[74,141,"Hard"],[86,-131,"Hard"],[-109,105,"Medium"],[-68,-71,"Medium"],[-47,50,"Medium"],[-1,77,"Medium"],[1,-77,"Medium"],[47,-50,"Medium"],[68,71,"Medium"],[109,-105,"Medium"],[-101,-115,"Easy"],[101,115,"Easy"],[-53,21,"Easy"],[-53,-29,"Easy"],[-40,111,"Easy"],[-1,67,"Easy"],[0,-67,"Easy"],[40,-111,"Easy"],[53,29,"Easy"],[53,-21,"Easy"]];
+var MAPCAMPS=[[-88,-134,"Hard"],[-83,139,"Hard"],[-44,44,"Hard"],[47,-47,"Hard"],[74,-138,"Hard"],[83,136,"Hard"],[-112,-105,"Medium"],[-74,76,"Medium"],[-47,-49,"Medium"],[0,-78,"Medium"],[2,77,"Medium"],[48,50,"Medium"],[74,-72,"Medium"],[111,105,"Medium"],[-102,115,"Easy"],[104,-114,"Easy"],[-54,-19,"Easy"],[-54,26,"Easy"],[47,118,"Easy"],[0,-63,"Easy"],[0,65,"Easy"],[-40,-115,"Easy"],[53,-28,"Easy"],[55,20,"Easy"]];
 function mapCpPx(k){var z=MAPZONES[k];return z?[mpx(z[0]),mpy(z[1])]:null}
-function mobSpot(e){var bc=null,bd=1e9;MAPCAMPS.forEach(function(c){if(e.tier&&c[2]!==e.tier)return;var d=Math.hypot(c[0]-e.x,c[1]-e.y);if(d<bd){bd=d;bc=c}});return bc}
+/* mobs leash at 20 m, and one map unit is one metre. Each camp holds one tier, and mobs die to ranged attacks, so a kill goes to the nearest camp of the kill's own tier within CAMP_REACH of where the killer stood (a player shooting from a control point is the usual case). With no tier, or no same-tier camp that close, it goes to the nearest camp. */
+var CAMP_LEASH=20,CAMP_REACH=70;
+function mobSpot(e){var bc=null,bd=1e9,bt=null,btd=1e9;MAPCAMPS.forEach(function(c){var d=Math.hypot(c[0]-e.x,c[1]-e.y);if(d<bd){bd=d;bc=c}if(e.tier&&c[2]===e.tier&&d<btd){btd=d;bt=c}});return bt&&btd<=CAMP_REACH?bt:bc}
 var MAPTIER={Easy:['#4ade80',9],Medium:['#fb923c',11],Hard:['#ef4444',14]};
 var RELIC_HOME={0:[132,-60],1:[-132,60]};
 function mapK(){return Math.max(0.35,1/mapZ().z)}
@@ -2098,6 +2100,7 @@ function mapDots(ctx,sel,one,k){
   if(mapS.dot.mob){var cnt={};
     sel.forEach(function(m){(m.doc.log||[]).forEach(function(e){if(e.k!=='mob'||!mapPass(e)||(mapS.upto&&e.t>mapS.ph))return;var c=mobSpot(e);if(c){var key=c[0]+','+c[1];cnt[key]=(cnt[key]||0)+1}})});
     MAPCAMPS.forEach(function(c){var T=MAPTIER[c[2]],x=mpx(c[0]),y=mpy(c[1]),n=cnt[c[0]+','+c[1]]||0,r=T[1]*k;
+      ctx.save();ctx.beginPath();ctx.arc(x,y,CAMP_LEASH*MAPC.sx,0,6.3);ctx.setLineDash([7*k,7*k]);ctx.lineWidth=1.6*k;ctx.strokeStyle=T[0];ctx.globalAlpha=.6;ctx.stroke();ctx.restore();
       ctx.beginPath();ctx.arc(x,y,r+4*k,0,6.3);ctx.lineWidth=2.5*k;ctx.strokeStyle='rgba(0,0,0,.7)';ctx.stroke();ctx.lineWidth=1.5*k;ctx.strokeStyle=T[0];ctx.globalAlpha=n?1:.6;ctx.stroke();ctx.globalAlpha=1;
       if(n){ctx.beginPath();ctx.arc(x,y,r*.8,0,6.3);ctx.fillStyle=T[0];ctx.fill();ctx.lineWidth=2*k;ctx.strokeStyle='rgba(0,0,0,.9)';ctx.stroke();
         if(n>1){ctx.font='700 '+(15*k)+'px sans-serif';ctx.textAlign='center';ctx.lineWidth=4*k;ctx.strokeStyle='rgba(0,0,0,.9)';ctx.fillStyle='#fff';ctx.strokeText(n,x,y+5*k);ctx.fillText(n,x,y+5*k)}}})}
