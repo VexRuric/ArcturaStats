@@ -73,6 +73,7 @@ button.btn.ghost{background:transparent;color:var(--fg);border:1px solid var(--l
 button.btn:disabled{opacity:.45;cursor:default}
 label.chk{display:inline-flex;gap:8px;align-items:center;color:var(--muted);cursor:pointer}
 .drop{border:2px dashed var(--line);border-radius:8px;padding:34px 16px;text-align:center;color:var(--muted);background:var(--panel)}
+.jtree{font:12.5px/1.65 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;max-height:70vh;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:8px 6px}.jr{white-space:nowrap}.jt{background:none;border:0;color:var(--muted);cursor:pointer;width:18px;padding:0;font-size:12px}.jk{color:var(--accent)}.jstar{color:#e0a43a;font-weight:700;margin-left:1px}.js{color:#5fa86a}.jx{color:#c98a1c}.jb{color:#b072b0}.jn,.jc{color:var(--muted)}.jres{border:1px solid var(--line);border-radius:6px;padding:8px;margin:0 0 10px;max-height:220px;overflow:auto}.jhit{display:block;width:100%;text-align:left;background:none;border:0;border-radius:4px;padding:3px 6px;color:var(--fg);font:12.5px ui-monospace,Consolas,monospace;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.jhit:hover{background:color-mix(in srgb,var(--accent) 14%,transparent)}
 .drop.over{border-color:var(--accent);color:var(--fg)}
 .drop strong{display:block;color:var(--fg);font:600 20px var(--font-d);letter-spacing:.05em;text-transform:uppercase;margin-bottom:4px}
 .empty{padding:34px 16px;text-align:center;color:var(--muted)}
@@ -174,7 +175,7 @@ function hashText(s){let h1=0x811c9dc5,h2=5381;for(let i=0;i<s.length;i++){const
 var CP_WORLD={North:[0,-150],South:[0,150],West:[-150,0],East:[150,0]};
 function posC(a){return (a||[]).map(function(q){return [Math.round(q[0]),Math.round(q[1]),Math.round(q[2]),q[3]?1:0]})}
 function parseMatchLedger(text,fileName){
-  var L;try{L=JSON.parse(text.replace(/^﻿/,''))}catch(e){throw new Error('Not a match ledger: invalid JSON.')}
+  var L;if(text&&typeof text==='object')L=text;else try{L=JSON.parse(text.replace(/^﻿/,''))}catch(e){throw new Error('Not a match ledger: invalid JSON.')}
   if(!L||!Array.isArray(L.players)||L.teamPoints==null)throw new Error('Not a match ledger: no players or teamPoints.');
   var BUCKET=30,r1=function(v){return Math.round((+v||0)*10)/10},TM={},tm=function(k){return TM[k]||(TM[k]={kills:0,points:0,relics:0,carrierKills:0})};
   var byId={};L.players.forEach(function(p){byId[p.id]=p});
@@ -224,8 +225,9 @@ function parseMatchLedger(text,fileName){
       stats:s,
       tl:(function(){if(!(tl&&tl.rows&&tl.cols))return null;return {s:tl.binSec||10,c:tl.cols,r:tl.rows.slice(0,2400).map(function(x){return x.map(function(v){return Math.round((v||0)*10)/10})})}})(),
       regen:p.regen||null,healx:p.heal||null,
+      it:(function(){var o=p.items,a=[];if(o&&typeof o==='object')Object.keys(o).forEach(function(n){var x=o[n];if(!x||typeof x!=='object'||!x.uses)return;var hh=x.health&&typeof x.health==='object'?(+x.health.pvp||0)+(+x.health.out||0):0;a.push({k:String(n).replace(/^Aeon\.Ability\./,''),u:x.uses||0,h:r1(hh),o:r1(x.overheal)})});return a.length?a:null})(),
       snap:(p.statSnapshots||[]).slice(0,60).map(function(x){return {t:Math.round(x.t||0),w:x.why||'',al:x.alive?1:0,v:x.vitals||null,pr:x.primary||null,st:x.stats||null}}),
-      skills:(p.skills||[]).filter(function(k){return k.casts||((k.pvp||{}).hits)||((k.pve||{}).hits)}).map(function(k){function q(o){o=o||{};return {hits:o.hits||0,crits:o.crits||0,kills:o.kills||0,base:r1(o.base),pre:r1(o.preMitigation),mit:r1(o.mitigated),crit:r1(o.critBonus),res:r1(o.resolved),abs:r1(o.absorbed),hl:r1(o.healthLost),over:r1(o.overkill)}}var ac=k.accuracy,cd=k.cooldown,pc=k.placed;return {skill:String(k.skill||'').replace(/^Aeon\.Ability\./,''),casts:k.casts||0,cm:k.committed||0,pvp:q(k.pvp),pve:q(k.pve),acc:ac&&typeof ac==='object'?{k:ac.kind||'',a:ac.attempts||0,l:ac.landed||0}:null,cd:cd&&typeof cd==='object'?{n:cd.applied||0,a:r1(cd.authoredSec),p:r1(cd.appliedSec)}:null,res:k.resource&&typeof k.resource==='object'?k.resource:null,pl:pc&&typeof pc==='object'?{n:pc.placements||0,t:pc.triggered||0}:null}}),
+      skills:(p.skills||[]).filter(function(k){return k.casts||((k.pvp||{}).hits)||((k.pve||{}).hits)||((k.heal||{}).heals)}).map(function(k){function q(o){o=o||{};return {hits:o.hits||0,crits:o.crits||0,kills:o.kills||0,base:r1(o.base),pre:r1(o.preMitigation),mit:r1(o.mitigated),crit:r1(o.critBonus),res:r1(o.resolved),abs:r1(o.absorbed),hl:r1(o.healthLost),over:r1(o.overkill)}}var ac=k.accuracy,cd=k.cooldown,pc=k.placed;var hq=k.heal&&typeof k.heal==='object'&&k.heal.heals?{n:k.heal.heals||0,c:k.heal.crits||0,e:r1(k.heal.effective),o:r1(k.heal.overheal),s:r1(k.heal.selfEffective),r:r1(k.heal.resolved)}:null;return {skill:String(k.skill||'').replace(/^Aeon\.Ability\./,''),casts:k.casts||0,cm:k.committed||0,pvp:q(k.pvp),pve:q(k.pve),he:hq,acc:ac&&typeof ac==='object'?{k:ac.kind||'',a:ac.attempts||0,l:ac.landed||0}:null,cd:cd&&typeof cd==='object'?{n:cd.applied||0,a:r1(cd.authoredSec),p:r1(cd.appliedSec)}:null,res:k.resource&&typeof k.resource==='object'?k.resource:null,pl:pc&&typeof pc==='object'?{n:pc.placements||0,t:pc.triggered||0}:null}}),
       from:(p.damageTakenFrom||[]).filter(function(x){return x.player!=null&&byId[x.player]&&x.healthLost>0}).map(function(x){return [byId[x.player].name,Math.round(x.healthLost)]})}});
   players.forEach(function(p){if(p.carrierKills&&p.team>=0)tm(p.team).carrierKills+=p.carrierKills});
   var w=L.winningTeam,result=(w===0||w===1)?{winner:w,src:'log'}:null;
@@ -310,7 +312,7 @@ var SERIES=['var(--c-assassin)','var(--c-hunter)','var(--c-mystic)','var(--c-pri
 var TABS=[['players','Players'],['classes','Classes'],['skills','Skills'],['factions','Factions'],['map','Heat map'],['matches','Matches'],['events','Events'],['upload','Upload']];
 var $view=document.getElementById('view'),$nav=document.getElementById('nav');
 var remote={},local={},snaps={},snapDraft={name:'',sel:{}},evEdit={id:'',v:''},evMsg='',delSel={},confirmKey='',db=null,user=null,canWrite=true,canEdit=false,canDesign=false,loaded=false,dbState='loading';
-var sortState={skcmp:{k:'total',d:-1},gxs:{k:'total',d:-1},gxsk:{k:'casts',d:-1},gxac:{k:'casts',d:-1},gxrg:{k:'he',d:-1},gxcp:{k:'caps',d:-1},gxrl:{k:'pk',d:-1},gxmb:{k:'tot',d:-1},bkm:{k:'dmg',d:-1},bkskill:{k:'total',d:-1},skills:{k:'total',d:-1},skusers:{k:'total',d:-1},objs:{k:'mobT',d:-1},snplayers:{k:'score',d:-1},snfac:{k:'team',d:1},fplayers:{k:'rating',d:-1},cboard:{k:'rating',d:-1},pside:{k:'name',d:1},adteam:{k:'team',d:1},adcls:{k:'dpm',d:-1},admatch:{k:'t',d:-1},players:{k:'rating',d:-1},match:{k:'dmg',d:-1},classes:{k:'avgDmg',d:-1},pclass:{k:'rating',d:-1},phist:{k:'t',d:-1}};
+var sortState={gxov:{k:'pct',d:-1},gxovs:{k:'pct',d:-1},gxovi:{k:'pct',d:-1},skcmp:{k:'total',d:-1},gxs:{k:'total',d:-1},gxsk:{k:'casts',d:-1},gxac:{k:'casts',d:-1},gxrg:{k:'he',d:-1},gxcp:{k:'caps',d:-1},gxrl:{k:'pk',d:-1},gxmb:{k:'tot',d:-1},bkm:{k:'dmg',d:-1},bkskill:{k:'total',d:-1},skills:{k:'total',d:-1},skusers:{k:'total',d:-1},objs:{k:'mobT',d:-1},snplayers:{k:'score',d:-1},snfac:{k:'team',d:1},fplayers:{k:'rating',d:-1},cboard:{k:'rating',d:-1},pside:{k:'name',d:1},adteam:{k:'team',d:1},adcls:{k:'dpm',d:-1},admatch:{k:'t',d:-1},players:{k:'rating',d:-1},match:{k:'dmg',d:-1},classes:{k:'avgDmg',d:-1},pclass:{k:'rating',d:-1},phist:{k:'t',d:-1}};
 var hideBots=true,ratedOnly=false,uploads=[];
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
@@ -1083,7 +1085,7 @@ function viewAdmin(){
   function addIssue(id,sev,check,items,detail){
     var g={},o=[];items.forEach(function(x){var k=x.m||'all';if(!g[k]){g[k]={key:id+':'+k,id:id,sev:sev,check:check,detail:detail,m:x.m||null,mn:x.mn||'All matches',ctx:x.m?matchCtx(x.m):'',who:[]};o.push(g[k])}if(x.t)g[k].who.push(x.t)});
     o.forEach(function(b){bl.push(b)})}
-  var scoreBad=[],noRes=[],oldFmt=[],noClass=[],noTeam=[],priest0=[],killNoDmg=[],short=[],bigDoc=[],hits=[],practice=[],noCols=[],noCore=[],noOther=[],oddType=[],blankType=[];
+  var ovSkill=[],ovItem=[],scoreBad=[],noRes=[],oldFmt=[],noClass=[],noTeam=[],priest0=[],killNoDmg=[],short=[],bigDoc=[],hits=[],practice=[],noCols=[],noCore=[],noOther=[],oddType=[],blankType=[];
   ms.forEach(function(m){var d=m.doc;T.mins+=(d.duration||0)/60;T.rows+=d.rows||0;
     var sz=JSON.stringify(d).length;if(sz>sizeMax)sizeMax=sz;if(sz>DOC_WARN)bigDoc.push({m:m.id,mn:mtitle(d)});
     if(!hasResult(d))noRes.push({m:m.id,mn:mtitle(d),t:d.ledger?(d.endReason||'no end reason'):''});if(d.scoreCheck&&d.scoreCheck.ok===false)scoreBad.push({m:m.id,mn:mtitle(d),t:'reported '+JSON.stringify(d.scoreCheck.reported)+' vs sum of types '+JSON.stringify(d.scoreCheck.sumOfTypes)});if(!d.v||d.v<2)oldFmt.push({m:m.id,mn:mtitle(d)});if((d.duration||0)<300)short.push({m:m.id,mn:mtitle(d)});if(isPractice(d))practice.push({m:m.id,mn:mtitle(d)});
@@ -1097,6 +1099,8 @@ function viewAdmin(){
       if(isBot(p.name)){T.bots[p.name]=1;return}T.humans[p.name]=1;
       T.dmg+=p.dmg;T.kills+=p.kills;T.deaths+=p.deaths;T.boss+=p.bossKills;
       if(!p.cls)noClass.push({m:m.id,mn:mtitle(d),t:p.name});if(p.team==null||p.team<0)noTeam.push({m:m.id,mn:mtitle(d),t:p.name});
+      (p.skills||[]).forEach(function(k){var x=k.he;if(x&&x.o>=500&&x.e+x.o>0&&x.o/(x.e+x.o)>=0.5)ovSkill.push({m:m.id,mn:mtitle(d),t:p.name+' '+skName(k.skill)+' '+Math.round(100*x.o/(x.e+x.o))+'% ('+Math.round(x.o)+' wasted)'})});
+      (p.it||[]).forEach(function(x){if(x.o>=300&&x.h+x.o>0&&x.o/(x.h+x.o)>=0.5)ovItem.push({m:m.id,mn:mtitle(d),t:p.name+' '+x.k+' '+Math.round(100*x.o/(x.h+x.o))+'% ('+Math.round(x.o)+' wasted)'})});
       if(p.cls==='Priest'&&!p.heal)priest0.push({m:m.id,mn:mtitle(d),t:p.name});
       if(p.kills>0&&!p.dmg&&!d.noDmg)killNoDmg.push({m:m.id,mn:mtitle(d),t:p.name});
       hits.push({n:p.name,d:d.name,m:m.id,v:p.maxHit});
@@ -1115,6 +1119,8 @@ function viewAdmin(){
   addIssue('noCore','Medium','Core event type missing from the log',noCore,'The log has no rows of this type at all. Damage, kills and deaths drive almost every stat.');
   addIssue('noTeam','Medium','Player has no team in the log',noTeam,'TeamIndex is only written on some rows (kills, captures, relics). A player with none of those has no side, so they cannot get team wins.');
   addIssue('noClass','Medium','Player class could not be inferred',noClass,'Class comes from spawn and regen effect names. The log should carry the class directly.');
+  addIssue('ovskill','Low','A heal skill spent half or more of its healing as overheal',ovSkill,'The heal landed on targets that were nearly full, so most of it did nothing. Compare the skill cost and cooldown with its real effect. If it happens in every match, the heal may be too big for the health pools, auto targeting may be picking full health allies, or the heal may be applying to the caster by mistake.');
+  addIssue('ovitem','Low','A potion or food was mostly overheal',ovItem,'Consumable health that went past the maximum. Players may be drinking at near full health, or the item may restore far more than the pool needs. Check the item value against the class health pool.');
   addIssue('priest0','Medium','Priest with zero healing logged',priest0,'Healing to other players is not reaching the combat log, or the Priest never healed. Both need a look.');
   addIssue('blankType','Medium','Rows with a blank Type',blankType,'The Type column is empty on these rows, so the parser skips them.');
   addIssue('outlier','Medium','Hit far above the typical max hit (over 3 times the median)',outl,'Median max hit is '+num(med,1)+'. Check these for a bug, a stacking buff or an unmitigated hit.');
@@ -1150,11 +1156,105 @@ function viewAdmin(){
   return adminShell(h,ov,bg,cnt.open+cnt.devs);
 }
 /* the Admin page: one nav inside the page, one section at a time */
+/* JSON reader: opens a match ledger (a file, or a stored match's raw ledger or parsed data) as a tree you can fold, search and read, instead of one long string. Branches render only when opened, so a multi-megabyte ledger stays fast. */
+var jv={data:null,name:'',size:0,err:'',q:'',open:{'':1},more:{},busy:'',use:null,f:'all'},JVS='\u241f';
+function jvLeaf(v){if(v===null)return '<span class="jn">null</span>';if(typeof v==='string')return '<span class="js">&quot;'+esc(v.length>300?v.slice(0,300)+'…':v)+'&quot;</span>';if(typeof v==='number')return '<span class="jx">'+v+'</span>';return '<span class="jb">'+v+'</span>'}
+function jvInline(v){
+  if(Array.isArray(v)){if(v.length&&v.length<=8&&v.every(function(x){return x===null||typeof x!=='object'}))return '['+v.map(jvLeaf).join(', ')+']';return '<span class="jc">Array('+v.length+')</span>'}
+  var k=Object.keys(v);return '<span class="jc">{ '+esc(k.slice(0,6).join(', ')+(k.length>6?', …':''))+' }</span>';
+}
+/* Which fields does the site use? The importer is run once on a recording copy of the ledger and every field it reads is noted. A field that is handed over whole (kept as is for a view to draw, such as the regen block or the CC log) counts as used with everything inside it. A few stat keys are read later by the Graphs and Players views, so they are listed here. */
+var JV_STATS=['ccApplied','consumablesUsed','cpUncaptures','relicCarrySec','relicDrops','pvpDamage','pveDamage','damageTaken','pvpHeal','nonPvpHeal','healReceived','overheal','shieldAbsorbed','ccReceived','ccAppliedSec','ccReceivedSec'];
+function jvProbe(data){
+  if(!data||typeof data!=='object'||!Array.isArray(data.players)||data.teamPoints==null||typeof structuredClone!=='function')return null;
+  var acc={},kids={'':1};
+  function wrap(v,np){if(!v||typeof v!=='object')return v;return new Proxy(v,{get:function(t,k,rc){
+    if(typeof k==='symbol'||k==='length'||!Object.prototype.hasOwnProperty.call(t,k))return Reflect.get(t,k,rc);
+    var arr=Array.isArray(t),cp=np+(arr?'[]':'.'+k);acc[cp]=1;kids[np]=1;return wrap(t[k],cp)}})}
+  try{parseMatchLedger(wrap(structuredClone(data),''),'probe')}catch(x){return null}
+  JV_STATS.forEach(function(k){acc['.players[].stats.'+k]=1});
+  return {acc:acc,kids:kids};
+}
+function jvClean(v,np,wh,dep){
+  /* true when everything in this branch is used */
+  var u=jv.use;if(wh)return true;if(!u.acc[np])return false;
+  if(!v||typeof v!=='object')return true;
+  var arr=Array.isArray(v),cw=!u.kids[np];if(cw)return true;
+  var keys=arr?v.map(function(_,i){return i}).slice(0,5):Object.keys(v).slice(0,400);
+  for(var i=0;i<keys.length;i++){var c=keys[i];if(!jvClean(v[c],arr?np+'[]':np+'.'+c,false))return false}
+  return true;
+}
+function jvNode(k,v,path,depth,np,wh){
+  var u=jv.use,pad='style="padding-left:'+depth*16+'px"',used=u&&(wh||!!u.acc[np]),star=used?'<span class="jstar" title="The site reads this field">*</span>':'';
+  if(!v||typeof v!=='object')return '<div class="jr" '+pad+'><span class="jk">'+esc(k)+'</span>'+star+': '+jvLeaf(v)+'</div>';
+  var on=!!jv.open[path],arr=Array.isArray(v),h='<div class="jr" '+pad+'><button type="button" class="jt" data-jvt="'+esc(path)+'" aria-expanded="'+on+'" aria-label="'+(on?'Fold ':'Open ')+esc(k)+'">'+(on?'&#9662;':'&#9656;')+'</button><span class="jk">'+esc(k)+'</span>'+star+': '+(on?'<span class="jc">'+(arr?'Array('+v.length+')':'Object('+Object.keys(v).length+')')+'</span>':jvInline(v))+'</div>';
+  if(!on)return h;
+  var cwh=!!u&&(wh||(!!u.acc[np]&&!u.kids[np])),keys=arr?v.map(function(_,i){return i}):Object.keys(v),lim=jv.more[path]||100;
+  if(u&&jv.f==='unused')keys=keys.filter(function(c){return !jvClean(v[c],arr?np+'[]':np+'.'+c,cwh)});
+  keys.slice(0,lim).forEach(function(c){h+=jvNode(arr?'['+c+']':c,v[c],path+JVS+c,depth+1,arr?np+'[]':np+'.'+c,cwh)});
+  if(!keys.length)h+='<div class="jr note" style="padding-left:'+(depth+1)*16+'px">'+(u&&jv.f==='unused'?'Everything in here is used.':'empty')+'</div>';
+  if(keys.length>lim)h+='<div class="jr" style="padding-left:'+(depth+1)*16+'px"><button type="button" class="btn ghost" data-jvm="'+esc(path)+'">Show 200 more ('+(keys.length-lim)+' left)</button></div>';
+  return h;
+}
+/* open every branch that holds something not used, a few levels down, so the filter shows its findings at once */
+function jvOpenUnused(){
+  jv.open={'':1};var u=jv.use;if(!u)return;
+  (function walk(v,path,np,wh,dep){if(!v||typeof v!=='object'||dep>4)return;if(jvClean(v,np,wh))return;jv.open[path]=1;
+    var arr=Array.isArray(v),cwh=wh||(!!u.acc[np]&&!u.kids[np]),keys=arr?v.map(function(_,i){return i}).slice(0,3):Object.keys(v).slice(0,200);
+    keys.forEach(function(c){walk(v[c],path+JVS+c,arr?np+'[]':np+'.'+c,cwh,dep+1)})})(jv.data,'','',false,0);
+}
+function jvGet(path){var v=jv.data;path.split(JVS).slice(1).forEach(function(k){v=v==null?v:v[k]});return v}
+function jvLabel(path){return path.split(JVS).slice(1).map(function(k,i){return /^\d+$/.test(k)?'['+k+']':(i?'.':'')+k}).join('')||'root'}
+function jvFind(q){
+  q=q.toLowerCase();var out=[],seen=0;if(!q||jv.data==null)return out;
+  (function walk(v,path){if(out.length>=200||seen>400000)return;seen++;
+    if(v&&typeof v==='object'){var arr=Array.isArray(v);for(var k in v){if(out.length>=200)return;var c=v[k];
+      if(!arr&&k.toLowerCase().indexOf(q)>=0&&(!c||typeof c!=='object'))out.push({p:path+JVS+k,v:c});
+      else if((c===null||typeof c!=='object')&&String(c).toLowerCase().indexOf(q)>=0&&String(c).length<400)out.push({p:path+JVS+k,v:c});
+      walk(c,path+JVS+k)}}})(jv.data,'');
+  return out;
+}
+function jvTreeHtml(){return jv.data==null?'<p class="note" style="margin:8px">Nothing loaded yet.</p>':jvNode('root',jv.data,'',0,'',false)}
+function jvResHtml(){
+  if(!jv.q)return '';var f=jvFind(jv.q);
+  return '<div class="jres"><p class="note" style="margin:0 0 6px">'+(f.length?f.length+(f.length>=200?'+':'')+' match'+(f.length===1?'':'es')+'. Click one to jump to it in the tree.':'No keys or values match.')+'</p>'+f.slice(0,60).map(function(x){return '<button type="button" class="jhit" data-jvg="'+esc(x.p)+'"><span class="jk">'+esc(jvLabel(x.p))+'</span> = '+jvLeaf(x.v)+'</button>'}).join('')+'</div>';
+}
+function jvDraw(){var t=document.getElementById('jvTree'),q=document.getElementById('jvRes');if(t)t.innerHTML=jvTreeHtml();if(q)q.innerHTML=jvResHtml()}
+function jvLoad(data,name,size){jv.data=data;jv.name=name;jv.size=size||0;jv.err='';jv.q='';jv.open={'':1};jv.more={};jv.busy='';jv.f='all';jv.use=jvProbe(data);render()}
+function jsonReader(){
+  var ms=allMatches(),top=jv.data&&typeof jv.data==='object'?Object.keys(jv.data):[];
+  return '<div class="panel"><h2>JSON reader</h2><p class="note" style="margin:0 0 10px">Open a match ledger from a file, or look inside a stored match. Click an arrow to open a branch. Long lists show the first 100 and load more on request.</p>'+
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><label class="btn ghost" style="cursor:pointer">Open a JSON file<input type="file" id="jvFile" accept=".json,application/json" style="display:none"></label>'+
+    (ms.length?'<select id="jvMatch" aria-label="Stored match" style="background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:8px 10px;font:inherit"><option value="">Stored match…</option>'+ms.map(function(m){return '<option value="'+esc(m.id)+'">'+esc(mtitle(m.doc))+'</option>'}).join('')+'</select>'+(canEdit?'<button class="btn ghost" type="button" data-jvsrc="raw">Raw ledger</button>':'')+'<button class="btn ghost" type="button" data-jvsrc="doc">Stored data</button>':'')+
+    (jv.busy?'<span class="note" style="margin:0">'+esc(jv.busy)+'</span>':'')+'</div>'+
+    (jv.err?'<p class="note" style="color:#d33;margin:10px 0 0">'+esc(jv.err)+'</p>':'')+'</div>'+
+    (jv.data!=null?'<div class="panel"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:0 0 10px"><strong>'+esc(jv.name||'JSON')+'</strong><span class="note" style="margin:0">'+(jv.size?(jv.size/1024<1024?num(jv.size/1024,0)+' KB':num(jv.size/1048576,1)+' MB')+' &middot; ':'')+(Array.isArray(jv.data)?'array of '+jv.data.length:top.length+' top-level key'+(top.length===1?'':'s'))+'</span><input type="search" id="jvQ" placeholder="Search keys and values" value="'+esc(jv.q)+'" style="flex:1;min-width:180px;max-width:320px;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:7px 9px;font:inherit"><button class="btn ghost" type="button" data-jvall="1">Open top level</button><button class="btn ghost" type="button" data-jvall="0">Fold all</button></div>'+
+    (jv.use?'<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:0 0 10px"><span class="gxchips" style="margin:0">'+[['all','All fields'],['unused','Not shown on the site']].map(function(x){return '<button type="button" data-jvf="'+x[0]+'" aria-pressed="'+(jv.f===x[0])+'">'+x[1]+'</button>'}).join('')+'</span>'+(jv.f==='unused'?'<button class="btn ghost" type="button" data-jvun="1">Open everything not shown</button>':'')+'<span class="note" style="margin:0"><span class="jstar">*</span> marks a field the site reads. A field with no star is in the ledger but unused, so it is a candidate for a new view.</span></div>':(jv.data&&typeof jv.data==='object'&&jv.name.indexOf('(stored data)')<0?'<p class="note" style="margin:0 0 10px">This file is not a match ledger, so fields are not marked.</p>':''))+
+    '<div id="jvRes">'+jvResHtml()+'</div><div id="jvTree" class="jtree">'+jvTreeHtml()+'</div></div>':'');
+}
+document.addEventListener('click',function(e){
+  var fl=e.target.closest&&e.target.closest('[data-jvf]');if(fl){jv.f=fl.dataset.jvf;if(jv.f==='unused')jvOpenUnused();render();return}
+  var un=e.target.closest&&e.target.closest('[data-jvun]');if(un){jvOpenUnused();jvDraw();return}
+  var t=e.target.closest&&e.target.closest('[data-jvt]');if(t){var k=t.dataset.jvt;if(jv.open[k])delete jv.open[k];else jv.open[k]=1;jvDraw();return}
+  var m=e.target.closest&&e.target.closest('[data-jvm]');if(m){jv.more[m.dataset.jvm]=(jv.more[m.dataset.jvm]||100)+200;jvDraw();return}
+  var g=e.target.closest&&e.target.closest('[data-jvg]');if(g){var parts=g.dataset.jvg.split(JVS),acc='';jv.open[''] =1;if(jv.f!=='all'){jv.f='all';render()}parts.slice(1,-1).forEach(function(x){acc+=JVS+x;jv.open[acc]=1;var par=jvGet(acc.split(JVS).slice(0,-1).join(JVS));if(Array.isArray(par)&&/^\d+$/.test(x)&&+x>=(jv.more[acc.split(JVS).slice(0,-1).join(JVS)]||100))jv.more[acc.split(JVS).slice(0,-1).join(JVS)]=+x+1});jvDraw();return}
+  var a=e.target.closest&&e.target.closest('[data-jvall]');if(a){jv.open={'':1};if(a.dataset.jvall==='1'&&jv.data&&typeof jv.data==='object')Object.keys(jv.data).forEach(function(k){jv.open[JVS+k]=1});jvDraw();return}
+  var sc=e.target.closest&&e.target.closest('[data-jvsrc]');if(sc){var sel=document.getElementById('jvMatch'),id=sel&&sel.value;if(!id){jv.err='Pick a stored match first.';render();return}
+    var mm=allMatches().filter(function(x){return x.id===id})[0];if(!mm)return;
+    if(sc.dataset.jvsrc==='doc'){var txt=JSON.stringify(mm.doc);jvLoad(JSON.parse(txt),mtitle(mm.doc)+' (stored data)',txt.length);return}
+    jv.busy='Loading the raw ledger...';jv.err='';render();
+    api('GET','/api/doc?c=raw&id='+encodeURIComponent(id)).then(function(r){jvLoad(r.ledger,(r.fileName||mtitle(mm.doc))+' (raw ledger)',JSON.stringify(r.ledger).length)},function(err){jv.busy='';jv.err=err&&err.code==='not_found'?'No raw ledger was kept for this match. It was saved before raw ledgers were kept. Re-upload the original file, or open its stored data.':'Could not load the raw ledger: '+(err&&err.code||'error');render()});
+  }
+});
+document.addEventListener('change',function(e){var t=e.target;
+  if(t&&t.id==='jvFile'&&t.files&&t.files[0]){var f=t.files[0],rd=new FileReader();rd.onload=function(){try{jvLoad(JSON.parse(String(rd.result).replace(/^\ufeff/,'')),f.name,f.size)}catch(x){jv.data=null;jv.err='That file is not valid JSON: '+x.message;render()}};rd.onerror=function(){jv.err='Could not read the file.';render()};rd.readAsText(f)}
+});
+document.addEventListener('input',function(e){var t=e.target;if(t&&t.id==='jvQ'){jv.q=t.value;var q=document.getElementById('jvRes');if(q)q.innerHTML=jvResHtml()}});
 function adminShell(h,ov,bg,nb){
-  var secs=[['overview','Overview'],['bugs','Bugs &amp; checks'+(nb?' ('+nb+')':'')]];
+  var secs=[['overview','Overview'],['bugs','Bugs &amp; checks'+(nb?' ('+nb+')':'')],['json','JSON reader']];
   if(canEdit)secs.push(['handler','Match handler'],['upload','Upload'],['accounts','Accounts']);
   var sn=subTabs('admin',secs);
-  return h+sn.h+(sn.cur==='bugs'?bg:sn.cur==='handler'&&canEdit?matchHandler():sn.cur==='upload'&&canEdit?viewUpload():sn.cur==='accounts'&&canEdit?accountsPanel():ov);
+  return h+sn.h+(sn.cur==='json'?jsonReader():sn.cur==='bugs'?bg:sn.cur==='handler'&&canEdit?matchHandler():sn.cur==='upload'&&canEdit?viewUpload():sn.cur==='accounts'&&canEdit?accountsPanel():ov);
 }
 /* Match handler: pick matches, delete one (click twice), or make an event from the picked ones and publish it in one step */
 var evModal=null;
@@ -1460,15 +1560,19 @@ function themeIcon(){var b=document.getElementById('themeBtn');if(!b)return;var 
 /* ---- Skills tab: what the stored match data supports (per player skill stats: casts, hits, crits, kills, damage pipeline) ---- */
 var skFilter={cls:[],match:'all',grp:'class',x:{},o:{}};
 var SKM={np:['Players',0],casts:['Casts',0],hits:['Hits',0],hpc:['Hits per cast',2],crit:['Crit %',1],kills:['Kills',0],dp:['PvP damage',0],de:['PvE damage',0],total:['Total damage',0],dpc:['Damage per cast',0],mitp:['Mitigated %',1]};
+/* Overheal. Healing counted in the stats (pvpHeal + nonPvpHeal) is effective healing, so overheal as a share of everything the heals could have done is over / (effective + over). The totals cover skills only. Potions and food report their own overheal. */
+function ovInfo(p){var s=p.stats||{},eff=(s.pvpHeal!=null?s.pvpHeal:p.heal||0)+(s.nonPvpHeal||0),o=s.overheal||0;return {eff:eff,over:o,pct:eff+o>0&&(eff>0||o>0)?100*o/(eff+o):null}}
+function ovTxt(v){return v==null?'-':num(v,0)+'%'}
+function itemOv(p){var a=0,u=0,h=0;(p.it||[]).forEach(function(x){u+=x.u;h+=x.h;a+=x.o});return {uses:u,health:h,over:a,pct:h+a>0?100*a/(h+a):null}}
 function skName(n){return String(n||'').split('.').pop()||'?'}
 function skillAgg(){
   var ms=allMatches().filter(function(m){return skFilter.match==='all'||m.id===skFilter.match}),A={},users={},nm=0,nps=0;
   ms.forEach(function(m){var any=false;(m.doc.players||[]).forEach(function(p){
     if(hideBots&&isBot(p.name))return;if(skFilter.cls.length&&skFilter.cls.indexOf(p.cls)<0)return;
-    (p.skills||[]).forEach(function(k){any=true;var ky=skFilter.grp==='class'?(p.cls||'')+'|'+k.skill:k.skill;var a=A[ky]||(A[ky]={key:ky,pd:{},skill:k.skill,name:skName(k.skill),casts:0,hitsP:0,hitsE:0,crits:0,kills:0,dp:0,de:0,mit:0,pre:0,pl:{},cl:{}});a.cl[p.cls||'']=(a.cl[p.cls||'']||0)+1;
+    (p.skills||[]).forEach(function(k){any=true;var ky=skFilter.grp==='class'?(p.cls||'')+'|'+k.skill:k.skill;var a=A[ky]||(A[ky]={key:ky,pd:{},skill:k.skill,name:skName(k.skill),casts:0,hitsP:0,hitsE:0,crits:0,kills:0,dp:0,de:0,mit:0,pre:0,pl:{},cl:{},he:0,ho:0,hn:0});a.cl[p.cls||'']=(a.cl[p.cls||'']||0)+1;var hk=k.he||{};a.he+=hk.e||0;a.ho+=hk.o||0;a.hn+=hk.n||0;
       a.casts+=k.casts;a.hitsP+=k.pvp.hits;a.hitsE+=k.pve.hits;a.crits+=k.pvp.crits+k.pve.crits;a.kills+=k.pvp.kills+k.pve.kills;a.dp+=k.pvp.hl;a.de+=k.pve.hl;a.mit+=k.pvp.mit+k.pve.mit;a.pre+=k.pvp.pre+k.pve.pre;
-      var u=a.pl[p.name]=(a.pl[p.name]||0)+k.pvp.hl+k.pve.hl;var q=a.pd[p.name]||(a.pd[p.name]={name:p.name,cls:p.cls||'',team:p.team,casts:0,hits:0,crits:0,dp:0,de:0});q.casts+=k.casts;q.hits+=k.pvp.hits+k.pve.hits;q.crits+=k.pvp.crits+k.pve.crits;q.dp+=k.pvp.hl;q.de+=k.pve.hl;nps++});});if(any)nm++});
-  var rows=Object.keys(A).map(function(n){var a=A[n];a.hits=a.hitsP+a.hitsE;a.total=a.dp+a.de;a.dpc=a.casts?a.total/a.casts:0;a.hpc=a.casts?a.hits/a.casts:0;a.crit=a.hits?100*a.crits/a.hits:0;a.mitp=a.pre?100*a.mit/a.pre:0;a.np=Object.keys(a.pl).length;a.cls=Object.keys(a.cl).sort(function(x,y){return a.cl[y]-a.cl[x]})[0]||'';
+      var u=a.pl[p.name]=(a.pl[p.name]||0)+k.pvp.hl+k.pve.hl;var q=a.pd[p.name]||(a.pd[p.name]={name:p.name,cls:p.cls||'',team:p.team,casts:0,hits:0,crits:0,dp:0,de:0,he:0,ho:0});q.he+=hk.e||0;q.ho+=hk.o||0;q.casts+=k.casts;q.hits+=k.pvp.hits+k.pve.hits;q.crits+=k.pvp.crits+k.pve.crits;q.dp+=k.pvp.hl;q.de+=k.pve.hl;nps++});});if(any)nm++});
+  var rows=Object.keys(A).map(function(n){var a=A[n];a.hits=a.hitsP+a.hitsE;a.total=a.dp+a.de;a.dpc=a.casts?a.total/a.casts:0;a.hpc=a.casts?a.hits/a.casts:0;a.crit=a.hits?100*a.crits/a.hits:0;a.mitp=a.pre?100*a.mit/a.pre:0;a.hovp=a.he+a.ho>0?100*a.ho/(a.he+a.ho):-1;a.np=Object.keys(a.pl).length;a.cls=Object.keys(a.cl).sort(function(x,y){return a.cl[y]-a.cl[x]})[0]||'';
     a.top=Object.keys(a.pl).sort(function(x,y){return a.pl[y]-a.pl[x]}).slice(0,3).map(function(x){return x+' '+num(a.pl[x])}).join(', ');return a});
   return {rows:rows,matches:nm,all:ms.length};
 }
@@ -1484,17 +1588,19 @@ var SKC=[
   {k:'de',l:'PvE dmg',f:function(r){return num(r.de)}},
   {k:'total',l:'Total dmg',f:function(r){return num(r.total)}},
   {k:'dpc',l:'Dmg/cast',f:function(r){return num(r.dpc)}},
-  {k:'mitp',l:'Mitigated %',f:function(r){return num(r.mitp,1)}}];
+  {k:'mitp',l:'Mitigated %',f:function(r){return num(r.mitp,1)}},
+  {k:'he',l:'Healing',f:function(r){return r.he?num(r.he):'-'}},
+  {k:'hovp',l:'Overheal %',f:function(r){return r.hovp==null||r.hovp<0?'-':ovTxt(r.hovp)}}];
 function skSum(list,grand){
-  var o={n:list.length,casts:0,hits:0,crits:0,kills:0,dp:0,de:0,mit:0,pre:0,pl:{}};
-  list.forEach(function(a){o.casts+=a.casts;o.hits+=a.hits;o.crits+=a.crits;o.kills+=a.kills;o.dp+=a.dp;o.de+=a.de;o.mit+=a.mit;o.pre+=a.pre;Object.keys(a.pl).forEach(function(k){o.pl[k]=1})});
-  o.total=o.dp+o.de;o.hpc=o.casts?o.hits/o.casts:0;o.crit=o.hits?100*o.crits/o.hits:0;o.dpc=o.casts?o.total/o.casts:0;o.mitp=o.pre?100*o.mit/o.pre:0;o.np=Object.keys(o.pl).length;o.share=grand?100*o.total/grand:0;return o;
+  var o={n:list.length,casts:0,hits:0,crits:0,kills:0,dp:0,de:0,mit:0,pre:0,he:0,ho:0,pl:{}};
+  list.forEach(function(a){o.he+=a.he||0;o.ho+=a.ho||0;o.casts+=a.casts;o.hits+=a.hits;o.crits+=a.crits;o.kills+=a.kills;o.dp+=a.dp;o.de+=a.de;o.mit+=a.mit;o.pre+=a.pre;Object.keys(a.pl).forEach(function(k){o.pl[k]=1})});
+  o.total=o.dp+o.de;o.hpc=o.casts?o.hits/o.casts:0;o.crit=o.hits?100*o.crits/o.hits:0;o.dpc=o.casts?o.total/o.casts:0;o.mitp=o.pre?100*o.mit/o.pre:0;o.hovp=o.he+o.ho>0?100*o.ho/(o.he+o.ho):-1;o.np=Object.keys(o.pl).length;o.share=grand?100*o.total/grand:0;return o;
 }
 function skSort(rows){var st=sortState.skills;return rows.slice().sort(function(a,b){var x=a[st.k],y=b[st.k];if(typeof x==='string')return st.d*x.localeCompare(y);return st.d*((x||0)-(y||0))})}
 function skDrill(a,ncol){
   var pd=Object.keys(a.pd||{}).map(function(k){var q=a.pd[k];q.total=q.dp+q.de;q.hpc=q.casts?q.hits/q.casts:0;q.crit=q.hits?100*q.crits/q.hits:0;q.dpc=q.casts?q.total/q.casts:0;q.share=a.total?100*q.total/a.total:0;return q}).sort(function(x,y){return y.total-x.total||y.casts-x.casts});
-  return '<tr class="skdrill"><td></td><td colspan="'+ncol+'"><table><thead><tr><th scope="col">Player</th><th scope="col">Casts</th><th scope="col">Hits</th><th scope="col">Hits/cast</th><th scope="col">Crit %</th><th scope="col">Damage</th><th scope="col">Dmg/cast</th><th scope="col">Share of skill</th></tr></thead><tbody>'+
-    pd.map(function(q){return '<tr><td>'+clsPlain(q.cls)+' '+esc(q.name)+' <span class="note" style="margin:0">'+esc(teamName(q.team))+'</span></td><td>'+num(q.casts)+'</td><td>'+num(q.hits)+'</td><td>'+num(q.hpc,2)+'</td><td>'+num(q.crit,1)+'</td><td>'+num(q.total)+'</td><td>'+num(q.dpc)+'</td><td>'+num(q.share,0)+'%</td></tr>'}).join('')+'</tbody></table></td></tr>';
+  return '<tr class="skdrill"><td></td><td colspan="'+ncol+'"><table><thead><tr><th scope="col">Player</th><th scope="col">Casts</th><th scope="col">Hits</th><th scope="col">Hits/cast</th><th scope="col">Crit %</th><th scope="col">Damage</th><th scope="col">Dmg/cast</th><th scope="col">Share of skill</th><th scope="col">Healing</th><th scope="col">Overheal %</th></tr></thead><tbody>'+
+    pd.map(function(q){return '<tr><td>'+clsPlain(q.cls)+' '+esc(q.name)+' <span class="note" style="margin:0">'+esc(teamName(q.team))+'</span></td><td>'+num(q.casts)+'</td><td>'+num(q.hits)+'</td><td>'+num(q.hpc,2)+'</td><td>'+num(q.crit,1)+'</td><td>'+num(q.total)+'</td><td>'+num(q.dpc)+'</td><td>'+num(q.share,0)+'%</td><td>'+(q.he?num(q.he):'-')+'</td><td>'+(q.he+q.ho>0?ovTxt(100*q.ho/(q.he+q.ho)):'-')+'</td></tr>'}).join('')+'</tbody></table></td></tr>';
 }
 function skTbl(rows){
   var st=sortState.skills,ncol=SKC.length+1;
@@ -1650,6 +1756,7 @@ function viewMatch(id){
       :(hasResult(d)||canEdit&&m.saved?'':'<p class="note" style="margin:0">'+(m.saved?'The combat log has no match result row.':'Save the match first to set a winner.')+'</p>'))+'</div>';
   if(hasResult(d)&&TFLAG[R.winner])h+='<div class="sbn l" aria-hidden="true"><img alt="" src="'+TFLAG[R.winner]+'"></div><div class="sbn r" aria-hidden="true"><img alt="" src="'+TFLAG[R.winner]+'"></div>';
   st+=accoladePanel(anaMatchRows(d),false,'Match accolades',[{id:id,doc:d}]);
+  rows.forEach(function(r){var i=ovInfo(r);r.ovp=i.pct==null?-1:i.pct;r.hlE=i.eff});
   st+='<div class="panel">'+table('match',[
     {k:'name',l:'Player',f:function(r){return '<a class="plink" href="#player-'+slug(r.name)+'">'+esc(r.name)+'</a> <a class="note tname" href="#faction-'+r.team+'">'+esc(teamName(r.team))+'</a>'}},
     {k:'cls',l:'Class',f:function(r){return clsCell(r.cls)}},
@@ -1665,7 +1772,9 @@ function viewMatch(id){
     {k:'taken',l:'Taken',f:function(r){return num(r.taken)}},
     {k:'mitig',l:'Absorbed',f:function(r){return num(r.mitig)}},
     {k:'mitP',l:'PvP hits mitigated',f:function(r){return r.mitP==null?'-':num(r.mitP)}},
-    {k:'dpm',l:'Dmg/min',f:function(r){return num(r.dpm)}}
+    {k:'dpm',l:'Dmg/min',f:function(r){return num(r.dpm)}},
+    {k:'hlE',l:'Healing',f:function(r){return r.hlE?num(r.hlE):'-'}},
+    {k:'ovp',l:'Overheal %',f:function(r){return r.ovp<0?'-':'<span title="'+num(ovInfo(r).over)+' wasted of '+num(r.hlE+ovInfo(r).over)+' healing power"'+(r.ovp>=40?' style="color:#d19a1f;font-weight:700"':'')+'>'+ovTxt(r.ovp)+'</span>'}}
   ],rows,null,function(r){return TEAMS[r.team]?'--tc:'+TEAMS[r.team].col:''})+'</div>';
   st+=objPanel(d,(d.players||[]).filter(function(p){return !(hideBots&&isBot(p.name))}));
   var tabs=[['stats','Stats &amp; accolades']];if(canDesign)tabs.push(['break','Breakdown']);if(d.ledger)tabs.push(['map','Heat map']);if(canDesign){tabs.push(['graphs','Graphs']);if(anaHas(d))tabs.push(['analysis','Analysis'])}tabs.push(['log','Event log']);
@@ -1745,12 +1854,28 @@ function gxBars(title,keys,pl,fmtd){
     return '<div style="margin:0 0 10px"><div style="margin:0 0 3px">'+clsPlain(a.o.p.cls)+' <strong>'+esc(a.o.p.name)+'</strong> <span class="note" style="margin:0">'+esc(teamName(a.o.p.team))+'</span></div>'+keys.map(function(k){var v=a.v[k[0]]||0;
       return '<div style="display:grid;grid-template-columns:1fr 70px;gap:8px;align-items:center;margin:2px 0"><span style="display:block;height:11px;width:'+(100*v/mx).toFixed(1)+'%;min-width:'+(v?2:0)+'px;background:'+k[2]+';border-radius:2px"></span><span style="text-align:right;font-size:13px">'+(fmtd?num(v,1):num(v))+'</span></div>'}).join('')+'</div>'}).join('')+'</div>';
 }
+/* Healing efficiency: how much of each player's healing landed, per skill and from potions and food */
+function gxHeal(pl){
+  var pr=[],sk=[],it=[];
+  pl.forEach(function(o){var p=o.p,i=ovInfo(p),c=itemOv(p);
+    if(i.eff||i.over||c.uses)pr.push({name:p.name,cls:p.cls||'',team:p.team,eff:i.eff,over:i.over,pct:i.pct==null?-1:i.pct,iu:c.uses,io:c.over,ip:c.pct==null?-1:c.pct});
+    (p.skills||[]).forEach(function(k){var x=k.he;if(x&&(x.e||x.o))sk.push({name:p.name,cls:p.cls||'',skill:skName(k.skill),n:x.n,crit:x.n?100*x.c/x.n:0,eff:x.e,over:x.o,pct:x.e+x.o>0?100*x.o/(x.e+x.o):-1,self:x.s,cast:k.casts})});
+    (p.it||[]).forEach(function(x){it.push({name:p.name,cls:p.cls||'',item:x.k,u:x.u,h:x.h,o:x.o,pct:x.h+x.o>0?100*x.o/(x.h+x.o):-1})})});
+  if(!pr.length)return '<div class="panel"><h2>Healing efficiency</h2><p class="note">No healing recorded in this match, or '+GXOLD.charAt(0).toLowerCase()+GXOLD.slice(1)+'</p></div>';
+  var pc=function(r){return r.pct<0?'-':'<span'+(r.pct>=40?' style="color:#d19a1f;font-weight:700"':'')+'>'+ovTxt(r.pct)+'</span>'};
+  var h='<div class="panel"><h2>Healing efficiency</h2><p class="note" style="margin:0 0 8px">Overheal is healing that had nothing to heal. The percentage is overheal divided by effective healing plus overheal. Amber is 40% or more. Skill overheal and potion or food overheal are counted separately.</p>'+
+    table('gxov',[{k:'name',l:'Player',f:function(r){return esc(r.name)}},{k:'cls',l:'Class',f:function(r){return clsPlain(r.cls)}},{k:'eff',l:'Effective healing',f:function(r){return num(r.eff)}},{k:'over',l:'Overheal',f:function(r){return num(r.over)}},{k:'pct',l:'Overheal %',f:pc},{k:'iu',l:'Potions and food used',f:function(r){return num(r.iu)}},{k:'io',l:'Potion overheal',f:function(r){return num(r.io)}},{k:'ip',l:'Potion overheal %',f:function(r){return r.ip<0?'-':ovTxt(r.ip)}}],pr)+'</div>';
+  if(sk.length)h+='<div class="panel"><h2>Healing by skill</h2>'+table('gxovs',[{k:'name',l:'Player',f:function(r){return esc(r.name)}},{k:'cls',l:'Class',f:function(r){return clsPlain(r.cls)}},{k:'skill',l:'Skill',f:function(r){return esc(r.skill)}},{k:'cast',l:'Casts',f:function(r){return num(r.cast)}},{k:'n',l:'Heals landed',f:function(r){return num(r.n)}},{k:'crit',l:'Crit %',f:function(r){return num(r.crit,0)}},{k:'eff',l:'Effective',f:function(r){return num(r.eff)}},{k:'over',l:'Overheal',f:function(r){return num(r.over)}},{k:'pct',l:'Overheal %',f:pc},{k:'self',l:'On self',f:function(r){return num(r.self)}}],sk)+'</div>';
+  if(it.length)h+='<div class="panel"><h2>Potions and food</h2>'+table('gxovi',[{k:'name',l:'Player',f:function(r){return esc(r.name)}},{k:'cls',l:'Class',f:function(r){return clsPlain(r.cls)}},{k:'item',l:'Item',f:function(r){return esc(r.item)}},{k:'u',l:'Used',f:function(r){return num(r.u)}},{k:'h',l:'Health restored',f:function(r){return num(r.h)}},{k:'o',l:'Overheal',f:function(r){return num(r.o)}},{k:'pct',l:'Overheal %',f:pc}],it)+'</div>';
+  return h;
+}
 function gxCombat(d){
   var ps=gxPlSel(d,true),pl=gxPlayers(d).filter(function(o){return !ps.cur||o.p.name===ps.cur}),h='<div class="panel" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><h2 style="margin:0">Combat</h2>'+ps.h+'</div>';
   h+=gxChips('cb',[['vs','Applied vs received'],['from','Damage taken from'],['regen','Regen'],['snap','Snapshots']],gx.cb);
   if(gx.cb==='vs'){
     h+=gxBars('Damage: dealt vs taken',[['pvp','PvP dealt','#4a8fe0'],['pve','PvE dealt','#d19a1f'],['taken','Taken','#d33']],pl);
     h+=gxBars('Healing and shields',[['heal','Healing given (PvP)','#4a8fe0'],['nonpvp','Healing given (other)','#8fb3e8'],['recv','Healing received','#d33'],['over','Overheal','#d19a1f'],['shield','Shield absorbed','#8a93a6']],pl);
+    h+=gxHeal(pl);
     h+=gxBars('Crowd control: count',[['cca','Applied','#4a8fe0'],['ccr','Received','#d33']],pl);
     h+=gxBars('Crowd control: seconds',[['ccas','Applied (s)','#4a8fe0'],['ccrs','Received (s)','#d33']],pl,true);
   }else if(gx.cb==='from'){
@@ -2019,7 +2144,7 @@ function viewUpload(){if(!canEdit)return '<div><h1>Upload</h1></div>'+empty('Adm
     h+='<div class="panel scroll"><table><thead><tr><th scope="col"><button type="button" disabled>File</button></th><th scope="col"><button type="button" disabled>Length</button></th><th scope="col"><button type="button" disabled>Players</button></th><th scope="col"><button type="button" disabled>Status</button></th><th scope="col"><button type="button" disabled></button></th></tr></thead><tbody>'+
     uploads.map(function(u,i){return '<tr><td><strong>'+esc(u.name)+'</strong></td><td>'+(u.doc?dur(u.doc.duration):'-')+'</td><td>'+(u.doc?u.doc.players.length:'-')+'</td><td class="'+(u.err?'err':u.saved?'ok':'')+'">'+esc(u.err||(u.saved?'Saved'+(u.rawSaved?' (raw ledger kept)':u.rawNote?'. '+u.rawNote:''):u.dup?'Already saved':'Ready'))+'</td><td>'+(u.doc&&!u.saved&&!u.dup&&db&&canWrite?'<button class="btn" type="button" data-save="'+i+'">Save</button> ':'')+(u.doc&&u.raw&&/^\s*\ufeff?\s*\{/.test(u.raw)?'<button class="btn ghost" type="button" data-expraw="'+i+'" title="The file as you uploaded it, with every field">Original JSON</button> ':'')+(u.doc?'<button class="btn ghost" type="button" data-expdoc="'+i+'" title="What this site stores, plus per skill numbers">Parsed JSON</button> ':'')+'<button class="btn" type="button" data-discard="'+i+'" style="background:transparent;color:var(--fg);border:1px solid var(--line)">Drop</button></td></tr>'}).join('')+'</tbody></table></div>';
   }
-  h+='<div class="panel"><h2>What the logs contain</h2><p class="note" style="margin:8px 0 0">Per player: damage (to players, mobs, boss), damage taken, kills, deaths, mob and boss kills, score, damage per 30 seconds, kill and capture events. Class is inferred from the vitals and regen effects. The log has no ability names (every hit is AeonResolvedDamageEffect) and no player to player healing yet, so ability and healing pages need those two fields added to the log.</p></div>';
+  h+='<div class="panel"><h2>What the logs contain</h2><p class="note" style="margin:8px 0 0">Per player: damage (to players, mobs, boss), damage taken, kills, deaths, mob and boss kills, score, damage per 30 seconds, kill and capture events. Class is inferred from the vitals and regen effects. Old CSV combat logs name every hit AeonResolvedDamageEffect and record no player to player healing, so they cannot feed ability or healing pages. Match ledgers (JSON) name every ability and record healing, overheal, potions and food, so upload those instead.</p></div>';
   return h;
 }
 
