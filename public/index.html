@@ -315,7 +315,7 @@ var SERIES=['var(--c-assassin)','var(--c-hunter)','var(--c-mystic)','var(--c-pri
 var TABS=[['players','Players'],['classes','Classes'],['skills','Skills'],['factions','Factions'],['map','Heat map'],['matches','Matches'],['events','Events'],['upload','Upload']];
 var $view=document.getElementById('view'),$nav=document.getElementById('nav');
 var remote={},local={},snaps={},snapDraft={name:'',sel:{}},evEdit={id:'',v:''},evMsg='',delSel={},confirmKey='',db=null,user=null,canWrite=true,canEdit=false,canDesign=false,loaded=false,dbState='loading';
-var sortState={gxov:{k:'pct',d:-1},gxovs:{k:'pct',d:-1},gxovi:{k:'pct',d:-1},skcmp:{k:'total',d:-1},gxs:{k:'total',d:-1},gxsk:{k:'casts',d:-1},gxac:{k:'casts',d:-1},gxrg:{k:'he',d:-1},gxcp:{k:'caps',d:-1},gxrl:{k:'pk',d:-1},gxmb:{k:'tot',d:-1},bkm:{k:'dmg',d:-1},bkskill:{k:'total',d:-1},skills:{k:'total',d:-1},skusers:{k:'total',d:-1},objs:{k:'mobT',d:-1},snplayers:{k:'score',d:-1},snfac:{k:'team',d:1},fplayers:{k:'rating',d:-1},cboard:{k:'rating',d:-1},pside:{k:'name',d:1},adteam:{k:'team',d:1},adcls:{k:'dpm',d:-1},admatch:{k:'t',d:-1},players:{k:'rating',d:-1},match:{k:'dmg',d:-1},classes:{k:'avgDmg',d:-1},pclass:{k:'rating',d:-1},phist:{k:'t',d:-1}};
+var sortState={gxov:{k:'pct',d:-1},gxovs:{k:'pct',d:-1},gxovi:{k:'pct',d:-1},skcmp:{k:'total',d:-1},gxs:{k:'total',d:-1},gxsk:{k:'casts',d:-1},gxac:{k:'casts',d:-1},gxrg:{k:'he',d:-1},gxcp:{k:'caps',d:-1},gxrl:{k:'pk',d:-1},gxmb:{k:'tot',d:-1},bkm:{k:'dmg',d:-1},bkskill:{k:'total',d:-1},skills:{k:'total',d:-1},skusers:{k:'total',d:-1},objs:{k:'mobT',d:-1},snplayers:{k:'score',d:-1},snfac:{k:'team',d:1},fplayers:{k:'rating',d:-1},cboard:{k:'rating',d:-1},pside:{k:'name',d:1},adteam:{k:'team',d:1},adcls:{k:'dpm',d:-1},admatch:{k:'t',d:-1},players:{k:'rating',d:-1},match:{k:'rating',d:-1},classes:{k:'avgDmg',d:-1},pclass:{k:'rating',d:-1},phist:{k:'t',d:-1}};
 var hideBots=true,ratedOnly=false,uploads=[];
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
@@ -337,6 +337,24 @@ function allMatches(){var m={},k;for(k in local)m[k]=local[k];for(k in remote)m[
 var REF={dpm:2000,spm:70,kpm:0.5,dth:0.1,tpm:600,w:{dmg:0.35,score:0.25,kills:0.2,surv:0.2,tank:0,heal:0},hpm:800},REF_CLASS={Assassin:{},Hunter:{},Mystic:{},Priest:{dpm:1200,w:{dmg:0.2,score:0.2,kills:0.1,surv:0.2,heal:0.3}},Warrior:{dpm:1400,spm:60,kpm:0.4,dth:0.12,tpm:600,w:{dmg:0.25,score:0.25,kills:0.15,surv:0.15,tank:0.2,heal:0}}},ALPHA=0.35,PROVISIONAL=5;
 function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
 function refFor(c){var o=Object.assign({},REF,REF_CLASS[c]||{});o.w=Object.assign({},REF.w,(REF_CLASS[c]||{}).w||{});return o}
+/* the rating explained under the match stats, built from the same numbers the rating uses so it cannot drift */
+function ratingNote(){
+  var pc=function(v){return v?Math.round(v*100)+'%':'-'};
+  var rows=['Assassin','Hunter','Mystic','Priest','Warrior'].map(function(c){var R=refFor(c),W=R.w;
+    return '<tr><td>'+clsPlain(c)+'</td><td>'+num(R.dpm)+'</td><td>'+num(R.spm)+'</td><td>'+num(R.kpm,2)+'</td><td>'+num(R.dth,2)+'</td><td>'+(W.heal?num(R.hpm)+'</td><td>':'-</td><td>')+(W.tank?num(R.tpm):'-')+'</td><td>'+pc(W.dmg)+'</td><td>'+pc(W.score)+'</td><td>'+pc(W.kills)+'</td><td>'+pc(W.surv)+'</td><td>'+pc(W.heal)+'</td><td>'+pc(W.tank)+'</td></tr>'}).join('');
+  return '<div class="panel mtbl"><h2>How Match rating is calculated</h2>'+
+    '<p class="note" style="margin-top:0">The rating compares what a player did each minute with a reference for their class. 100 is a typical performance and it can go as high as 200. It is built from up to six parts, each worth a share of the total.</p>'+
+    '<ul class="note" style="margin:0 0 10px;padding-left:18px;line-height:1.6">'+
+    '<li><b>Damage</b>: damage dealt per minute divided by the class reference.</li>'+
+    '<li><b>Score</b>: points per minute divided by the reference.</li>'+
+    '<li><b>Kills</b>: player kills per minute divided by the reference.</li>'+
+    '<li><b>Survival</b>: 1.5 with no deaths, 1.0 at the reference death rate, and 0 at three times that rate.</li>'+
+    '<li><b>Healing</b> (Priest only): healing given per minute divided by the reference.</li>'+
+    '<li><b>Tanking</b> (Warrior only): damage taken plus absorbed per minute divided by the reference, reduced if the player died a lot.</li></ul>'+
+    '<p class="note" style="margin:0 0 8px">Each part is capped at twice its reference, so one huge number cannot carry the rating. The rating is the weighted sum of the parts, times 100. Time is the length of the match.</p>'+
+    '<div class="scroll"><table><thead><tr><th scope="col"><button type="button" disabled>Class</button></th><th scope="col"><button type="button" disabled>Damage/min</button></th><th scope="col"><button type="button" disabled>Score/min</button></th><th scope="col"><button type="button" disabled>Kills/min</button></th><th scope="col"><button type="button" disabled>Deaths/min</button></th><th scope="col"><button type="button" disabled>Heal/min</button></th><th scope="col"><button type="button" disabled>Taken/min</button></th><th scope="col"><button type="button" disabled>Damage wt</button></th><th scope="col"><button type="button" disabled>Score wt</button></th><th scope="col"><button type="button" disabled>Kills wt</button></th><th scope="col"><button type="button" disabled>Survival wt</button></th><th scope="col"><button type="button" disabled>Healing wt</button></th><th scope="col"><button type="button" disabled>Tanking wt</button></th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+    '<p class="note" style="margin:8px 0 0">The first six number columns are the references, the last six are the weights (wt). Tiers: under 70 Novice, 70 to 89 Developing, 90 to 109 Solid, 110 to 129 Strong, 130 and up Elite. A player\'s overall rating on their page is a moving average of their match ratings, where each new match counts '+Math.round(ALPHA*100)+'% and the rating is marked provisional until '+PROVISIONAL+' matches. The references are starting values that will be tuned as more matches are played.</p></div>';
+}
 function perf(p,d){
   var mins=Math.max((d.duration||0)/60,1),R=refFor(p.cls);
   var comp={dmg:clamp(p.dmg/mins/R.dpm,0,2),score:clamp(p.score/mins/R.spm,0,2),kills:clamp(p.kills/mins/R.kpm,0,2),surv:clamp(1.5-0.5*((p.deaths/mins)/R.dth),0,1.5)};
@@ -1788,6 +1806,7 @@ function viewMatch(id){
     {k:'ovp',l:'Overheal %',f:function(r){return r.ovp<0?'-':'<span title="'+num(ovInfo(r).over)+' wasted of '+num(r.hlE+ovInfo(r).over)+' healing power"'+(r.ovp>=40?' style="color:#d19a1f;font-weight:700"':'')+'>'+ovTxt(r.ovp)+'</span>'}}
   ],rows,null,function(r){return TEAMS[r.team]?'--tc:'+TEAMS[r.team].col:''})+'</div>';
   st+=objPanel(d,(d.players||[]).filter(function(p){return !(hideBots&&isBot(p.name))}));
+  st+=ratingNote();
   var tabs=[['stats','Stats &amp; accolades']];if(canDesign)tabs.push(['break','Breakdown']);if(d.ledger)tabs.push(['map','Heat map']);if(canDesign){tabs.push(['graphs','Graphs']);if(anaHas(d))tabs.push(['analysis','Analysis'])}tabs.push(['log','Event log']);
   var sn=subTabs('match-'+id,tabs);h+=sn.h;
   if(sn.cur==='stats')h+=st;
