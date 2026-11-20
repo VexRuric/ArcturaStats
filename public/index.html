@@ -116,6 +116,7 @@ a.plink:hover{color:var(--accent);border-bottom-color:var(--accent)}
 .track b{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--fg)}
 .rank{color:var(--muted);width:34px}
 th:nth-child(2),td:nth-child(2){text-align:left}
+.mtbl th{vertical-align:bottom;font-size:13px;letter-spacing:.04em}.mtbl th button{white-space:normal;line-height:1.15;padding:8px 5px}.mtbl td{padding:7px 5px}.mtbl th:nth-child(2),.mtbl td:nth-child(2){padding-left:10px}.mtbl td:nth-child(2) .tname{display:block;font-size:11px;line-height:1.2;margin-top:1px}
 .meter{display:inline-block;height:6px;border-radius:3px;background:var(--accent);vertical-align:middle;margin-left:8px}
 svg text{fill:var(--muted);font:12px var(--font-b)}
 svg .grid{stroke:var(--line);stroke-width:1}
@@ -1767,7 +1768,7 @@ function viewMatch(id){
   if(hasResult(d)&&TFLAG[R.winner])h+='<div class="sbn l" aria-hidden="true"><img alt="" src="'+TFLAG[R.winner]+'"></div><div class="sbn r" aria-hidden="true"><img alt="" src="'+TFLAG[R.winner]+'"></div>';
   st+=accoladePanel(anaMatchRows(d),false,'Match accolades',[{id:id,doc:d}]);
   rows.forEach(function(r){var i=ovInfo(r);r.ovp=i.pct==null?-1:i.pct;r.hlE=i.eff});
-  st+='<div class="panel">'+table('match',[
+  st+='<div class="panel mtbl">'+table('match',[
     {k:'name',l:'Player',f:function(r){return '<a class="plink" href="#player-'+slug(r.name)+'">'+esc(r.name)+'</a> <a class="note tname" href="#faction-'+r.team+'">'+esc(teamName(r.team))+'</a>'}},
     {k:'cls',l:'Class',f:function(r){return clsCell(r.cls)}},
     {k:'rating',l:'Match rating',f:function(r){return '<strong>'+num(r.rating)+'</strong>'}},
