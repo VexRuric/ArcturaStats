@@ -2626,7 +2626,7 @@ function dzSkillAgg(docs,ids){
   var A={},cd={};
   docs.forEach(function(d,di){var pm=Math.max((d.duration||0)/60,0.1),swm={};dzClassSwaps(d).forEach(function(x){swm[x.name]=x});(d.players||[]).forEach(function(p){if(isBot(p.name)||!p.cls||(dz.xs&&swm[p.name]))return;
     (p.skills||[]).forEach(function(k){var key=p.cls+'|'+k.skill,a=A[key]||(A[key]={key:key,cls:p.cls,skill:k.skill,name:skName(k.skill),pl:{},pmin:0,casts:0,cm:0,hits:0,crits:0,kills:0,dmg:0,att:0,lan:0,kind:'',cdN:0,cdA:0,cdP:0,res:0,rname:'',he:0,ho:0,hn:0,ent:[]});
-      a.ent.push({id:ids?ids[di]:'',mt:mtitle(d),p:p.name,cls:p.cls,casts:k.casts,hits:k.pvp.hits+k.pve.hits,dmg:k.pvp.hl+k.pve.hl,he:(k.he&&k.he.e)||0,t:playedAt(d),sw:swm[p.name]||null});
+      a.ent.push({id:ids?ids[di]:'',mt:mtitle(d),p:p.name,cls:p.cls,casts:k.casts,hits:k.pvp.hits+k.pve.hits,dmg:k.pvp.hl+k.pve.hl,he:(k.he&&k.he.e)||0,t:playedAt(d),sw:swm[p.name]||null,dest:/Teleport/.test(k.skill)?dzDest(d,p,k.skill):null});
       a.pl[p.name]=1;a.pmin+=pm;a.casts+=k.casts;a.cm+=k.cm||0;a.hits+=k.pvp.hits+k.pve.hits;a.crits+=k.pvp.crits+k.pve.crits;a.kills+=k.pvp.kills+k.pve.kills;a.dmg+=k.pvp.hl+k.pve.hl;
       if(k.acc){a.att+=k.acc.a;a.lan+=k.acc.l;if(k.acc.k)a.kind=k.acc.k}
       if(k.cd&&k.cd.n){a.cdN+=k.cd.n;a.cdA+=k.cd.a;a.cdP+=k.cd.p}
@@ -2668,6 +2668,29 @@ function dzWrongClass(docs,ids){
     if(!t.act||/^(Potion|Bandage|Food|Water|Sprint|Dodge|MultiJump|Teleport|Trinket|Leap|SpendCharges)/.test(last))return;
     var cs=Object.keys(t.by);if(cs.length<2||t.all<10)return;var top=cs.sort(function(a,b){return t.by[b]-t.by[a]})[0];if(t.by[top]/t.all>=0.9)owner[sk]=top});
   return ent.filter(function(e){var o=owner[e.skill];if(!o||e.cls===o)return false;if(e.sw&&e.sw.from===o)return false;return true}).map(function(e){e.owner=owner[e.skill];return e}).sort(function(a,b){return b.casts-a.casts});
+}
+/* Where a Teleport lands. The ledger records the cast but not the destination, so it is worked out from where the player is in the next position sample after the cast: on a control point, at their team base, or nowhere new. Team bases are the average position of that team after each spawn. Position samples are about 5 seconds apart, so a landing spot is approximate. */
+function dzBases(d){
+  if(d.__bases)return d.__bases;var by={};
+  (d.players||[]).forEach(function(p){(p.snap||[]).forEach(function(sn){if(sn.w!=='Spawn')return;var q=null;(p.pos||[]).forEach(function(z){if(!q&&z[0]>=sn.t&&z[0]-sn.t<=10&&z[3])q=z});if(q&&p.team!=null){var b=by[p.team]||(by[p.team]={x:0,y:0,n:0});b.x+=q[1];b.y+=q[2];b.n++}})});
+  var out={};Object.keys(by).forEach(function(k){if(by[k].n>=3)out[k]=[by[k].x/by[k].n,by[k].y/by[k].n]});
+  hideProp(d,'__bases',out);return out;
+}
+function dzOwnerAt(d,cp,t){var o=-1;(d.cpTl||[]).forEach(function(e){if(e.cp===cp&&e.t<=t)o=e.nt});return o}
+function dzDest(d,p,skill){
+  var cl=d.castLog,pi=(d.players||[]).indexOf(p),si=cl?cl.n.indexOf(skill):-1,out=[];if(!cl||pi<0||si<0)return out;
+  var pos=(p.pos||[]).filter(function(z){return z[3]}),bases=dzBases(d);
+  cl.r.forEach(function(x){if(x[1]!==pi||x[2]!==si)return;var t=x[0],b=null,a=null;
+    pos.forEach(function(z){if(z[0]<=t)b=z;else if(!a)a=z});
+    if(!a||!b||a[0]-t>8){out.push({t:t,group:'Unknown',label:'Unknown, no position sample right after'});return}
+    var moved=Math.hypot(a[1]-b[1],a[2]-b[2]);
+    if(moved<15){out.push({t:t,group:'Did not move',label:'Did not move ('+num(moved,0)+' m)'});return}
+    var cpn=null,cd=1e9;Object.keys(CP_WORLD).forEach(function(c){var q=Math.hypot(a[1]-CP_WORLD[c][0],a[2]-CP_WORLD[c][1]);if(q<cd){cd=q;cpn=c}});
+    if(cd<=15){var ow=dzOwnerAt(d,cpn,t),rel=ow===p.team?'own team':ow==null||ow<0?'neutral':'enemy';out.push({t:t,group:'Control point, '+rel,label:cpn+' control point, '+rel});return}
+    var bk=null,bd=1e9;Object.keys(bases).forEach(function(k){var q=Math.hypot(a[1]-bases[k][0],a[2]-bases[k][1]);if(q<bd){bd=q;bk=k}});
+    if(bk!=null&&bd<=30){var own=+bk===p.team;out.push({t:t,group:own?'Own team base':'Enemy base',label:(own?'Own':'Enemy')+' team base ('+teamName(+bk)+')'});return}
+    out.push({t:t,group:'Elsewhere',label:'Elsewhere ('+Math.round(a[1])+', '+Math.round(a[2])+'), '+num(cd,0)+' m from '+cpn})});
+  return out;
 }
 function dzClassSwaps(d){
   if(d.__cs)return d.__cs;var per=[],votes={},out=[];
@@ -2761,11 +2784,12 @@ function viewDzSkills(G){
   var h='<div class="panel" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><h2 style="margin:0">Skill balance</h2><label class="chk">Class <select data-dzs="sc"><option value="">All classes</option>'+DZCL.map(function(c){return '<option value="'+c+'"'+(dz.sc===c?' selected':'')+'>'+c+'</option>'}).join('')+'</select></label><label class="chk"><input type="checkbox" data-dzc="sf"'+(dz.sf?' checked':'')+'> Flagged only ('+nf+')</label><label class="chk"><input type="checkbox" data-dzc="su"'+(dz.su?' checked':'')+'> Include utility skills with no damage or healing</label></div>';
   var sel=dz.sk&&ag.map[dz.sk];
   if(sel){var same=rows.filter(function(x){return x.skill===sel.skill}),stot=0;same.forEach(function(x){stot+=x.casts});
-    var ent=sel.ent.slice().sort(function(a,b){return b.t-a.t||b.casts-a.casts});
+    var isTp=/Teleport/.test(sel.skill),ent=sel.ent.slice().sort(function(a,b){return b.t-a.t||b.casts-a.casts});
     h+='<div class="panel" id="dzskd" style="border-left:4px solid '+(CCOL[sel.cls]||'var(--accent)')+'"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><h2 style="margin:0">'+esc(sel.name)+' <span class="note" style="margin:0">as '+esc(sel.cls)+'</span></h2><span class="note" style="margin:0">'+esc(sel.skill)+'</span><button class="btn ghost" type="button" data-dzsk="" style="margin-left:auto">Close</button></div>'+
       '<p class="note" style="margin:8px 0">Who casts this skill, all classes in the matches chosen: '+same.sort(function(a,b){return b.casts-a.casts}).map(function(x){return clsPlain(x.cls)+' '+num(x.casts)+' casts ('+num(100*x.casts/stot,0)+'%)'}).join(', ')+'.'+(same.length>1?' A class with a tiny share is probably not meant to have it, or changed class during the match.':'')+'</p>'+
-      '<div class="scroll"><table><thead><tr>'+['Match','Player','Class','Casts','Hits','Damage','Healing',''].map(dzTh).join('')+'</tr></thead><tbody>'+
-      ent.slice(0,60).map(function(x){return '<tr><td style="text-align:left">'+(x.id?'<a class="plink" href="#match-'+esc(x.id)+'">'+esc(x.mt)+'</a>':esc(x.mt))+'</td><td style="text-align:left">'+esc(x.p)+(x.sw?' <span class="tag warn" title="Read from the stat snapshots">changed class (test feature) '+esc(x.sw.from)+' &rarr; '+esc(x.sw.to)+' at '+dur(x.sw.t)+'</span>':'')+'</td><td style="text-align:left">'+clsPlain(x.cls)+'</td><td>'+num(x.casts)+'</td><td>'+num(x.hits)+'</td><td>'+(x.dmg?num(x.dmg):'-')+'</td><td>'+(x.he?num(x.he):'-')+'</td><td style="text-align:right">'+(x.id?'<button class="btn ghost" type="button" data-dzseq="'+esc(x.id)+'|'+esc(x.p)+'" title="Open this player cast sequence in the match">Cast sequence</button>':'')+'</td></tr>'}).join('')+'</tbody></table></div>'+(ent.length>60?'<p class="note">Showing the 60 newest of '+ent.length+'.</p>':'')+'</div>';}
+      (isTp?(function(){var g={},n=0;sel.ent.forEach(function(x){(x.dest||[]).forEach(function(q){g[q.group]=(g[q.group]||0)+1;n++})});return n?'<p class="note" style="margin:0 0 8px"><strong>Where the teleports landed</strong> ('+n+' cast'+(n===1?'':'s')+'): '+Object.keys(g).sort(function(a,b){return g[b]-g[a]}).map(function(k){return esc(k)+' '+g[k]}).join(', ')+'. Worked out from the position sample after each cast, so approximate. The ledger has no destination field.</p>':''})():'')+
+      '<div class="scroll"><table><thead><tr>'+['Match','Player','Class','Casts','Hits','Damage','Healing'].concat(isTp?['Destination']:[],['']).map(dzTh).join('')+'</tr></thead><tbody>'+
+      ent.slice(0,60).map(function(x){return '<tr><td style="text-align:left">'+(x.id?'<a class="plink" href="#match-'+esc(x.id)+'">'+esc(x.mt)+'</a>':esc(x.mt))+'</td><td style="text-align:left">'+esc(x.p)+(x.sw?' <span class="tag warn" title="Read from the stat snapshots">changed class (test feature) '+esc(x.sw.from)+' &rarr; '+esc(x.sw.to)+' at '+dur(x.sw.t)+'</span>':'')+'</td><td style="text-align:left">'+clsPlain(x.cls)+'</td><td>'+num(x.casts)+'</td><td>'+num(x.hits)+'</td><td>'+(x.dmg?num(x.dmg):'-')+'</td><td>'+(x.he?num(x.he):'-')+'</td>'+(isTp?'<td style="text-align:left;white-space:normal;min-width:200px">'+((x.dest||[]).length?x.dest.slice(0,6).map(function(q){return '<span class="note" style="margin:0">'+dur(q.t)+'</span> '+esc(q.label)}).join('<br>')+(x.dest.length>6?'<br>and '+(x.dest.length-6)+' more':''):'-')+'</td>':'')+'<td style="text-align:right">'+(x.id?'<button class="btn ghost" type="button" data-dzseq="'+esc(x.id)+'|'+esc(x.p)+'" title="Open this player cast sequence in the match">Cast sequence</button>':'')+'</td></tr>'}).join('')+'</tbody></table></div>'+(ent.length>60?'<p class="note">Showing the 60 newest of '+ent.length+'.</p>':'')+'</div>';}
   var cols=[
     {k:'cls',l:'Class',f:function(r){return clsPlain(r.cls)}},{k:'name',l:'Skill',f:function(r){return '<button type="button" data-dzsk="'+esc(r.key)+'" title="'+esc(r.skill)+', click to see which matches" style="background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px">'+esc(r.name)+'</button>'}},{k:'flagText',l:'Flags',f:function(r){return r.flags.length?'<span style="color:#d19a1f;white-space:normal;display:inline-block;min-width:150px;text-align:left">'+esc(r.flagText)+'</span>':''}},{k:'np',l:'Players',f:function(r){return num(r.np)}},
     {k:'cpm',l:'Casts/min',f:function(r){return num(r.cpm,2)}},{k:'dpc',l:'Damage/cast',f:function(r){return r.dpc?num(r.dpc):'-'}},{k:'hpc',l:'Hits/cast',f:function(r){return num(r.hpc,2)}},{k:'crit',l:'Crit %',f:function(r){return r.hits?num(r.crit,0):'-'}},
