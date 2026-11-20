@@ -1080,7 +1080,8 @@ function dataPanel(){
   var pr=bulkIds('practice'),su=bulkIds('summary'),al=bulkIds('all');
   return '<div class="panel"><h2>Clear logs</h2><p class="note" style="margin-top:0">Deleting removes the stored match for everyone and cannot be undone. Events keep their name but lose the deleted matches. Each button asks you to click twice.</p><div style="display:flex;gap:10px;flex-wrap:wrap">'+confirmBtn('practice','Delete practice matches vs bots',pr)+confirmBtn('summary','Delete imported summaries',su)+confirmBtn('all','Delete ALL matches',al,true)+'</div><p class="note">Pick individual matches on the Matches tab.</p></div>';
 }
-var bugFilter='active',bugMsg='',lastBugs=[];
+var bugFilter='active',bugMsg='',lastBugs=[],lastBugPanel='',lastBugCount=0;
+function bugNewestBuild(){var n=null;allMatches().forEach(function(m){if(m.doc.ledger&&(!n||playedAt(m.doc)>playedAt(n.doc)))n=m});return n?((n.doc.meta||{}).skillsHash||''):''}
 function bugWho(a){var u=[];a.forEach(function(x){if(u.indexOf(x)<0)u.push(x)});return u.slice(0,6).join(', ')+(u.length>6?' and '+(u.length-6)+' more':'')}
 function copyBugs(){
   var L=lastBugs.filter(function(b){return b.s==='devs'});
@@ -1090,6 +1091,7 @@ function copyBugs(){
 }
 var DOC_LIMIT=3.5*1024*1024,DOC_WARN=0.8*DOC_LIMIT;
 function viewAdmin(){
+  lastBugPanel='';
   var h='<div><h1>Admin</h1><p class="sub">Match handling, uploads, accounts, and automatic checks that find problems in the logs, the game and the balance '+statusLine()+'</p></div>';
   if(!canDesign)return h+empty('Designers and admins only','This page is for designers and admins.');
   var ms=allMatches();if(!ms.length)return adminShell(h,empty('No matches yet','Upload combat logs in the Upload section.'),'',0);
@@ -1167,21 +1169,40 @@ function viewAdmin(){
   var SEV={High:0,Medium:1,Low:2},STL={open:'Open',devs:'With devs',fixed:'Fixed',ignored:'Ignored'},cnt={open:0,devs:0,fixed:0,ignored:0};
   bl.sort(function(a,b){return (SEV[a.sev]-SEV[b.sev])||String(a.mn).localeCompare(String(b.mn))});
   bl.forEach(function(b){b.s=(bugs[b.key]&&bugs[b.key].s)||'open';if(cnt[b.s]==null)b.s='open';cnt[b.s]++});
-  lastBugs=bl;
+  var msById={};ms.forEach(function(m){msById[m.id]=m});
+  var bHash=function(id){var m=msById[id];return m?((m.doc.meta||{}).skillsHash||''):''};
+  var newest=null;ms.forEach(function(m){if(m.doc.ledger&&(!newest||playedAt(m.doc)>playedAt(newest.doc)))newest=m});
+  var newestHash=newest?bHash(newest.id):'',seenBy={},inNewest={};
+  bl.forEach(function(b){if(!b.m||!msById[b.m])return;var t=playedAt(msById[b.m].doc),o=seenBy[b.id];if(!o||t>o.t)seenBy[b.id]={t:t,h:bHash(b.m),m:b.m};
+    if(newest&&(newestHash?bHash(b.m)===newestHash:b.m===newest.id))inNewest[b.id]=true});
+  bl.forEach(function(b){b.ls=seenBy[b.id]||null;b.inNew=!!inNewest[b.id]});
+  function bugDate(t){return new Date(t).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}
+  function bugSeen(b){
+    if(!b.ls)return '<span class="note" style="margin:0">All matches</span>';
+    var ls=b.ls,rec=bugs[b.key],tag='';
+    if(b.s==='fixed'&&rec&&rec.at&&ls.t>rec.at)tag='<span class="tag err">Seen again after fixed</span>';
+    else if(newest&&b.inNew)tag='<span class="tag warn">In newest build</span>';
+    else if(newest)tag='<span class="tag ok">Not in newest build</span>';
+    return '<strong>'+esc(ls.h||'No build')+'</strong><br><span class="note" style="margin:0">'+esc(new Date(ls.t).toLocaleDateString(undefined,{month:'short',day:'numeric'}))+'</span><br>'+tag;
+  }
+  function bugClosed(b){var rec=bugs[b.key];if(!rec||b.s==='open')return '';
+    return '<br><span class="note" style="margin:4px 0 0;font-size:12px">'+esc(STL[b.s])+(rec.n?' by '+esc(rec.n):'')+', '+esc(bugDate(rec.at))+(rec.b?', newest build then '+esc(rec.b):'')+'</span>'}
+  lastBugs=bl;lastBugCount=cnt.open+cnt.devs;
   var shown=bl.filter(function(b){return bugFilter==='all'||(bugFilter==='active'?(b.s==='open'||b.s==='devs'):b.s===bugFilter)});
   function bugBtn(b,s,l,pri){return '<button class="btn'+(pri?'':' ghost')+'" type="button" data-aop="bug:'+esc(b.key)+'|'+s+'">'+l+'</button>'}
   function bugActs(b){return b.s==='open'?bugBtn(b,'devs','Send to devs',1)+' '+bugBtn(b,'ignored','Ignore'):b.s==='devs'?bugBtn(b,'fixed','Mark fixed',1)+' '+bugBtn(b,'open','Reopen'):bugBtn(b,'open','Reopen')}
   function bth(l){return '<th scope="col"><button type="button" disabled>'+l+'</button></th>'}
-  var bg='<div class="panel"><h2>Bugs ('+cnt.open+' open, '+cnt.devs+' with devs)</h2><p class="note" style="margin-top:0">Problems and missing data found in the stored combat logs. Send a bug to the devs to track it, then mark it fixed once a new log shows it is gone. Re-upload a log to re-check it.</p>'+
+  var bg='<div class="panel"><h2>Bugs ('+cnt.open+' open, '+cnt.devs+' with devs)</h2><p class="note" style="margin-top:0">Problems and missing data found in the stored combat logs. Send a bug to the devs to track it, then mark it fixed once a new build shows it is gone. Last seen is the newest match that still shows the problem and the build it ran on. Fixed bugs record who closed them and when, and show a red tag if the problem turns up again in a match played after that.</p>'+
     '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'+[['active','Active ('+(cnt.open+cnt.devs)+')'],['open','Open ('+cnt.open+')'],['devs','With devs ('+cnt.devs+')'],['fixed','Fixed ('+cnt.fixed+')'],['ignored','Ignored ('+cnt.ignored+')'],['all','All ('+bl.length+')']].map(function(f){return '<button class="btn'+(bugFilter===f[0]?'':' ghost')+'" type="button" data-bugf="'+f[0]+'" aria-pressed="'+(bugFilter===f[0])+'">'+f[1]+'</button>'}).join('')+(cnt.devs?'<button class="btn ghost" type="button" data-bugcopy="1">Copy dev report</button>':'')+'</div>'+
     (bugMsg?'<p class="note" role="status">'+esc(bugMsg)+'</p>':'')+
-    (shown.length?'<div class="scroll"><table><thead><tr>'+bth('Severity')+bth('Bug')+bth('Log')+bth('Affected')+bth('Status')+'<th scope="col"></th></tr></thead><tbody>'+
-      shown.map(function(b){return '<tr><td><span class="tag '+(b.sev==='High'?'err':b.sev==='Medium'?'warn':'')+'">'+b.sev+'</span></td><td style="white-space:normal;min-width:240px;text-align:left"><strong>'+esc(b.check)+'</strong><br><span class="note" style="margin:0">'+esc(b.detail)+'</span>'+(b.ctx?'<br><span class="note" style="margin:4px 0 0;font-size:12px">'+esc(b.ctx)+'</span>':'')+'</td><td style="white-space:normal;text-align:left">'+(b.m?'<a class="plink" href="#match-'+esc(b.m)+'">'+esc(b.mn)+'</a>':esc(b.mn))+'</td><td style="white-space:normal;min-width:160px;text-align:left">'+esc(bugWho(b.who))+'</td><td><span class="tag '+(b.s==='fixed'?'ok':b.s==='devs'?'warn':'')+'">'+STL[b.s]+'</span></td><td style="text-align:right;white-space:nowrap">'+bugActs(b)+'</td></tr>'}).join('')+'</tbody></table></div>':'<p class="note">'+(bl.length?'Nothing in this view.':'No bugs found.')+'</p>')+'</div>';
+    (shown.length?'<div class="scroll"><table><thead><tr>'+bth('Severity')+bth('Bug')+bth('Log')+bth('Affected')+bth('Last seen')+bth('Status')+'<th scope="col"></th></tr></thead><tbody>'+
+      shown.map(function(b){return '<tr><td><span class="tag '+(b.sev==='High'?'err':b.sev==='Medium'?'warn':'')+'">'+b.sev+'</span></td><td style="white-space:normal;min-width:240px;text-align:left"><strong>'+esc(b.check)+'</strong><br><span class="note" style="margin:0">'+esc(b.detail)+'</span>'+(b.ctx?'<br><span class="note" style="margin:4px 0 0;font-size:12px">'+esc(b.ctx)+'</span>':'')+'</td><td style="white-space:normal;text-align:left">'+(b.m?'<a class="plink" href="#match-'+esc(b.m)+'">'+esc(b.mn)+'</a>':esc(b.mn))+'</td><td style="white-space:normal;min-width:160px;text-align:left">'+esc(bugWho(b.who))+'</td><td style="white-space:normal;text-align:left;min-width:120px">'+bugSeen(b)+'</td><td style="white-space:normal;text-align:left;min-width:140px"><span class="tag '+(b.s==='fixed'?'ok':b.s==='devs'?'warn':'')+'">'+STL[b.s]+'</span>'+bugClosed(b)+'</td><td style="text-align:right;white-space:nowrap">'+bugActs(b)+'</td></tr>'}).join('')+'</tbody></table></div>':'<p class="note">'+(bl.length?'Nothing in this view.':'No bugs found.')+'</p>')+'</div>';
   var trows=Object.keys(teams).map(function(k){var a=teams[k];a.sw=(a.w+a.l+a.dr)?100*a.w/(a.w+a.l+a.dr):null;return a});
   ov+='<div class="panel"><h2>Team results, all matches</h2>'+(trows.length?table('adteam',[{k:'team',l:'Team',f:function(r){return teamTag(r.team)}},{k:'matches',l:'Matches'},{k:'w',l:'Wins'},{k:'l',l:'Losses'},{k:'dr',l:'Draws'},{k:'sw',l:'Win %',f:function(r){return r.sw==null?'-':num(r.sw)+'%'}},{k:'kills',l:'Kills'},{k:'points',l:'Points'},{k:'relics',l:'Relics'}],trows):'<p class="note">No team data yet.</p>')+'<p class="note">Wins stay at 0 until a winner is recorded. Only a team that appears in the log gets counted.</p></div>'+
     '<div class="panel"><h2>Class balance</h2>'+(crow.length?table('adcls',[{k:'cls',l:'Class',f:function(r){return clsCell(r.cls)}},{k:'picks',l:'Picks'},{k:'dpm',l:'Dmg/min',f:function(r){return num(r.dpm)}},{k:'vs',l:'vs avg',f:function(r){return '<span class="'+(Math.abs(r.vs)>40?'err':'')+'">'+(r.vs>0?'+':'')+num(r.vs)+'%</span>'}},{k:'tpm',l:'Taken/min',f:function(r){return num(r.tpm)}},{k:'hpm',l:'Heal/min',f:function(r){return num(r.hpm)}},{k:'kdr',l:'K/D',f:function(r){return num(r.kdr,2)}}],crow):'<p class="note">No class data yet.</p>')+'</div>';
   var mrows=ms.map(function(m){var d=m.doc,hu=(d.players||[]).filter(function(p){return !isBot(p.name)}).length;return {id:m.id,name:mtitle(d),len:d.duration||0,hu:hu,bots:(d.players||[]).length-hu,tm:Object.keys(d.teams||{}).length,res:hasResult(d)?(d.result.winner==='draw'?'Draw':teamName(d.result.winner)):'-',rows:d.rows||0,sz:Math.round(JSON.stringify(d).length/1024),t:d.uploadedAt||0}});
   ov+='<div class="panel"><h2>Every stored match</h2>'+table('admatch',[{k:'name',l:'Log',f:function(r){return '<a class="plink" href="#match-'+esc(r.id)+'">'+esc(r.name)+'</a>'}},{k:'len',l:'Length',f:function(r){return dur(r.len)}},{k:'hu',l:'Humans'},{k:'bots',l:'Bots'},{k:'tm',l:'Teams logged'},{k:'res',l:'Result'},{k:'rows',l:'Rows',f:function(r){return num(r.rows)}},{k:'sz',l:'Stored KiB'}],mrows)+'<p class="note">Largest stored match is '+num(sizeMax/1024)+' KiB of the 3,584 KiB (3.5 MiB) limit.</p></div>';
+  lastBugPanel=bg;
   return adminShell(h,ov,bg,cnt.open+cnt.devs);
 }
 /* the Admin page: one nav inside the page, one section at a time */
@@ -2556,7 +2577,7 @@ document.addEventListener('click',function(e){
 document.addEventListener('keydown',function(e){if(e.key==='Enter'){var g=e.target.closest&&e.target.closest('tr[data-mapev]');if(g)g.click()}});
 
 /* Designer: the balance and bug-hunting tools over many matches at once. Graphs run the same explorer as an event page, over every ledger match or a chosen set. Skills sits here too. */
-var dz={scope:'all',pick:{},ba:'',bb:'',sc:'',sf:false};
+var dz={scope:'all',pick:{},ba:'',bb:'',sc:'',sf:false,sb:'',ex:{}};
 function dzMatches(){
   var all=allMatches().filter(function(m){return m.doc.ledger&&!(ratedOnly&&isPractice(m.doc))}).sort(function(a,b){return playedAt(b.doc)-playedAt(a.doc)});
   var sel=dz.scope==='5'?all.slice(0,5):dz.scope==='10'?all.slice(0,10):dz.scope==='pick'?all.filter(function(m){return dz.pick[m.id]}):all;
@@ -2567,7 +2588,7 @@ function dzMatches(){
 var DZCL=['Assassin','Hunter','Mystic','Priest','Warrior'];
 function dzBuilds(){
   var G={};dzMatches().all.forEach(function(m){var d=m.doc,mt=d.meta||{},k=mt.skillsHash||'unknown',t=playedAt(d);
-    var g=G[k]||(G[k]={key:k,project:mt.project||'',build:mt.build||'',engine:mt.engine||'',rows:mt.skillsRows,docs:[],t0:t,t1:t,players:0});
+    var g=G[k]||(G[k]={key:k,project:mt.project||'',build:mt.build||'',engine:mt.engine||'',rows:mt.skillsRows,docs:[],ids:[],t0:t,t1:t,players:0});g.ids.push(m.id);
     g.docs.push(d);if(t<g.t0)g.t0=t;if(t>g.t1)g.t1=t;g.players+=(d.players||[]).filter(function(p){return !isBot(p.name)}).length});
   return Object.keys(G).map(function(k){return G[k]}).sort(function(a,b){return a.t0-b.t0});
 }
@@ -2668,12 +2689,150 @@ function viewDzSkills(G){
     '<p class="note">Casts/min is per player using the skill. Cooldown is the average per use (total cooldown seconds over uses), applied, with the authored value in brackets when they differ. Cost/cast is the resource spent. Class share is the skill share of its class damage. Flags: cooldown ratio 12% or more off the typical ratio, under 60% of casts committing (skills that never report a commit are skipped), a skillshot with no attempts logged, accuracy under 30%, mostly overheal, or over half of a class damage. Small samples swing wildly, so check Players before trusting a row.</p></div>';
   return h;
 }
+/* ---- Build scorecard: did the build do what it was meant to do? ----
+   Every check reads the matches of one build and ends in pass, warn or fail. The targets are defaults held here until designers can edit them.
+   A check that needs several matches shows Low sample instead of a verdict when the build has fewer than DZT.minMatches. */
+var DZT={minMatches:5,
+  winWarn:[45,55],winFail:[40,60],
+  dpmWarn:25,dpmFail:40,
+  rateWarn:[85,115],rateFail:[75,125],
+  edgeWarn:50,edgeFail:70,
+  domWarn:50,domFail:65,
+  seenWarn:70,
+  cdWarn:12,cdFail:25,
+  commitWarn:60,commitFail:40,
+  accWarn:30,accFail:15,
+  overWarn:50,overMin:300,
+  unattrMin:100,unattrPct:3};
+var DZS={pass:['Pass','ok'],warn:['Warn','warn'],fail:['Fail','err'],low:['Low sample',''],info:['Info','']};
+function dzBars(rows,o){
+  o=o||{};var mx=o.max||1;
+  return '<div style="max-width:820px">'+rows.map(function(x){var pct=Math.max(0,Math.min(100,100*x.v/mx));
+    return '<div style="display:grid;grid-template-columns:110px 1fr 120px;gap:8px;align-items:center;margin:4px 0"><span>'+x.l+'</span><span style="position:relative;display:block;height:14px;background:var(--panel2);border-radius:3px">'+
+      (o.lo!=null?'<i style="position:absolute;top:0;bottom:0;left:'+(100*o.lo/mx).toFixed(1)+'%;width:'+(100*(o.hi-o.lo)/mx).toFixed(1)+'%;background:rgba(95,168,106,.3)"></i>':'')+
+      '<i style="position:absolute;top:2px;bottom:2px;left:0;width:'+pct.toFixed(1)+'%;background:'+(x.c||'var(--accent)')+';border-radius:2px"></i>'+
+      (o.line!=null?'<i style="position:absolute;top:-2px;bottom:-2px;left:'+(100*o.line/mx).toFixed(1)+'%;width:2px;background:var(--fg)"></i>':'')+'</span><span style="text-align:right;font-size:13px">'+x.t+'</span></div>'}).join('')+
+    (o.note?'<p class="note" style="margin:6px 0 0">'+o.note+'</p>':'')+'</div>';
+}
+function dzList(rows,cols){
+  return rows.length?'<div class="scroll"><table><thead><tr>'+cols.map(function(c){return dzTh(c[0])}).join('')+'</tr></thead><tbody>'+rows.slice(0,25).map(function(x){return '<tr>'+cols.map(function(c){return '<td style="text-align:left;white-space:normal">'+c[1](x)+'</td>'}).join('')+'</tr>'}).join('')+'</tbody></table></div>'+(rows.length>25?'<p class="note">Showing 25 of '+rows.length+'.</p>':''):'<p class="note" style="margin:0">Nothing to show.</p>';
+}
+/* damage between classes, per attacker minute, for the matchup check */
+function dzEdges(docs){
+  var D={},am={};DZCL.forEach(function(a){D[a]={};am[a]=0;DZCL.forEach(function(b){D[a][b]=0})});
+  docs.forEach(function(d){var cls={};(d.players||[]).forEach(function(p){if(isBot(p.name)||!p.cls)return;cls[p.name]=p.cls;if(am[p.cls]!=null)am[p.cls]+=(d.duration||0)/60});
+    (d.players||[]).forEach(function(v){if(!cls[v.name]||!D[v.cls])return;gxFromPairs(v).forEach(function(f){var a=cls[f[0]];if(a&&D[a])D[a][v.cls]+=f[1]})})});
+  var out=[];for(var i=0;i<DZCL.length;i++)for(var j=i+1;j<DZCL.length;j++){var A=DZCL[i],B=DZCL[j];if(am[A]<5||am[B]<5)continue;var ab=D[A][B]/am[A],ba=D[B][A]/am[B];if(ab+ba>0)out.push({a:A,b:B,ab:ab,ba:ba,edge:100*(ab-ba)/(ab+ba)})}
+  return out.sort(function(x,y){return Math.abs(y.edge)-Math.abs(x.edge)});
+}
+function dzUnattr(docs){
+  var out=[];docs.forEach(function(d){var fs={};(d.players||[]).forEach(function(q){(q.from||[]).forEach(function(f){fs[f[0]]=(fs[f[0]]||0)+f[1]})});
+    (d.players||[]).forEach(function(p){if(isBot(p.name))return;var sk=0;(p.skills||[]).forEach(function(k){sk+=k.pvp.hl});var f=fs[p.name]||0;if(f-sk>=DZT.unattrMin&&f-sk>DZT.unattrPct/100*f)out.push({m:mtitle(d),p:p.name,cls:p.cls,miss:f-sk,of:f})})});
+  return out;
+}
+function dzChecks(g,bugs){
+  var docs=g.docs,nm=docs.length,low=nm<DZT.minMatches,C=dzClass(docs),S=dzSkillAgg(docs),rows=S.rows,out=[];
+  function add(o){o.low=!!o.needs&&low;out.push(o)}
+  var inRange=function(v,r){return v>=r[0]&&v<=r[1]};
+  /* classes */
+  var wl=DZCL.filter(function(c){return C[c].w+C[c].l>0});
+  add({id:'win',grp:'Classes',title:'Win rate by class',target:DZT.winWarn[0]+' to '+DZT.winWarn[1]+'% (warn outside '+DZT.winFail[0]+' to '+DZT.winFail[1]+'%)',needs:1,
+    status:!wl.length?'info':wl.some(function(c){return !inRange(C[c].win,DZT.winFail)})?'fail':wl.some(function(c){return !inRange(C[c].win,DZT.winWarn)})?'warn':'pass',
+    sum:wl.length?wl.map(function(c){return c+' '+num(C[c].win,0)+'%'}).join(', '):'No winner recorded in these matches.',
+    ev:function(){return dzBars(wl.map(function(c){return {l:clsPlain(c),v:C[c].win,c:CCOL[c],t:num(C[c].win,0)+'% of '+(C[c].w+C[c].l)}}),{max:100,lo:DZT.winWarn[0],hi:DZT.winWarn[1],note:'Green band is the target. A class win is a player on the winning team, so a strong team lifts every class on it.'})}});
+  var dc=DZCL.filter(function(c){return c!=='Priest'&&C[c].n>=3&&C[c].dpm!=null}),avg=dc.length?dc.reduce(function(a,c){return a+C[c].dpm},0)/dc.length:0;
+  var dev=function(c){return 100*(C[c].dpm-avg)/avg};
+  add({id:'dpm',grp:'Classes',title:'Damage per minute against the class average',target:'Within '+DZT.dpmWarn+'% (fail beyond '+DZT.dpmFail+'%). Priest is left out because its job is healing',needs:1,
+    status:dc.length<3?'info':dc.some(function(c){return Math.abs(dev(c))>DZT.dpmFail})?'fail':dc.some(function(c){return Math.abs(dev(c))>DZT.dpmWarn})?'warn':'pass',
+    sum:dc.length<3?'Needs three classes with 3 or more player entries each.':dc.map(function(c){return c+' '+(dev(c)>0?'+':'')+num(dev(c),0)+'%'}).join(', '),
+    ev:function(){return dzBars(dc.map(function(c){return {l:clsPlain(c),v:C[c].dpm,c:CCOL[c],t:num(C[c].dpm)+' ('+(dev(c)>0?'+':'')+num(dev(c),0)+'%)'}}),{max:Math.max.apply(null,dc.map(function(c){return C[c].dpm}))*1.15,lo:avg*(1-DZT.dpmWarn/100),hi:avg*(1+DZT.dpmWarn/100),line:avg,note:'The line is the average of these classes, the green band is the allowed range.'})}});
+  var rc=DZCL.filter(function(c){return C[c].n>=3});
+  add({id:'rating',grp:'Classes',title:'Match rating by class',target:DZT.rateWarn[0]+' to '+DZT.rateWarn[1]+' (fail outside '+DZT.rateFail[0]+' to '+DZT.rateFail[1]+')',needs:1,
+    status:!rc.length?'info':rc.some(function(c){return !inRange(C[c].rating,DZT.rateFail)})?'fail':rc.some(function(c){return !inRange(C[c].rating,DZT.rateWarn)})?'warn':'pass',
+    sum:rc.length?rc.map(function(c){return c+' '+num(C[c].rating,0)}).join(', '):'No class has 3 or more player entries.',
+    ev:function(){return dzBars(rc.map(function(c){return {l:clsPlain(c),v:C[c].rating,c:CCOL[c],t:num(C[c].rating,0)+' from '+C[c].n}}),{max:160,lo:DZT.rateWarn[0],hi:DZT.rateWarn[1],line:100,note:'The rating blends damage, score, kills, survival and the healing or tanking a class is expected to do, so classes should land near 100 when balanced.'})}});
+  var ed=dzEdges(docs);
+  add({id:'edge',grp:'Classes',title:'Class matchups',target:'No pair with an edge of '+DZT.edgeWarn+'% or more (fail at '+DZT.edgeFail+'%), per attacker minute',needs:1,
+    status:!ed.length?'info':Math.abs(ed[0].edge)>=DZT.edgeFail?'fail':Math.abs(ed[0].edge)>=DZT.edgeWarn?'warn':'pass',
+    sum:!ed.length?'Needs classes with 5 or more minutes on both sides.':ed.slice(0,3).map(function(q){return (q.edge>=0?q.a:q.b)+' over '+(q.edge>=0?q.b:q.a)+' '+num(Math.abs(q.edge),0)+'%'}).join(', '),
+    ev:function(){return dzList(ed.slice(0,8),[['Matchup',function(q){return clsPlain(q.a)+' vs '+clsPlain(q.b)}],['First to second',function(q){return num(q.ab,0)}],['Second to first',function(q){return num(q.ba,0)}],['Edge',function(q){return clsPlain(q.edge>=0?q.a:q.b)+' +'+num(Math.abs(q.edge),0)+'%'}]])+'<p class="note">Damage per attacker per minute. The full matrix is on the Graphs tab, Class vs class.</p>'}});
+  /* abilities */
+  var dom=DZCL.map(function(c){var tot=0,top=null;rows.forEach(function(a){if(a.cls!==c)return;tot+=a.dmg;if(!/AutoAttack$/.test(a.skill)&&(!top||a.dmg>top.dmg))top=a});return {c:c,top:top,tot:tot,sh:top&&tot?100*top.dmg/tot:0}}).filter(function(x){return x.tot>=1500&&x.top});
+  add({id:'dom',grp:'Abilities',title:'One ability carrying a class',target:'No ability over '+DZT.domWarn+'% of its class damage (fail over '+DZT.domFail+'%). Auto attacks are not counted',needs:1,
+    status:!dom.length?'info':dom.some(function(x){return x.sh>=DZT.domFail})?'fail':dom.some(function(x){return x.sh>=DZT.domWarn})?'warn':'pass',
+    sum:!dom.length?'No class dealt enough damage.':dom.sort(function(a,b){return b.sh-a.sh}).slice(0,3).map(function(x){return x.top.name+' '+num(x.sh,0)+'%'}).join(', '),
+    ev:function(){return dzBars(dom.map(function(x){return {l:clsPlain(x.c),v:x.sh,c:CCOL[x.c],t:esc(x.top.name)+' '+num(x.sh,0)+'%'}}),{max:100,line:DZT.domWarn,note:'The biggest non auto attack ability of each class, as a share of all damage the class dealt.'})}});
+  var skillRows=rows.filter(function(a){return a.kind==='Skillshot'&&a.casts>=5&&a.att===0});
+  add({id:'ss0',grp:'Abilities',title:'Skillshots that report no attempts',target:'None',status:skillRows.length?'fail':'pass',
+    sum:skillRows.length?skillRows.map(function(a){return a.cls+' '+a.name}).join(', '):'None found.',
+    ev:function(){return dzList(skillRows,[['Class',function(a){return clsPlain(a.cls)}],['Skill',function(a){return esc(a.name)}],['Casts',function(a){return num(a.casts)}],['Hits',function(a){return num(a.hits)}]])+'<p class="note">With no attempts the accuracy cannot be measured and the hits may be missing from the skill.</p>'}});
+  var rt=rows.filter(function(a){return a.cda>0&&a.cdN>=3}),off=function(a){return Math.abs(a.cdp/a.cda-S.med)/S.med*100},cdOff=rt.filter(function(a){return off(a)>=DZT.cdWarn}).sort(function(a,b){return off(b)-off(a)});
+  add({id:'cd',grp:'Abilities',title:'Cooldowns against authored values',target:'Applied cooldown at the typical ratio, within '+DZT.cdWarn+'% (fail at '+DZT.cdFail+'%)',needs:0,
+    status:!rt.length?'info':cdOff.some(function(a){return off(a)>=DZT.cdFail})?'fail':cdOff.length?'warn':'pass',
+    sum:!rt.length?'No cooldown data.':'Typical applied is '+num(100*S.med,0)+'% of authored. '+(cdOff.length?cdOff.length+' skill'+(cdOff.length===1?'':'s')+' off that, worst '+cdOff[0].cls+' '+cdOff[0].name+' at '+num(100*cdOff[0].cdp/cdOff[0].cda,0)+'%.':'No skill is off it.'),
+    ev:function(){return dzList(cdOff,[['Class',function(a){return clsPlain(a.cls)}],['Skill',function(a){return esc(a.name)}],['Authored (s)',function(a){return num(a.cda,2)}],['Applied (s)',function(a){return num(a.cdp,2)}],['Ratio',function(a){return num(100*a.cdp/a.cda,0)+'%'}]])+'<p class="note">Seconds per use. A game wide ratio below 100% looks like a global cooldown reduction, so only skills off that ratio are listed.</p>'}});
+  var cl=rows.filter(function(a){return a.casts>=10&&a.cm>0&&a.cmr<DZT.commitWarn}).sort(function(a,b){return a.cmr-b.cmr});
+  add({id:'commit',grp:'Abilities',title:'Casts that commit',target:'At least '+DZT.commitWarn+'% of casts (fail under '+DZT.commitFail+'%). Skills that never report a commit are skipped',needs:1,
+    status:cl.some(function(a){return a.cmr<DZT.commitFail})?'fail':cl.length?'warn':'pass',
+    sum:cl.length?cl.slice(0,3).map(function(a){return a.name+' '+num(a.cmr,0)+'%'}).join(', '):'Every reporting skill commits at least '+DZT.commitWarn+'%.',
+    ev:function(){return dzList(cl,[['Class',function(a){return clsPlain(a.cls)}],['Skill',function(a){return esc(a.name)}],['Casts',function(a){return num(a.casts)}],['Committed',function(a){return num(a.cmr,0)+'%'}]])+'<p class="note">Casts that do not commit were cancelled or interrupted before they completed.</p>'}});
+  var ac=rows.filter(function(a){return a.att>=10&&a.acc<DZT.accWarn}).sort(function(a,b){return a.acc-b.acc});
+  add({id:'acc',grp:'Abilities',title:'Accuracy',target:'No skill under '+DZT.accWarn+'% (fail under '+DZT.accFail+'%) with 10 or more attempts',needs:1,
+    status:ac.some(function(a){return a.acc<DZT.accFail})?'fail':ac.length?'warn':'pass',
+    sum:ac.length?ac.slice(0,3).map(function(a){return a.name+' '+num(a.acc,0)+'%'}).join(', '):'No skill is under '+DZT.accWarn+'%.',
+    ev:function(){return dzList(ac,[['Class',function(a){return clsPlain(a.cls)}],['Skill',function(a){return esc(a.name)}],['Attempts',function(a){return num(a.att)}],['Landed',function(a){return num(a.lan)}],['Accuracy',function(a){return num(a.acc,0)+'%'}]])}});
+  var ov=rows.filter(function(a){return a.hov!=null&&a.hov>=DZT.overWarn&&a.ho>=DZT.overMin}).sort(function(a,b){return b.hov-a.hov});
+  add({id:'over',grp:'Abilities',title:'Healing that is mostly overheal',target:'No heal at '+DZT.overWarn+'% overheal or more with '+DZT.overMin+' or more wasted',needs:1,
+    status:ov.length?'warn':'pass',sum:ov.length?ov.slice(0,3).map(function(a){return a.name+' '+num(a.hov,0)+'%'}).join(', '):'No heal wastes half or more.',
+    ev:function(){return dzList(ov,[['Class',function(a){return clsPlain(a.cls)}],['Skill',function(a){return esc(a.name)}],['Healing',function(a){return num(a.he)}],['Overheal',function(a){return num(a.ho)}],['Share',function(a){return num(a.hov,0)+'%'}]])}});
+  var seenIds={};rows.forEach(function(a){seenIds[a.skill]=1});var seen=Object.keys(seenIds).length,rowsN=g.rows===''||g.rows==null?0:+g.rows;
+  add({id:'seen',grp:'Abilities',title:'Skill rows seen in play',target:'At least '+DZT.seenWarn+'% of the skill rows cast by someone',needs:1,
+    status:!rowsN?'info':100*seen/rowsN<DZT.seenWarn?'warn':'pass',
+    sum:!rowsN?'This build does not report a skill row count.':seen+' of '+rowsN+' rows seen ('+num(100*seen/rowsN,0)+'%).',
+    ev:function(){return '<p class="note" style="margin:0">The build has '+rowsN+' skill rows and '+seen+' distinct skills were cast in these matches. Rows nobody cast may be unused, untested, or only reachable some other way. The ledger does not list uncast skills, so which ones they are needs the skill table itself.</p>'}});
+  var un=dzUnattr(docs);
+  add({id:'unattr',grp:'Data',title:'Damage that no skill accounts for',target:'None',status:un.length?'fail':'pass',
+    sum:un.length?un.slice(0,3).map(function(x){return x.p+' '+num(x.miss,0)+' of '+num(x.of,0)}).join(', '):'Every hit is credited to a skill.',
+    ev:function(){return dzList(un,[['Match',function(x){return esc(x.m)}],['Player',function(x){return esc(x.p)}],['Class',function(x){return clsPlain(x.cls)}],['Not credited',function(x){return num(x.miss,0)+' of '+num(x.of,0)}]])+'<p class="note">What victims lost to this player is higher than the damage on the player skills, so some hits belong to no skill. AimedShot is the likely cause so far.</p>'}});
+  /* bugs */
+  var ids={};g.ids.forEach(function(i){ids[i]=1});
+  var mine=(bugs||[]).filter(function(b){return b.m&&ids[b.m]}),act=mine.filter(function(b){return b.s==='open'||b.s==='devs'}),hi=act.filter(function(b){return b.sev==='High'}),again=mine.filter(function(b){return b.s==='fixed'&&b.ls&&bugs.seenAgain&&bugs.seenAgain(b)});
+  add({id:'bugs',grp:'Bugs',title:'Open problems in this build',target:'No High bug open, no fixed bug that came back',
+    status:hi.length||again.length?'fail':act.length?'warn':'pass',
+    sum:act.length+' open or with devs ('+hi.length+' High)'+(again.length?', '+again.length+' came back after being fixed':'')+'.',
+    ev:function(){return dzList(act.concat(again),[['Severity',function(b){return esc(b.sev)}],['Problem',function(b){return esc(b.check)}],['Match',function(b){return esc(b.mn)}],['Status',function(b){return esc(b.s)}]])}});
+  return out;
+}
+function dzOrder(c){return {fail:0,warn:1,low:2,info:3,pass:4}[c.low?'low':c.status]}
+function viewDzScore(){
+  var B=dzBuilds();
+  if(!B.length)return empty('No ledger matches yet','Upload Match Ledger files to score a build.');
+  var key=dz.sb&&B.some(function(g){return g.key===dz.sb})?dz.sb:B[B.length-1].key,ix=B.map(function(g){return g.key}).indexOf(key),g=B[ix],pg=ix>0?B[ix-1]:null;
+  B.forEach(function(x){x.ids=[];dzMatches().all.forEach(function(m){if(((m.doc.meta||{}).skillsHash||'unknown')===x.key)x.ids.push(m.id)})});
+  viewAdmin();var bugs=lastBugs.slice();bugs.seenAgain=function(b){var rec=(adminData&&adminData.bugs||{})[b.key];return !!(rec&&rec.at&&b.ls&&b.ls.t>rec.at)};
+  var cur=dzChecks(g,bugs),prev=pg?dzChecks(pg,bugs):null,pm={};if(prev)prev.forEach(function(c){pm[c.id]=c});
+  var shown=function(c){return c.low?'low':c.status};
+  var cnt={pass:0,warn:0,fail:0,low:0,info:0};cur.forEach(function(c){cnt[shown(c)]++});
+  var h='<div class="panel" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><h2 style="margin:0">Build scorecard</h2><label class="chk">Build <select data-dzs="sb">'+B.slice().reverse().map(function(x){return '<option value="'+esc(x.key)+'"'+(x.key===key?' selected':'')+'>'+esc(dzBLabel(x))+'</option>'}).join('')+'</select></label>'+
+    '<span class="note" style="margin:0">'+g.docs.length+' match'+(g.docs.length===1?'':'es')+', '+g.players+' player entries'+(pg?'. Compared with '+esc(dzBLabel(pg)):'. There is no earlier build to compare with')+'.</span></div>';
+  h+='<div class="kpis">'+[['pass','Pass'],['warn','Warn'],['fail','Fail'],['low','Low sample']].map(function(x){return '<div class="kpi"><b>'+cnt[x[0]]+'</b><small>'+x[1]+'</small></div>'}).join('')+'</div>';
+  if(g.docs.length<DZT.minMatches)h+='<div class="panel"><p class="note" style="margin:0">This build has '+g.docs.length+' match'+(g.docs.length===1?'':'es')+'. Checks that depend on averages need '+DZT.minMatches+' and show Low sample until then. Checks on data quality, such as skillshots with no attempts, are exact and always shown.</p></div>';
+  var sorted=cur.slice().sort(function(a,b){return dzOrder(a)-dzOrder(b)}),last='';
+  h+='<div class="panel scroll"><table><thead><tr>'+['Result','Check','What was found','Target','Previous build'].map(dzTh).join('')+'<th scope="col"></th></tr></thead><tbody>'+sorted.map(function(c){
+    var st=shown(c),t=DZS[st],pc=pm[c.id],ps=pc?(pc.low?'low':pc.status):null,open=!!dz.ex[c.id];
+    return '<tr><td style="text-align:left"><span class="tag '+t[1]+'">'+t[0]+'</span>'+(c.low?'<br><span class="note" style="margin:0">would be '+DZS[c.status][0].toLowerCase()+'</span>':'')+'</td><td style="text-align:left;white-space:normal;min-width:170px"><strong>'+esc(c.title)+'</strong><br><span class="note" style="margin:0">'+c.grp+'</span></td><td style="text-align:left;white-space:normal;min-width:240px">'+esc(c.sum)+'</td><td style="text-align:left;white-space:normal;min-width:180px"><span class="note" style="margin:0">'+esc(c.target)+'</span></td><td style="text-align:left">'+(ps?'<span class="tag '+DZS[ps][1]+'">'+DZS[ps][0]+'</span>'+(ps!==st?' <span class="note" style="margin:0">'+(DZS[ps][0]+' &rarr; '+DZS[st][0])+'</span>':''):'<span class="note" style="margin:0">-</span>')+'</td><td style="text-align:right"><button class="btn ghost" type="button" data-dzx="'+c.id+'" aria-expanded="'+open+'">'+(open?'Hide evidence':'Evidence')+'</button></td></tr>'+
+      (open?'<tr><td colspan="6" style="text-align:left;white-space:normal;background:var(--panel2)">'+c.ev()+'</td></tr>':'')}).join('')+'</tbody></table></div>';
+  h+='<p class="note">Targets are defaults held in the page while we find the right values, and will become editable. A pass means the build did not break the target in the matches played, not that it is balanced.</p>';
+  return h;
+}
 function viewDesigner(){
   if(!canDesign)return '<div><h1>Designer</h1></div>'+empty('Designers and admins only','These tools are for designers and admins.');
-  var G=dzMatches(),sn=subTabs('designer',[['graphs','Graphs'],['builds','Builds'],['balance','Skill balance'],['skills','Skills']]);
+  var G=dzMatches(),sn=subTabs('designer',[['score','Scorecard'],['graphs','Graphs'],['builds','Builds'],['balance','Skill balance'],['skills','Skills'],['bugs','Bugs'+(lastBugCount?' ('+lastBugCount+')':'')]]);
   var h='<div class="bar"><div><h1>Designer</h1><p class="sub">Balance and bug hunting across many matches at once. '+G.all.length+' ledger match'+(G.all.length===1?'':'es')+' available.</p></div>'+
     '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><a class="btn ghost" href="#map" style="text-decoration:none">Heat map</a><a class="btn ghost" href="#admin" data-dzgo="bugs" style="text-decoration:none">Bugs &amp; checks</a><a class="btn ghost" href="#admin" data-dzgo="json" style="text-decoration:none">JSON reader</a></div></div>'+sn.h;
+  if(sn.cur==='bugs'){var hb=viewAdmin();return h+(lastBugPanel||hb)}
   if(sn.cur==='skills')return h+viewSkills().replace('<h1>Skills</h1>','<h2 style="margin:0">Skills</h2>');
+  if(sn.cur==='score')return h+viewDzScore();
   if(sn.cur==='builds')return h+viewDzBuilds();
   if(!G.all.length)return h+empty('No ledger matches yet','Upload Match Ledger files to see graphs across matches.');
   if(sn.cur==='balance')return h+dzScopeBar(G)+(G.sel.length?viewDzSkills(G):empty('No matches chosen','Tick at least one match above.'));
@@ -2685,11 +2844,12 @@ function viewDesigner(){
 document.addEventListener('click',function(e){
   var g=e.target.closest&&e.target.closest('[data-dz]');if(g){dz.scope=g.dataset.dz;if(dz.scope==='pick'&&!Object.keys(dz.pick).length)dzMatches().all.slice(0,5).forEach(function(m){dz.pick[m.id]=1});render();return}
   var go=e.target.closest&&e.target.closest('[data-dzgo]');if(go){subSel['admin']=go.dataset.dzgo}
+  var ex=e.target.closest&&e.target.closest('[data-dzx]');if(ex){var k=ex.dataset.dzx;if(dz.ex[k])delete dz.ex[k];else dz.ex[k]=1;render();return}
 });
 document.addEventListener('change',function(e){var t=e.target;if(!t||!t.dataset)return;if(t.dataset.dzp){if(t.checked)dz.pick[t.dataset.dzp]=1;else delete dz.pick[t.dataset.dzp];render()}else if(t.dataset.dzs){dz[t.dataset.dzs]=t.value;render()}else if(t.dataset.dzc){dz[t.dataset.dzc]=t.checked;render()}});
 function route(){var h=location.hash.replace('#','')||'players';if(h.indexOf('match-')===0)return {t:'match',id:h.slice(6)};if(h.indexOf('player-')===0)return {t:'player',id:h.slice(7)};if(h.indexOf('class-')===0)return {t:'class',id:h.slice(6)};if(h.indexOf('faction-')===0)return {t:'faction',id:h.slice(8)};if(h.indexOf('event-')===0)return {t:'snapshot',id:h.slice(6)};if(h.indexOf('snapshot-')===0)return {t:'snapshot',id:h.slice(9)};if(h==='events'||h==='snapshots')return {t:'snapshots'};return {t:(TABS.some(function(x){return x[0]===h})||h==='admin'||h==='designer')?h:'players'}}
 function render(){
-  var r=route();if(r.t==='skills'){subSel['designer']='skills';r={t:'designer'}}if(r.t==='upload'){subSel['admin']='upload';r={t:'admin'}}if(r.t!=='admin')evModal=null;if(r.t==="admin"&&canDesign&&!adminData)loadAdmin();
+  var r=route();if(r.t==='skills'){subSel['designer']='skills';r={t:'designer'}}if(r.t==='upload'){subSel['admin']='upload';r={t:'admin'}}if(r.t!=='admin')evModal=null;if((r.t==="admin"||r.t==="designer")&&canDesign&&!adminData)loadAdmin();
   var cur=r.t==='snapshot'||r.t==='snapshots'?'events':r.t==='match'?'matches':r.t==='player'?'players':r.t==='class'?'classes':r.t==='faction'?'factions':r.t;
   var sec=cur==='matches'||cur==='events'||cur==='map'?'matches':cur==='upload'||cur==='admin'||cur==='designer'?cur:'players',
     top=[['players','Players'],['matches','Matches']].concat(canDesign?[['designer','Designer'],['admin','Admin']]:[]);
@@ -2904,7 +3064,7 @@ document.addEventListener('click',function(e){
   var op=e.target.closest('[data-aop]');
   if(op){
     var raw=op.dataset.aop,i=raw.indexOf(':'),name=i<0?raw:raw.slice(0,i),arg=i<0?'':raw.slice(i+1);
-    var bi=arg.lastIndexOf('|'),body=name==='bug'?{op:'bugStatus',key:arg.slice(0,bi),status:arg.slice(bi+1)}:name==='release'?{op:'release',player:arg}:{op:name,id:arg};
+    var bi=arg.lastIndexOf('|'),body=name==='bug'?{op:'bugStatus',key:arg.slice(0,bi),status:arg.slice(bi+1),build:bugNewestBuild()}:name==='release'?{op:'release',player:arg}:{op:name,id:arg};
     bugMsg='';api('POST','/api/admin',body).then(function(){if(name!=='bug')adminData=null;return refresh(true)}).then(function(){if(canDesign)loadAdmin()},function(err){authMsg=ERR[err.code]||'Action failed.';claimMsg=authMsg;render()});
   }
 });

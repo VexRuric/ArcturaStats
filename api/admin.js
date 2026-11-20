@@ -49,7 +49,8 @@ module.exports = L.handler(async (req, res) => {
       if (['open', 'devs', 'fixed', 'ignored'].indexOf(status) < 0) return { code: 400, error: 'bad_status' };
       if (status === 'open') { delete st.bugs[key]; return { code: 200, ok: true }; }
       if (!st.bugs[key] && Object.keys(st.bugs).length >= 3000) return { code: 409, error: 'too_many_bugs' };
-      st.bugs[key] = { s: status, by: s0.id || null, at: Date.now() };
+      const bd = String(b.build || '').slice(0, 40), who = st.users && st.users[s0.id] && st.users[s0.id].name;
+      st.bugs[key] = { s: status, by: s0.id || null, n: who ? String(who).slice(0, 40) : null, at: Date.now(), b: /^[A-Za-z0-9_.-]*$/.test(bd) ? bd : '' };
       return { code: 200, ok: true };
     }
     if (op === 'release') {
