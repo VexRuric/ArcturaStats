@@ -592,7 +592,7 @@ function evTopCards(prow){
 function evScoreSources(ms){
   var T={0:{},1:{}},any=false,tot={0:0,1:0};
   ms.forEach(function(m){var b=m.doc.pointsByType;if(!b)return;any=true;[0,1].forEach(function(t){var o=b[t]||{};Object.keys(o).forEach(function(k){T[t][k]=(T[t][k]||0)+o[k];tot[t]+=o[k]})})});
-  if(!any)return '<div class="panel"><h2>Score by source</h2><p class="note">Needs Match Ledger uploads. Re-upload ledgers stored before this was added.</p></div>';
+  if(!any)return '<div class="panel"><h2>Score by source</h2><p class="note">Needs Match Ledger data. An admin can rebuild matches stored before this was added (Admin, Match handler, Rebuild all matches).</p></div>';
   var rows=PT_GROUPS.map(function(g){var a=0,b=0;g[1].forEach(function(k){a+=T[0][k]||0;b+=T[1][k]||0});return {n:g[0],a:a,b:b}}).filter(function(r){return r.a||r.b});
   return '<div class="panel"><h2>Score by source</h2><div class="h2hkey"><span style="color:'+TEAMS[0].col+'">&#9632; '+esc(teamName(0))+' '+num(tot[0])+'</span><span style="color:'+TEAMS[1].col+'">'+esc(teamName(1))+' '+num(tot[1])+' &#9632;</span></div><div class="comps">'+rows.map(function(r){var t=(r.a+r.b)||1;return '<div class="h2h"><em'+(r.a>r.b?' class="lead"':'')+'>'+num(r.a)+'</em><div class="hb"><i style="width:'+(100*r.a/t)+'%;background:'+TEAMS[0].col+'"></i><i style="width:'+(100*r.b/t)+'%;background:'+TEAMS[1].col+'"></i></div><em'+(r.b>r.a?' class="lead"':'')+'>'+num(r.b)+'</em><span>'+r.n+'</span></div>'}).join('')+'</div></div>';
 }
@@ -946,7 +946,7 @@ function fightsPanel(items,multi){
 }
 function comebackPanel(items){
   var l=items.filter(function(x){return x.cb});
-  if(!l.length)return '<div class="panel"><h2>Comebacks</h2><p class="note">Needs a score timeline. Re-upload the Match Ledger to get it.</p></div>';
+  if(!l.length)return '<div class="panel"><h2>Comebacks</h2><p class="note">Needs a score timeline. An admin can rebuild this match from its stored raw ledger (Admin, Match handler, Rebuild all matches).</p></div>';
   var n=l.filter(function(x){return x.cb.comeback}).length;
   var rows=l.map(function(x){var c=x.cb;return '<tr><td><a class="plink" href="#match-'+esc(x.id)+'">'+esc(x.m)+'</a></td><td><b style="color:'+TEAMS[0].col+'">'+num(c.fin[0])+'</b> : <b style="color:'+TEAMS[1].col+'">'+num(c.fin[1])+'</b></td><td>'+(c.winner>=0?teamTag(c.winner):'-')+'</td><td>'+(c.winner>=0&&c.deficit>0?num(c.deficit)+' pts at '+dur(c.t):'led throughout')+'</td><td>'+c.leadChanges+'</td><td>'+(c.big.pts>0?teamTag(c.big.team)+' +'+num(c.big.pts)+' in 60s by '+dur(c.big.t):'-')+'</td><td>'+(c.comeback?'<span class="tag ok">Comeback</span>':'')+'</td></tr>'}).join('');
   return '<div class="panel"><h2>Comebacks</h2><p style="margin:6px 0 10px"><strong>'+n+'</strong> of '+l.length+' match'+(l.length===1?'':'es')+' won after trailing by a clear margin.</p>'+
@@ -1035,7 +1035,7 @@ function viewSnapshot(id){
     else if(hasMap){mapScope=ms.map(function(m){return m.id});h+='<div class="panel"><h2>Event heat map</h2>'+mapBody('')+'</div>'}else h+='<div class="panel"><h2>Event heat map</h2><p class="note">No match in this event has position data. Re-upload its Match Ledger files to get a heat map.</p></div>';
     h+=anaEventSections(ms,'map');
   }
-  else if(sn.cur==='graphs')h+=viewGraphsEvent(id,ms,(ms.some(function(m){return dmgPlayers(m.doc).length})?classVs(null,ms.map(function(m){return m.doc})):'')+evProgress(ms)+evControl(ms)+evScoreSources(ms)+anaEventSections(ms,'graphs'));
+  else if(sn.cur==='graphs')h+=viewGraphsEvent(id,ms,(ms.some(function(m){return dmgPlayers(m.doc).length})?classVs(null,ms.map(function(m){return gxTyped(m.doc)})):'')+evProgress(ms)+evControl(ms)+evScoreSources(ms)+anaEventSections(ms,'graphs'));
   else if(sn.cur==='analysis')h+=anaEventSections(ms,'analysis');
   else{var er=[];ms.forEach(function(m){(m.doc.events||[]).forEach(function(e){er.push({m:mtitle(m.doc),e:e})})});
     h+='<div class="panel"><h2>Events</h2>'+(er.length?'<ul class="events">'+er.slice(0,400).map(function(r){return '<li><time>'+dur(r.e.t)+'</time><span class="tag'+(r.e.k==='boss'?' warn':'')+'">'+esc(r.e.k==='kill'?'Kill':r.e.k==='boss'?'Boss':'Point')+'</span><span>'+esc(r.e.x)+' <span class="note" style="margin:0">'+esc(r.m)+'</span></span></li>'}).join('')+'</ul>'+(er.length>400?'<p class="note">Showing the first 400 of '+er.length+'.</p>':''):'<p class="note">No kills or captures in these logs.</p>')+'</div>'}
@@ -1289,6 +1289,7 @@ function matchHandler(){
       return '<tr><td style="padding:0"><label class="selbox"><input type="checkbox" aria-label="Select '+esc(mtitle(d))+'" data-delsel="'+esc(m.id)+'"'+(delSel[m.id]?' checked':'')+'></label></td><td><a class="plink" href="#match-'+esc(m.id)+'"><strong>'+esc(mtitle(d))+'</strong></a>'+(isPractice(d)?' <span class="tag">Practice vs bots</span>':'')+'</td><td>'+esc(t.toLocaleDateString())+' '+esc(t.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}))+'</td><td>'+dur(d.duration)+'</td><td>'+(d.players||[]).filter(function(p){return !isBot(p.name)}).length+'</td><td>'+(hasResult(d)?(d.result.winner==='draw'?'Draw':esc(teamName(d.result.winner))+' won'):'-')+'</td>'+
       '<td style="text-align:right;white-space:nowrap"><button class="btn" type="button" data-confirm="m:'+esc(m.id)+'" aria-label="Delete '+esc(mtitle(d))+'"'+(on?' style="background:var(--bad);color:#fff"':' '+gh)+'>'+(on?'Click again to delete':'Delete')+'</button></td></tr>'}).join('')+'</tbody></table></div>';
   h+='<div class="panel"><h2>Clear in bulk</h2><div style="display:flex;gap:10px;flex-wrap:wrap">'+confirmBtn('practice','Delete practice matches vs bots',bulkIds('practice'))+confirmBtn('summary','Delete imported summaries',bulkIds('summary'))+confirmBtn('all','Delete ALL matches',bulkIds('all'),true)+'</div><p class="note">Events keep their name but lose the deleted matches.</p></div>';
+  h+='<div class="panel"><h2>Rebuild from raw ledgers</h2><p class="note" style="margin-top:0">Every uploaded ledger is kept untouched. Rebuilding runs the current importer over each one again, so older matches gain anything added since: skills, timelines, positions, healing and the PvP and PvE splits. Results you set by hand are kept.</p><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button class="btn" type="button" data-rebuildall="1"'+(db?'':' disabled')+'>Rebuild all matches</button>'+(rebuildMsg?'<span class="note" style="margin:0">'+esc(rebuildMsg)+'</span>':'')+'</div></div>';
   h+='<div class="panel"><h2>Events</h2><p class="note" style="margin-top:0">Deleting an event removes its page and unpublishes it. The matches stay. The button asks you to click twice.</p>'+evList()+'</div>';
   return h;
 }
@@ -1441,7 +1442,7 @@ function classVs(d,docs){
   return '<div class="panel"><h2>Damage by class, team against team</h2><div class="vs">'+rows+'</div><p class="note">Each class is lined up against the same class on the other team. The big number is damage plus healing divided by the minutes the players were alive (from position samples), so healers are not marked down for healing instead of hitting, dying early does not count against someone, and a team with two of a class is not ahead just for having more. Healing is effective healing from players, without passive regen, and a point of healing counts the same as a point of damage, so read the damage and healing lines too. The bars and Edge compare that rate.'+(cs.multi?' Totals over every match in the event.':'')+(est?' This log has no position samples, so alive time is not known and the rate uses the whole match instead.':'')+'</p></div>';
 }
 function teamDamage(d){
-  if(!Object.keys(d.series||{}).length)return '<div class="panel"><h2>Damage dealt per 30 seconds</h2><p class="note">No damage dealt in this log.</p></div>';
+  if(!Object.keys(d.series||{}).length)return '<div class="panel"><h2>Damage dealt per 30 seconds'+(gx.type!=='all'?' ('+(gx.type==='pvp'?'PvP':'PvE')+')':'')+'</h2><p class="note">'+(gx.type!=='all'?'This match has no PvP and PvE timeline. It was saved before timelines were kept. An admin can rebuild it from its stored raw ledger (Admin, Match handler, Rebuild all matches).':'No damage dealt in this log.')+'</p></div>'+(gx.type!=='all'?classVs(d):'');
   var mx=0;dmgPlayers(d).forEach(function(p){d.series[p.name].forEach(function(v){if(v>mx)mx=v})});var top=niceTop(mx);
   var h='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px;margin-bottom:18px">';
   [0,1].forEach(function(t){h+='<div class="panel" style="margin:0;border-top:4px solid '+TEAMS[t].col+'"><h2><span style="color:'+TEAMS[t].col+'">&#9632;</span> '+esc(teamName(t))+': damage dealt per 30 seconds</h2>'+chart(d,t,top)+'</div>'});
@@ -1803,12 +1804,22 @@ var GXM=[['dmg','Damage dealt'],['taken','Damage taken'],['heal','Healing given'
 var GXPAL=['#e6a23c','#4fa3e0','#9b6bd6','#3fae6a','#e0566b','#d1c45a','#5cc7c0','#b88a64','#8a93a6'];
 /* One switch for the whole explorer. Damage dealt, damage taken, healing given, and skill hits, crits, kills and damage are recorded by type. Everything else is not, and the note under the switch says so for the tab you are on. */
 function gxTypeBar(tab){
-  var note={time:'Splits damage dealt. Other metrics are not recorded as PvP or PvE, so they show both.',
+  var note={time:'Splits damage dealt, the team damage charts and the class comparison. Score, comebacks and the other metrics are not recorded as PvP or PvE, so they show both.',
     combat:'Splits damage dealt and taken and healing given. Healing received, overheal, shields and crowd control are not recorded by type, so they show under All only.',
     skills:'Splits hits, crits, kills and damage. Casts, accuracy, the sequence and combo steps are not recorded by type, so they stay the same.'}[tab]||'';
   return '<div class="panel" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding-top:10px;padding-bottom:10px"><strong>Show</strong>'+
     '<span class="gxchips" style="margin:0" role="group" aria-label="Damage type">'+[['all','All'],['pvp','PvP'],['pve','PvE']].map(function(x){return '<button type="button" data-gx="type:'+x[0]+'" aria-pressed="'+(gx.type===x[0])+'">'+x[1]+'</button>'}).join('')+'</span>'+
     (note?'<span class="note" style="margin:0">'+note+'</span>':'')+'</div>';
+}
+function gxTyped(d){
+  if(gx.type==='all'||!d||!d.players)return d;
+  var tp=gx.type==='pvp',B=30,n=Math.floor((d.duration||0)/B)+1,o=Object.assign({},d);o.series={};
+  o.players=(d.players||[]).map(function(p){var q=Object.assign({},p),pv=p.dmgP||0;
+    q.dmg=tp?pv:Math.max(0,(p.dmg||0)-pv);q.heal=tp?(p.heal||0):((p.stats&&p.stats.nonPvpHeal)||0);
+    var tl=p.tl,ci=tl&&tl.c?tl.c.indexOf(tp?'pvpDmg':'pveDmg'):-1;
+    if(ci>=0&&tl.r){var per=Math.max(1,Math.round(B/(tl.s||10))),a=[];for(var i=0;i<n;i++){var sum=0;for(var j=i*per;j<(i+1)*per&&j<tl.r.length;j++)sum+=tl.r[j][ci]||0;a.push(Math.round(sum*10)/10)}if(a.some(Boolean))o.series[p.name]=a}
+    return q});
+  return o;
 }
 function gxTakenPvp(p){var f=p.from,t=0;if(Array.isArray(f))f.forEach(function(x){t+=x[1]||0});else if(f&&typeof f==='object')Object.keys(f).forEach(function(k){t+=f[k]||0});return t}
 function gxChips(key,list,cur){return '<div class="gxchips" role="group">'+list.map(function(x){return '<button type="button" data-gx="'+key+':'+x[0]+'" aria-pressed="'+(String(x[0])===String(cur))+'">'+x[1]+'</button>'}).join('')+'</div>'}
@@ -1817,7 +1828,7 @@ function gxPlSel(d,all){var l=gxPlayers(d),cur=gx.pl;if(cur!==''&&!l.some(functi
   return {cur:cur,h:'<label class="chk">Players <select data-gxs="pl">'+(all?'<option value="">All players</option>':'')+l.map(function(x){return '<option value="'+esc(x.p.name)+'"'+(x.p.name===cur?' selected':'')+'>'+esc(x.p.name)+(x.p.cls?' ('+esc(x.p.cls)+')':'')+'</option>'}).join('')+'</select></label>'}}
 function gxPcol(p){return CCOL[p.cls]||'var(--accent)'}
 function gxNeed(msg){return '<p class="note">'+msg+'</p>'}
-var GXOLD='This match was saved before this data was kept. Re-upload its original ledger to get it.';
+var GXOLD='This match was saved before this data was kept. An admin can rebuild it from its stored raw ledger (Admin, Match handler, Rebuild all matches).';
 /* generic line chart: series [{name,col,dash,pts:[[x,y]]}] */
 function gxXY(S,xmax,fmt){
   var W=900,H=300,PL=62,PR=16,PT=12,PB=30,lo=0,hi=0;
@@ -2073,7 +2084,7 @@ function viewGraphsEvent(id,ms,extra){
 function viewGraphs(id,d){
   if(!d.ledger)return '';
   var tabs=[['time','Over time'],['combat','Combat'],['skills','Skills'],['obj','Objectives']],sn=subTabs('gx-'+id,tabs);
-  return '<div class="gxsub">'+sn.h.replace('subnav','subnav sub2')+'</div>'+(sn.cur==='obj'?'':gxTypeBar(sn.cur))+(sn.cur==='time'?gxTime(d)+anaMatchSections(id,d,'graphs')+teamDamage(d):sn.cur==='combat'?gxCombat(d):sn.cur==='skills'?gxSkills(d):gxObj(d));
+  return '<div class="gxsub">'+sn.h.replace('subnav','subnav sub2')+'</div>'+(sn.cur==='obj'?'':gxTypeBar(sn.cur))+(sn.cur==='time'?gxTime(d)+anaMatchSections(id,d,'graphs')+teamDamage(gxTyped(d)):sn.cur==='combat'?gxCombat(d):sn.cur==='skills'?gxSkills(d):gxObj(d));
 }
 document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('[data-gx]');if(!b)return;var p=b.dataset.gx.split(':');gx[p[0]]=p[0]==='team'?+p[1]:p[1];render()});
 document.addEventListener('change',function(e){var t=e.target;if(!t.dataset)return;if(t.dataset.gxs){gx[t.dataset.gxs]=t.value;render()}else if(t.dataset.gxc){gx[t.dataset.gxc]=t.checked;render()}});
@@ -2507,6 +2518,7 @@ document.addEventListener('toggle',function(e){var d=e.target;if(d&&d.classList&
 document.addEventListener('change',function(e){var t=e.target;if(t&&t.dataset&&t.dataset.evmap){subSel['evmap-'+t.dataset.evmap]=t.value;render()}});
 document.addEventListener('click',function(e){
   var rb=e.target.closest('[data-rebuild]');if(rb){rebuildMatch(rb.dataset.rebuild);return}
+  if(e.target.closest('[data-rebuildall]')){rebuildAll();return}
   var sb=e.target.closest('[data-sub]');if(sb){var q=sb.dataset.sub,i=q.lastIndexOf('|');subSel[q.slice(0,i)]=q.slice(i+1);render();return}
   var t=e.target.closest('[data-sort]');if(t){var p=t.dataset.sort.split(':'),s=sortState[p[0]];s.d=s.k===p[1]?-s.d:(p[1]==='name'||p[1]==='main'||p[1]==='cls'?1:p[1]==='t'?-1:-1);s.k=p[1];render();return}
   var g=e.target.closest('[data-go]');if(g&&!e.target.closest('a,input,label,button')){location.hash=g.dataset.go;return}
@@ -2583,6 +2595,19 @@ function rebuildMatch(id){
   }).catch(function(err){rebuildMsg=err&&err.code==='not_found'?'No raw ledger was kept for this match. It was saved before raw ledgers were kept; re-upload the original file.':'Could not rebuild: '+(err&&err.code||'error');render()});
 }
 var rebuildMsg='';
+function rebuildAll(){
+  var ms=allMatches().filter(function(m){return m.saved&&m.doc.ledger});if(!ms.length||!db)return;
+  var i=0,ok=0,miss=0,fail=0;rebuildMsg='Rebuilding '+ms.length+' matches...';render();
+  (function next(){
+    if(i>=ms.length){rebuildMsg='Rebuilt '+ok+' of '+ms.length+' from their raw ledgers'+(miss?'. '+miss+' had no raw ledger kept, re-upload those':'')+(fail?'. '+fail+' failed':'')+'.';render();return}
+    var m=ms[i++];
+    api('GET','/api/doc?c=raw&id='+encodeURIComponent(m.id)).then(function(r){
+      var d=parseMatchLedger(JSON.stringify(r.ledger),(m.doc.name||r.fileName||'match ledger'));
+      d.uploadedAt=m.doc.uploadedAt||d.uploadedAt;if(m.doc.result&&m.doc.result.src!=='log')d.result=m.doc.result;
+      return db.collection('matches').doc(m.id).set(d).then(function(){ok++})
+    }).catch(function(err){if(err&&err.code==='not_found')miss++;else fail++}).then(next)
+  })();
+}
 function remove(id){db&&db.collection('matches').doc(id).delete().then(function(){location.hash='matches'},function(){})}
 
 /* ---- hosted storage and accounts ---- */
