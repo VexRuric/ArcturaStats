@@ -1147,6 +1147,8 @@ function viewAdmin(){
   addIssue('noCore','Medium','Core event type missing from the log',noCore,'The log has no rows of this type at all. Damage, kills and deaths drive almost every stat.');
   addIssue('noTeam','Medium','Player has no team in the log',noTeam,'TeamIndex is only written on some rows (kills, captures, relics). A player with none of those has no side, so they cannot get team wins.');
   addIssue('noClass','Medium','Player class could not be inferred',noClass,'Class comes from spawn and regen effect names. The log should carry the class directly.');
+  var wcAll=dzWrongClass(ms.filter(function(m){return m.doc.ledger}).map(function(m){return m.doc}),ms.filter(function(m){return m.doc.ledger}).map(function(m){return m.id}));
+  addIssue('wrongclass','Medium','A skill was cast by a class that does not own it',wcAll.map(function(e){return {m:e.id,mn:e.mt,t:e.p+' ('+e.cls+') cast '+e.name+', a '+e.owner+' skill, x'+e.casts}}),'The class is read from the skill id or from who normally casts it. A cast by another class means the game gave a class a skill it should not have, or attributed a cast to the wrong player. The cast sequence for the player is under Graphs, Skills, Sequence.');
   addIssue('skillshot0','Medium','A skillshot was cast but no attempts were recorded',ssZero,'The skill has casts but its accuracy block shows zero attempts, so accuracy cannot be measured and its hits may be missing from the skill. AimedShot does this in every match so far.');
   addIssue('commitHi','Low','A skill committed more than it was cast',commitHi,'Committed (resources spent) is higher than casts, which should not happen. The cast counter may not see every start of a charged or multi-step skill.');
   addIssue('nokind','Low','A skill has no accuracy kind',noKind,'Every other skill reports an accuracy block or a kind such as Unset or Utility. These report neither, so their accuracy cannot be graded. ArcaneWall and Voidsnare do this.');
@@ -1724,21 +1726,37 @@ function bkRow(p){
     cc:p.stats&&p.stats.ccApplied!=null?p.stats.ccApplied:null,cons:p.stats&&p.stats.consumablesUsed!=null?p.stats.consumablesUsed:null,cpu:p.stats&&p.stats.cpUncaptures!=null?p.stats.cpUncaptures:null,
     rcs:p.stats&&p.stats.relicCarrySec?p.stats.relicCarrySec:0,rd:p.stats&&p.stats.relicDrops!=null?p.stats.relicDrops:null};
 }
+/* casts grouped for the sequence: what kind of cast it is */
+function castCat(n){var t=String(n||'').replace(/^Aeon\.Ability\./,'');
+  if(/(^|\.)(Sprint|Dodge|MultiJump|Teleport|RocketJump|ChargeWar|Leap|Hover|AstralStep)/.test(t))return 'Movement';
+  if(/^(Potion|Bandage|Food|Water)|Trinket|SpendCharges/.test(t))return 'Items';
+  if(/AutoAttack$|^FluxStrike\./.test(t))return 'Attacks';
+  return 'Abilities';
+}
 function castTimeline(d,sel){
   var cl=d.castLog,pi=(d.players||[]).indexOf(sel);
   if(!cl||pi<0)return '';
   var rows=cl.r.filter(function(x){return x[1]===pi});
   if(!rows.length)return '<div class="panel"><h2>Cast timeline</h2><p class="note">No casts logged for this player.</p></div>';
-  var by={};rows.forEach(function(x){(by[x[2]]||(by[x[2]]=[])).push(x[0])});
-  var ks=Object.keys(by).sort(function(a,b){return by[b].length-by[a].length}),W=960,L=170,R=14,T=8,rh=20,B=26,H=T+ks.length*rh+B,dur0=Math.max(d.duration||0,rows[rows.length-1][0])||1;
+  var cat=gx.cc||'all',by={};
+  rows.forEach(function(x){if(cat!=='all'&&castCat(cl.n[x[2]])!==cat)return;(by[x[2]]||(by[x[2]]=[])).push(x[0])});
+  var ks=Object.keys(by).sort(function(a,b){return by[b].length-by[a].length}),pos=sel.pos||[],ml=pos.length>1?36:0;
+  var W=960,L=170,R=14,T=8,rh=20,B=26,top=T+(ml?ml+10:0),H=top+Math.max(ks.length,1)*rh+B,dur0=Math.max(d.duration||0,rows[rows.length-1][0])||1;
   var X=function(t){return L+(W-L-R)*t/dur0},col=TEAMS[sel.team]?TEAMS[sel.team].col:'var(--accent)';
-  var svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Casts over time for '+esc(sel.name)+'">';
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Casts and movement over time for '+esc(sel.name)+'">';
   for(var t=0;t<=dur0;t+=120)svg+='<line class="grid" x1="'+X(t)+'" x2="'+X(t)+'" y1="'+T+'" y2="'+(H-B)+'"/><text x="'+X(t)+'" y="'+(H-8)+'" text-anchor="middle">'+dur(t)+'</text>';
-  ks.forEach(function(k,i){var y=T+i*rh,nm=skName(cl.n[k]||('skill '+k));
+  if(ml){
+    /* speed between position samples, metres per second; gaps are time spent dead or samples too far apart */
+    var sp=[],mx=6;for(var i=1;i<pos.length;i++){var a0=pos[i-1],b0=pos[i],dt=b0[0]-a0[0];if(dt<=0||dt>15||!a0[3]||!b0[3])continue;var v=Math.hypot(b0[1]-a0[1],b0[2]-a0[2])/dt;sp.push([a0[0],b0[0],v])}var srt=sp.map(function(q){return q[2]}).sort(function(a,b){return a-b});if(srt.length)mx=Math.max(6,srt[Math.floor(srt.length*0.95)]*1.25);
+    svg+='<text x="'+(L-8)+'" y="'+(T+14)+'" text-anchor="end">Movement (m/s)</text><text x="'+(L-8)+'" y="'+(T+ml)+'" text-anchor="end" style="font-size:10px;opacity:.7">0 to '+num(mx,0)+'+</text><rect x="'+L+'" y="'+T+'" width="'+(W-L-R)+'" height="'+ml+'" fill="var(--panel2)" rx="2"/>';
+    sp.forEach(function(q){var h=ml*Math.min(q[2]/mx,1);svg+='<rect x="'+X(q[0]).toFixed(1)+'" y="'+(T+ml-h).toFixed(1)+'" width="'+Math.max(1,X(q[1])-X(q[0])).toFixed(1)+'" height="'+h.toFixed(1)+'" fill="'+col+'" fill-opacity=".55"><title>'+dur(q[0])+' to '+dur(q[1])+': '+num(q[2],1)+' m/s</title></rect>'});
+  }
+  if(!ks.length)svg+='<text x="'+L+'" y="'+(top+14)+'" style="opacity:.7">No '+esc(cat.toLowerCase())+' casts by this player.</text>';
+  ks.forEach(function(k,i){var y=top+i*rh,nm=skName(cl.n[k]||('skill '+k));
     svg+='<text x="'+(L-8)+'" y="'+(y+14)+'" text-anchor="end">'+esc(nm.length>22?nm.slice(0,21)+'…':nm)+' ('+by[k].length+')</text><line x1="'+L+'" x2="'+(W-R)+'" y1="'+(y+rh-2)+'" y2="'+(y+rh-2)+'" stroke="var(--line)" stroke-width=".5"/>';
     by[k].forEach(function(t){svg+='<line x1="'+X(t).toFixed(1)+'" x2="'+X(t).toFixed(1)+'" y1="'+(y+3)+'" y2="'+(y+rh-5)+'" stroke="'+col+'" stroke-width="1.6" stroke-opacity=".85"/>'})});
   svg+='</svg>';
-  return '<div class="panel"><h2>Cast timeline</h2><p class="note" style="margin:0 0 8px">Every cast by '+esc(sel.name)+', one row per ability, most used first. Gaps show downtime, dead time and cooldown waits.</p>'+svg+'</div>';
+  return '<div class="panel"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><h2 style="margin:0">Cast timeline</h2>'+gxChips('cc',[['all','All'],['Attacks','Attacks'],['Abilities','Abilities'],['Movement','Movement'],['Items','Items']],cat)+'</div><p class="note" style="margin:8px 0">Every cast by '+esc(sel.name)+', one row per ability, most used first.'+(ml?' The top lane is how fast they were moving, from position samples.':'')+' Gaps show downtime, dead time and cooldown waits.</p>'+svg+'</div>';
 }
 function viewBreakdown(id,d){
   var pl=(d.players||[]).filter(function(p){return !(hideBots&&isBot(p.name))}),rows=pl.map(bkRow),anySk=pl.some(function(p){return (p.skills||[]).length});
@@ -1845,7 +1863,7 @@ function viewMatch(id){
   return h;
 }
 /* ---- Graphs explorer: Over time, Combat, Skills, Objectives. Built for balancing and for locating bugs: every view is per player or per team, from the ledger's own counters. ---- */
-var gx={cvm:'dmg',cvn:'tot',mm:0,metric:'dmg',type:'all',by:'team',bins:false,pl:'',cb:'vs',sk:'usage',ob:'score',sc:'tot',team:0};
+var gx={cc:'all',cvm:'dmg',cvn:'tot',mm:0,metric:'dmg',type:'all',by:'team',bins:false,pl:'',cb:'vs',sk:'usage',ob:'score',sc:'tot',team:0};
 var GXM=[['dmg','Damage dealt'],['taken','Damage taken'],['heal','Healing given'],['healRecv','Healing received'],['ccApplied','Crowd control applied'],['itemUses','Item uses'],['casts','Casts'],['pvpSec','Seconds in PvP'],['objSec','Seconds on objective']];
 var GXPAL=['#e6a23c','#4fa3e0','#9b6bd6','#3fae6a','#e0566b','#d1c45a','#5cc7c0','#b88a64','#8a93a6'];
 /* One switch for the whole explorer. Damage dealt, damage taken, healing given, and skill hits, crits, kills and damage are recorded by type. Everything else is not, and the note under the switch says so for the tab you are on. */
@@ -2638,6 +2656,19 @@ function dzSkillAgg(docs,ids){
 function dzSig(pr){return pr?[pr.Strength,pr.Mind,pr.Constitution,pr.Spirit,pr.Dexterity,pr.Control].join('/'):''}
 function dzSwapSet(d){var m={};if(dz.xs)dzClassSwaps(d).forEach(function(x){m[x.name]=1});return m}
 function dzXsBox(docs){var n=0;docs.forEach(function(d){n+=dzClassSwaps(d).length});return n?'<label class="chk"><input type="checkbox" data-dzc="xs"'+(dz.xs?' checked':'')+'> Leave out players who changed class (testing feature, '+n+' found)</label>':''}
+/* Which class owns a skill, and who cast it anyway. The owner is the class named in the skill id (AssassinStrike belongs to Assassin), or failing that the class that makes at least 90% of its casts when two or more classes use it. A cast by any other class is listed. A player who changed class is skipped when the skill belongs to the class they started as, because that is the testing class change, not the skill. */
+function dzWrongClass(docs,ids){
+  var ent=[],tot={};
+  docs.forEach(function(d,di){var swm={};dzClassSwaps(d).forEach(function(x){swm[x.name]=x});
+    (d.players||[]).forEach(function(p){if(isBot(p.name)||!p.cls)return;(p.skills||[]).forEach(function(k){if(!k.casts)return;
+      ent.push({id:ids?ids[di]:'',mt:mtitle(d),p:p.name,cls:p.cls,skill:k.skill,name:skName(k.skill),casts:k.casts,hits:k.pvp.hits+k.pve.hits,sw:swm[p.name]||null});
+      var t=tot[k.skill]||(tot[k.skill]={all:0,act:0,by:{}});if(!swm[p.name]){t.all+=k.casts;t.act+=k.pvp.hits+k.pve.hits+((k.he&&k.he.n)||0);t.by[p.cls]=(t.by[p.cls]||0)+k.casts}})})});
+  var owner={};Object.keys(tot).forEach(function(sk){var last=sk.replace(/^.*\./,''),nm=DZCL.filter(function(c){return last.indexOf(c)>=0})[0],t=tot[sk];
+    if(nm){owner[sk]=nm;return}
+    if(!t.act||/^(Potion|Bandage|Food|Water|Sprint|Dodge|MultiJump|Teleport|Trinket|Leap|SpendCharges)/.test(last))return;
+    var cs=Object.keys(t.by);if(cs.length<2||t.all<10)return;var top=cs.sort(function(a,b){return t.by[b]-t.by[a]})[0];if(t.by[top]/t.all>=0.9)owner[sk]=top});
+  return ent.filter(function(e){var o=owner[e.skill];if(!o||e.cls===o)return false;if(e.sw&&e.sw.from===o)return false;return true}).map(function(e){e.owner=owner[e.skill];return e}).sort(function(a,b){return b.casts-a.casts});
+}
 function dzClassSwaps(d){
   if(d.__cs)return d.__cs;var per=[],votes={},out=[];
   (d.players||[]).forEach(function(p){var seq=[];
@@ -2733,8 +2764,8 @@ function viewDzSkills(G){
     var ent=sel.ent.slice().sort(function(a,b){return b.t-a.t||b.casts-a.casts});
     h+='<div class="panel" id="dzskd" style="border-left:4px solid '+(CCOL[sel.cls]||'var(--accent)')+'"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><h2 style="margin:0">'+esc(sel.name)+' <span class="note" style="margin:0">as '+esc(sel.cls)+'</span></h2><span class="note" style="margin:0">'+esc(sel.skill)+'</span><button class="btn ghost" type="button" data-dzsk="" style="margin-left:auto">Close</button></div>'+
       '<p class="note" style="margin:8px 0">Who casts this skill, all classes in the matches chosen: '+same.sort(function(a,b){return b.casts-a.casts}).map(function(x){return clsPlain(x.cls)+' '+num(x.casts)+' casts ('+num(100*x.casts/stot,0)+'%)'}).join(', ')+'.'+(same.length>1?' A class with a tiny share is probably not meant to have it, or changed class during the match.':'')+'</p>'+
-      '<div class="scroll"><table><thead><tr>'+['Match','Player','Class','Casts','Hits','Damage','Healing'].map(dzTh).join('')+'</tr></thead><tbody>'+
-      ent.slice(0,60).map(function(x){return '<tr><td style="text-align:left">'+(x.id?'<a class="plink" href="#match-'+esc(x.id)+'">'+esc(x.mt)+'</a>':esc(x.mt))+'</td><td style="text-align:left">'+esc(x.p)+(x.sw?' <span class="tag warn" title="Read from the stat snapshots">changed class (test feature) '+esc(x.sw.from)+' &rarr; '+esc(x.sw.to)+' at '+dur(x.sw.t)+'</span>':'')+'</td><td style="text-align:left">'+clsPlain(x.cls)+'</td><td>'+num(x.casts)+'</td><td>'+num(x.hits)+'</td><td>'+(x.dmg?num(x.dmg):'-')+'</td><td>'+(x.he?num(x.he):'-')+'</td></tr>'}).join('')+'</tbody></table></div>'+(ent.length>60?'<p class="note">Showing the 60 newest of '+ent.length+'.</p>':'')+'</div>';}
+      '<div class="scroll"><table><thead><tr>'+['Match','Player','Class','Casts','Hits','Damage','Healing',''].map(dzTh).join('')+'</tr></thead><tbody>'+
+      ent.slice(0,60).map(function(x){return '<tr><td style="text-align:left">'+(x.id?'<a class="plink" href="#match-'+esc(x.id)+'">'+esc(x.mt)+'</a>':esc(x.mt))+'</td><td style="text-align:left">'+esc(x.p)+(x.sw?' <span class="tag warn" title="Read from the stat snapshots">changed class (test feature) '+esc(x.sw.from)+' &rarr; '+esc(x.sw.to)+' at '+dur(x.sw.t)+'</span>':'')+'</td><td style="text-align:left">'+clsPlain(x.cls)+'</td><td>'+num(x.casts)+'</td><td>'+num(x.hits)+'</td><td>'+(x.dmg?num(x.dmg):'-')+'</td><td>'+(x.he?num(x.he):'-')+'</td><td style="text-align:right">'+(x.id?'<button class="btn ghost" type="button" data-dzseq="'+esc(x.id)+'|'+esc(x.p)+'" title="Open this player cast sequence in the match">Cast sequence</button>':'')+'</td></tr>'}).join('')+'</tbody></table></div>'+(ent.length>60?'<p class="note">Showing the 60 newest of '+ent.length+'.</p>':'')+'</div>';}
   var cols=[
     {k:'cls',l:'Class',f:function(r){return clsPlain(r.cls)}},{k:'name',l:'Skill',f:function(r){return '<button type="button" data-dzsk="'+esc(r.key)+'" title="'+esc(r.skill)+', click to see which matches" style="background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px">'+esc(r.name)+'</button>'}},{k:'flagText',l:'Flags',f:function(r){return r.flags.length?'<span style="color:#d19a1f;white-space:normal;display:inline-block;min-width:150px;text-align:left">'+esc(r.flagText)+'</span>':''}},{k:'np',l:'Players',f:function(r){return num(r.np)}},
     {k:'cpm',l:'Casts/min',f:function(r){return num(r.cpm,2)}},{k:'dpc',l:'Damage/cast',f:function(r){return r.dpc?num(r.dpc):'-'}},{k:'hpc',l:'Hits/cast',f:function(r){return num(r.hpc,2)}},{k:'crit',l:'Crit %',f:function(r){return r.hits?num(r.crit,0):'-'}},
@@ -2823,6 +2854,10 @@ function dzChecks(g,bugs){
     status:!dom.length?'info':dom.some(function(x){return x.sh>=DZT.domFail})?'fail':dom.some(function(x){return x.sh>=DZT.domWarn})?'warn':'pass',
     sum:!dom.length?'No class dealt enough damage.':dom.sort(function(a,b){return b.sh-a.sh}).slice(0,3).map(function(x){return x.top.name+' '+num(x.sh,0)+'%'}).join(', '),
     ev:function(){return dzBars(dom.map(function(x){return {l:clsPlain(x.c),v:x.sh,c:CCOL[x.c],t:esc(x.top.name)+' '+num(x.sh,0)+'%'}}),{max:100,line:DZT.domWarn,note:'The biggest non auto attack ability of each class, as a share of all damage the class dealt.'})}});
+  var wc=dzWrongClass(docs,g.ids);
+  add({id:'owner',grp:'Abilities',title:'Skills cast by the wrong class',target:'None. Every skill is cast only by the class that owns it',status:wc.length?'fail':'pass',
+    sum:wc.length?wc.slice(0,3).map(function(e){return e.cls+' '+e.p+' cast '+e.name+' ('+e.owner+' skill) x'+e.casts}).join(', ')+(wc.length>3?' and '+(wc.length-3)+' more':''):'Every cast came from the class that owns the skill.',
+    ev:function(){return dzList(wc,[['Match',function(e){return e.id?'<a class="plink" href="#match-'+esc(e.id)+'">'+esc(e.mt)+'</a>':esc(e.mt)}],['Player',function(e){return esc(e.p)}],['Cast by',function(e){return clsPlain(e.cls)}],['Skill',function(e){return esc(e.name)}],['Belongs to',function(e){return clsPlain(e.owner)}],['Casts',function(e){return num(e.casts)}],['Hits',function(e){return num(e.hits)}]])+'<p class="note">The owner is the class named in the skill id, or for damage and healing skills the class that makes at least 90% of its casts. Consumables and movement skills are not checked. Open the skill on Skill balance for the cast sequence.</p>'}});
   var skillRows=rows.filter(function(a){return a.kind==='Skillshot'&&a.casts>=5&&a.att===0});
   add({id:'ss0',grp:'Abilities',title:'Skillshots that report no attempts',target:'None',status:skillRows.length?'fail':'pass',
     sum:skillRows.length?skillRows.map(function(a){return a.cls+' '+a.name}).join(', '):'None found.',
@@ -2948,6 +2983,7 @@ function viewDesigner(){
 document.addEventListener('click',function(e){
   var g=e.target.closest&&e.target.closest('[data-dz]');if(g){dz.scope=g.dataset.dz;if(dz.scope==='pick'&&!Object.keys(dz.pick).length)dzMatches().all.slice(0,5).forEach(function(m){dz.pick[m.id]=1});render();return}
   var go=e.target.closest&&e.target.closest('[data-dzgo]');if(go){subSel['admin']=go.dataset.dzgo}
+  var sq=e.target.closest&&e.target.closest('[data-dzseq]');if(sq){var qi=sq.dataset.dzseq.indexOf('|'),mid=sq.dataset.dzseq.slice(0,qi);subSel['match-'+mid]='graphs';subSel['gx-'+mid]='skills';gx.sk='seq';gx.pl=sq.dataset.dzseq.slice(qi+1);location.hash='match-'+mid;return}
   var sk=e.target.closest&&e.target.closest('[data-dzsk]');if(sk){dz.sk=sk.dataset.dzsk;render();var pe=document.getElementById('dzskd');if(pe&&pe.scrollIntoView)pe.scrollIntoView({block:'start'});return}
   var dd=e.target.closest&&e.target.closest('[data-dzdt]');if(dd){dz.dt=dd.dataset.dzdt;render();return}
   if(e.target.closest&&e.target.closest('[data-dzmore]')){dz.more=!dz.more;render();return}
