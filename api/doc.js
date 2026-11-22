@@ -3,11 +3,12 @@ const L = require('./_lib');
 
 const route = L.handler(async (req, res) => {
   const c = req.q.c, id = req.q.id;
-  if ((c !== 'matches' && c !== 'snapshots' && c !== 'raw') || !L.ID_OK.test(id || '')) return L.send(res, 400, { error: 'bad_target' });
+  if ((c !== 'matches' && c !== 'snapshots' && c !== 'raw' && c !== 'schema') || !L.ID_OK.test(id || '')) return L.send(res, 400, { error: 'bad_target' });
   const p = c + '/' + id + '.json';
   /* Reading: matches are public; an event is public only once published (admins can read drafts). */
-  /* raw: the uploaded Match Ledger exactly as parsed, kept so any later feature can be rebuilt from it. Admin only, never cached, never cross-origin. */
-  if (c === 'raw' && req.method === 'GET') {
+  /* raw: the uploaded Match Ledger exactly as parsed, kept so any later feature can be rebuilt from it. Admin only, never cached, never cross-origin.
+     schema: what the fields of earlier ledgers looked like, used to mark new, removed and changed fields. Same rules as raw. */
+  if ((c === 'raw' || c === 'schema') && req.method === 'GET') {
     const stR = await L.readState(); if (!L.isAdmin(L.session(req), stR)) return L.send(res, 403, { error: 'admin_only' });
     const dr = await L.getJSON(p); if (!dr) return L.send(res, 404, { error: 'not_found' });
     res.statusCode = 200; res.setHeader('Content-Type', 'application/json'); res.setHeader('Cache-Control', 'private, no-store');

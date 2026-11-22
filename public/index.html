@@ -29,6 +29,7 @@
 :root[data-density="compact"] th,:root[data-density="compact"] td{padding-top:4px;padding-bottom:4px}
 :root[data-density="compact"] body{font-size:14px}
 header .hright{position:relative}
+.jtag{display:inline-block;margin-left:6px;padding:0 6px;border-radius:9px;font:700 11px var(--font-b);letter-spacing:.03em;vertical-align:middle}.jnew{background:var(--good);color:#04130b}.jchg{background:var(--accent);color:var(--accent-ink)}
 .thmenu{position:absolute;right:0;top:100%;z-index:60;width:272px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;box-shadow:0 10px 30px rgba(0,0,0,.45);text-align:left}
 .thmenu h3{margin:0 0 8px;font:600 13px var(--font-d);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .thopt{display:flex;align-items:center;gap:10px;width:100%;background:transparent;border:1px solid transparent;border-radius:8px;padding:6px 8px;color:var(--fg);cursor:pointer;text-align:left;font:inherit}
@@ -1237,6 +1238,131 @@ function jvInline(v){
   var k=Object.keys(v);return '<span class="jc">{ '+esc(k.slice(0,6).join(', ')+(k.length>6?', …':''))+' }</span>';
 }
 /* Which fields does the site use? The importer is run once on a recording copy of the ledger and every field it reads is noted. A field that is handed over whole (kept as is for a view to draw, such as the regen block or the CC log) counts as used with everything inside it. A few stat keys are read later by the Graphs and Players views, so they are listed here. */
+/* ---- ledger format: what each field looked like in earlier ledgers, so a new upload can be marked New, Removed or Changed ----
+   A path is written like the JSON reader writes it: .players[].skills[].casts. Every array element counts as one place, and an object keyed by
+   numbers (or with more than 40 keys) counts as one place written .* so ids and names do not look like new fields. */
+var SCH={base:undefined,p:null,busy:'',msg:''};
+function schType(v){return v===null?'null':Array.isArray(v)?'array':typeof v}
+function schDyn(v){if(!v||typeof v!=='object'||Array.isArray(v))return false;var k=Object.keys(v);return k.length>40||(k.length>0&&k.every(function(x){return /^-?\d+$/.test(x)}))}
+function schUp(p){return p.replace(/(\.[^.\[\]]*|\[\])$/,'')}
+function schNorm(p){return p.replace(/\.-?\d+(?=\.|\[|$)/g,'.*')}
+function schemaOf(data){
+  var out={},cols={},emp={};
+  (function walk(v,np){
+    var t=schType(v),o=out[np]||(out[np]={});o[t]=1;
+    if(t==='array'){
+      if(!v.length)emp[np]=1;
+      if(/\.cols$/.test(np)&&v.length<=60&&v.every(function(x){return typeof x==='string'}))cols[np]=v.slice();
+      var n=Math.min(v.length,300),i;for(i=0;i<n;i++)walk(v[i],np+'[]');
+      for(i=0;i<20&&v.length>n+i;i++)walk(v[v.length-1-i],np+'[]');
+    }else if(t==='object'){
+      var keys=Object.keys(v),dyn=schDyn(v);if(!keys.length)emp[np]=1;
+      keys.forEach(function(k){walk(v[k],np+(dyn?'.*':'.'+k))});
+    }
+  })(data,'');
+  return {p:out,cols:cols,emp:emp};
+}
+function schNew(){return {v:1,ledgers:0,ids:[],paths:{},cols:{},read:{},hist:[],updated:0}}
+function schReads(base,p){return Object.keys(base.read||{}).some(function(k){return k===p||k.indexOf(p+'.')===0||k.indexOf(p+'[')===0})}
+function schDiff(base,sc){
+  var N=base.ledgers,added={},removed={},changed=[],cl=[];
+  Object.keys(sc.p).forEach(function(p){
+    if(!p)return;var b=base.paths[p],ts=Object.keys(sc.p[p]).filter(function(t){return t!=='null'});
+    if(!b){added[p]=Object.keys(sc.p[p]);return}
+    var known=Object.keys(b.t).filter(function(t){return t!=='null'}),nw=ts.filter(function(t){return !b.t[t]});
+    if(nw.length&&known.length)changed.push({p:p,from:known,to:ts,reads:schReads(base,p)})});
+  var emptyish=function(q){return sc.p[q]&&(sc.emp[q]||Object.keys(sc.p[q]).every(function(t){return t==='null'}))};
+  Object.keys(base.paths).forEach(function(p){
+    if(!p||sc.p[p])return;var e=base.paths[p];if(N<10?e.n<N:e.n<0.9*N)return;
+    for(var q=schUp(p);q;q=schUp(q))if(emptyish(q))return;
+    removed[p]=Object.keys(e.t)});
+  Object.keys(sc.cols).forEach(function(p){
+    var a=base.cols[p],b=sc.cols[p];if(!a)return;
+    var ad=b.filter(function(x){return a.indexOf(x)<0}),rm=a.filter(function(x){return b.indexOf(x)<0});
+    var moved=!ad.length&&!rm.length&&a.join('|')!==b.join('|');
+    if(ad.length||rm.length||moved)cl.push({p:p,added:ad,removed:rm,moved:moved,from:a,to:b,reads:schReads(base,p)})});
+  var tops=function(m){return Object.keys(m).filter(function(p){return !m[schUp(p)]}).map(function(p){
+    var kids=Object.keys(m).filter(function(q){return q!==p&&q.indexOf(p)===0&&/^[.\[]/.test(q.slice(p.length))}).length;
+    return {p:p,t:m[p],kids:kids,reads:schReads(base,p)}})};
+  var d={added:tops(added),removed:tops(removed),changed:changed,cols:cl,addAll:added,chg:{},addTop:{},anc:{}};
+  d.added.forEach(function(x){d.addTop[x.p]=x});changed.forEach(function(x){d.chg[x.p]=x});
+  [Object.keys(added),changed.map(function(x){return x.p})].forEach(function(l){l.forEach(function(p){for(var q=schUp(p);q;q=schUp(q))d.anc[q]=1})});
+  d.n=d.added.length+d.removed.length+d.changed.length+d.cols.length;
+  return d;
+}
+function schAdd(base,data,id,name,quiet){
+  if(id&&base.ids.indexOf(id)>=0)return false;
+  var sc=schemaOf(data),diff=base.ledgers&&!quiet?schDiff(base,sc):null,pr=jvProbe(data);
+  Object.keys(sc.p).forEach(function(p){var e=base.paths[p]||(base.paths[p]={t:{},n:0});e.n++;Object.keys(sc.p[p]).forEach(function(t){e.t[t]=(e.t[t]||0)+1})});
+  Object.keys(sc.cols).forEach(function(p){base.cols[p]=sc.cols[p]});
+  if(pr)Object.keys(pr.acc).forEach(function(p){base.read[schNorm(p)]=1});
+  base.ledgers++;if(id){base.ids.push(id);if(base.ids.length>300)base.ids.shift()}
+  if(diff&&diff.n){base.hist.unshift({id:id||'',name:name||'',t:Date.now(),a:diff.added.length,r:diff.removed.length,c:diff.changed.length,k:diff.cols.length,ex:diff.added.concat(diff.removed).concat(diff.changed).slice(0,4).map(function(x){return x.p})});if(base.hist.length>40)base.hist.length=40}
+  return true;
+}
+function schLoad(force){
+  if(!canEdit)return Promise.resolve(null);
+  if(!force&&SCH.base!==undefined)return Promise.resolve(SCH.base);
+  if(SCH.p)return SCH.p;
+  SCH.p=api('GET','/api/doc?c=schema&id=baseline').then(function(b){SCH.base=b&&b.paths?b:null;SCH.p=null;return SCH.base},function(){SCH.base=null;SCH.p=null;return null});
+  return SCH.p;
+}
+function schSave(base){base.updated=Date.now();return api('PUT','/api/doc?c=schema&id=baseline',base).then(function(){SCH.base=base})}
+/* the baseline is built from every raw ledger on the site, oldest first */
+function schBuild(){
+  var ms=allMatches().slice().sort(function(a,b){return playedAt(a.doc)-playedAt(b.doc)}).map(function(m){return m.id}),base=schNew(),i=0,got=0;
+  SCH.msg='';SCH.busy='Reading raw ledgers 0 of '+ms.length;render();
+  (function next(){
+    if(i>=ms.length){
+      if(!got){SCH.busy='';SCH.msg='No raw ledgers are stored yet, so there is nothing to build from.';render();return}
+      schSave(base).then(function(){SCH.busy='';SCH.msg='Baseline built from '+got+' ledger'+(got===1?'':'s')+'.';render()},function(err){SCH.busy='';SCH.msg='Could not save the baseline: '+(err&&err.code||'error');render()});return}
+    var id=ms[i++];SCH.busy='Reading raw ledgers '+i+' of '+ms.length;
+    api('GET','/api/doc?c=raw&id='+encodeURIComponent(id)).then(function(r){if(r&&r.ledger&&typeof r.ledger==='object'){schAdd(base,r.ledger,id,r.fileName,true);got++}next()},function(){next()});
+  })();
+}
+/* after an upload is saved its format joins the baseline, so the next upload is compared with it too */
+function schRecord(u){
+  schLoad().then(function(base){
+    if(!base||!u.raw)return;var led;try{led=JSON.parse(u.raw.replace(/^\ufeff/,''))}catch(x){return}
+    if(!schAdd(base,led,u.id,u.name))return;
+    schSave(base).then(function(){u.schSaved=true;render()},function(){})});
+}
+function schLabel(p){return p||'(root)'}
+function schRow(tag,cls,p,note,reads){return '<tr><td style="text-align:left"><span class="tag '+cls+'">'+tag+'</span></td><td style="text-align:left;white-space:normal;word-break:break-all"><code>'+esc(schLabel(p))+'</code></td><td style="text-align:left;white-space:normal">'+esc(note||'')+'</td><td style="text-align:left">'+(reads?'<span class="tag err" title="The importer reads this field, so something on the site may now be empty or wrong">Site reads this</span>':'')+'</td></tr>'}
+function schPanel(d,cap){
+  cap=cap||15;var rows=[],more=0;
+  var add=function(list,fn){list.slice(0,cap).forEach(function(x){rows.push(fn(x))});if(list.length>cap)more+=list.length-cap};
+  add(d.removed,function(x){return schRow('Removed','err',x.p,'Was '+x.t.join('/')+(x.kids?' with '+x.kids+' field'+(x.kids===1?'':'s')+' inside':'')+' in earlier ledgers',x.reads)});
+  add(d.changed,function(x){return schRow('Changed','warn',x.p,'Was '+x.from.join('/')+', now '+x.to.filter(function(t){return x.from.indexOf(t)<0}).join('/')+(x.to.some(function(t){return x.from.indexOf(t)>=0})?' in some places':''),x.reads)});
+  add(d.cols,function(x){return schRow('Columns','warn',x.p,(x.moved?'Same columns in a different order, so every position shifted. Was '+x.from.join(', ')+'; now '+x.to.join(', '):(x.added.length?'Added: '+x.added.join(', ')+'. ':'')+(x.removed.length?'Removed: '+x.removed.join(', ')+'.':'')),x.reads)});
+  add(d.added,function(x){return schRow('New','ok',x.p,x.t.join('/')+(x.kids?' with '+x.kids+' field'+(x.kids===1?'':'s')+' inside':'')+'. Nothing on the site reads it yet',false)});
+  return '<div class="scroll"><table><thead><tr><th scope="col" style="text-align:left">Change</th><th scope="col" style="text-align:left">Field</th><th scope="col" style="text-align:left">Detail</th><th scope="col"></th></tr></thead><tbody>'+rows.join('')+'</tbody></table></div>'+(more?'<p class="note" style="margin:6px 0 0">'+more+' more not shown.</p>':'');
+}
+function schCounts(d){var o=[];if(d.removed.length)o.push(d.removed.length+' removed');if(d.changed.length)o.push(d.changed.length+' changed');if(d.cols.length)o.push(d.cols.length+' column list'+(d.cols.length===1?'':'s')+' changed');if(d.added.length)o.push(d.added.length+' new');return o.join(', ')}
+function schBasePanel(){
+  if(!canEdit)return '';var b=SCH.base;
+  var h='<div class="panel"><h2>Ledger format baseline</h2>';
+  if(b===undefined){schLoad().then(function(){render()});return h+'<p class="note">Loading</p></div>'}
+  h+='<p class="note" style="margin:0 0 10px">New, removed and changed fields are found by comparing a ledger with the ones already on the site.'+(b?' The baseline holds the format of '+b.ledgers+' ledger'+(b.ledgers===1?'':'s')+', updated '+esc(new Date(b.updated).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}))+'. Each ledger you save joins it.':' There is no baseline yet. Build one from the raw ledgers already stored.')+'</p>';
+  h+='<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><button class="btn" type="button" data-schbuild="1"'+(SCH.busy?' disabled':'')+'>'+(b?'Rebuild from stored ledgers':'Build from stored ledgers')+'</button>'+(b?'<button class="btn ghost" type="button" data-schreset="1"'+(SCH.busy?' disabled':'')+'>Clear baseline</button>':'')+(SCH.busy?'<span class="note" style="margin:0">'+esc(SCH.busy)+'</span>':SCH.msg?'<span class="note" style="margin:0">'+esc(SCH.msg)+'</span>':'')+'</div>';
+  if(b&&b.hist&&b.hist.length)h+='<h3 class="note" style="margin:14px 0 6px">Recent format changes</h3><div class="scroll"><table><thead><tr><th scope="col" style="text-align:left">When</th><th scope="col" style="text-align:left">File</th><th scope="col" style="text-align:left">What changed</th><th scope="col" style="text-align:left">First fields</th></tr></thead><tbody>'+b.hist.slice(0,10).map(function(x){var o=[];if(x.r)o.push(x.r+' removed');if(x.c)o.push(x.c+' changed');if(x.k)o.push(x.k+' column list');if(x.a)o.push(x.a+' new');return '<tr><td style="text-align:left">'+esc(new Date(x.t).toLocaleDateString(undefined,{month:'short',day:'numeric'}))+'</td><td style="text-align:left">'+esc(x.name||x.id)+'</td><td style="text-align:left">'+esc(o.join(', '))+'</td><td style="text-align:left;white-space:normal;word-break:break-all"><code>'+esc((x.ex||[]).join('  '))+'</code></td></tr>'}).join('')+'</tbody></table></div>';
+  return h+'</div>';
+}
+function jvDiffLoad(data){
+  if(!jv.use||!canEdit||/stored data/.test(jv.name||''))return;
+  schLoad().then(function(b){if(!b||jv.data!==data)return;jv.diff=schDiff(b,schemaOf(data));jv.diffN=b.ledgers;render()});
+}
+function jvTag(sp){
+  var d=jv.diff;if(!d)return '';
+  if(d.addTop[sp])return '<span class="jtag jnew" title="Not in earlier ledgers">New</span>';
+  var c=d.chg[sp];if(c)return '<span class="jtag jchg" title="'+esc('Was '+c.from.join('/')+', now '+c.to.join('/'))+'">Changed</span>';
+  return '';
+}
+document.addEventListener('click',function(e){
+  var t=e.target;if(!t||!t.closest)return;
+  if(t.closest('[data-schbuild]')){schBuild();return}
+  if(t.closest('[data-schreset]')){if(!confirm('Clear the ledger format baseline? New, removed and changed fields cannot be marked until it is built again.'))return;api('DELETE','/api/doc?c=schema&id=baseline').then(function(){SCH.base=null;SCH.msg='Baseline cleared.';jv.diff=null;render()},function(){SCH.msg='Could not clear it.';render()})}
+});
 var JV_STATS=['ccApplied','consumablesUsed','cpUncaptures','relicCarrySec','relicDrops','pvpDamage','pveDamage','damageTaken','pvpHeal','nonPvpHeal','healReceived','overheal','shieldAbsorbed','ccReceived','ccAppliedSec','ccReceivedSec'];
 function jvProbe(data){
   if(!data||typeof data!=='object'||!Array.isArray(data.players)||data.teamPoints==null||typeof structuredClone!=='function')return null;
@@ -1257,15 +1383,16 @@ function jvClean(v,np,wh,dep){
   for(var i=0;i<keys.length;i++){var c=keys[i];if(!jvClean(v[c],arr?np+'[]':np+'.'+c,false))return false}
   return true;
 }
-function jvNode(k,v,path,depth,np,wh){
-  var u=jv.use,pad='style="padding-left:'+depth*16+'px"',used=u&&(wh||!!u.acc[np]),star=used?'<span class="jstar" title="The site reads this field">*</span>':'';
+function jvNode(k,v,path,depth,np,wh,sp){
+  var u=jv.use,pad='style="padding-left:'+depth*16+'px"',used=u&&(wh||!!u.acc[np]),star=(used?'<span class="jstar" title="The site reads this field">*</span>':'')+jvTag(sp);
   if(!v||typeof v!=='object')return '<div class="jr" '+pad+'><span class="jk">'+esc(k)+'</span>'+star+': '+jvLeaf(v)+'</div>';
   var on=!!jv.open[path],arr=Array.isArray(v),h='<div class="jr" '+pad+'><button type="button" class="jt" data-jvt="'+esc(path)+'" aria-expanded="'+on+'" aria-label="'+(on?'Fold ':'Open ')+esc(k)+'">'+(on?'&#9662;':'&#9656;')+'</button><span class="jk">'+esc(k)+'</span>'+star+': '+(on?'<span class="jc">'+(arr?'Array('+v.length+')':'Object('+Object.keys(v).length+')')+'</span>':jvInline(v))+'</div>';
   if(!on)return h;
-  var cwh=!!u&&(wh||(!!u.acc[np]&&!u.kids[np])),keys=arr?v.map(function(_,i){return i}):Object.keys(v),lim=jv.more[path]||100;
+  var cwh=!!u&&(wh||(!!u.acc[np]&&!u.kids[np])),keys=arr?v.map(function(_,i){return i}):Object.keys(v),lim=jv.more[path]||100,dyn=schDyn(v),kp=function(c){return arr?sp+'[]':sp+(dyn?'.*':'.'+c)};
   if(u&&jv.f==='unused')keys=keys.filter(function(c){return !jvClean(v[c],arr?np+'[]':np+'.'+c,cwh)});
-  keys.slice(0,lim).forEach(function(c){h+=jvNode(arr?'['+c+']':c,v[c],path+JVS+c,depth+1,arr?np+'[]':np+'.'+c,cwh)});
-  if(!keys.length)h+='<div class="jr note" style="padding-left:'+(depth+1)*16+'px">'+(u&&jv.f==='unused'?'Everything in here is used.':'empty')+'</div>';
+  if(jv.diff&&jv.f==='changed')keys=keys.filter(function(c){var q=kp(c);return jv.diff.anc[q]||jv.diff.addAll[q]||jv.diff.chg[q]});
+  keys.slice(0,lim).forEach(function(c){h+=jvNode(arr?'['+c+']':c,v[c],path+JVS+c,depth+1,arr?np+'[]':np+'.'+c,cwh,kp(c))});
+  if(!keys.length)h+='<div class="jr note" style="padding-left:'+(depth+1)*16+'px">'+(u&&jv.f==='unused'?'Everything in here is used.':jv.f==='changed'?'Nothing new or changed in here.':'empty')+'</div>';
   if(keys.length>lim)h+='<div class="jr" style="padding-left:'+(depth+1)*16+'px"><button type="button" class="btn ghost" data-jvm="'+esc(path)+'">Show 200 more ('+(keys.length-lim)+' left)</button></div>';
   return h;
 }
@@ -1275,6 +1402,12 @@ function jvOpenUnused(){
   (function walk(v,path,np,wh,dep){if(!v||typeof v!=='object'||dep>4)return;if(jvClean(v,np,wh))return;jv.open[path]=1;
     var arr=Array.isArray(v),cwh=wh||(!!u.acc[np]&&!u.kids[np]),keys=arr?v.map(function(_,i){return i}).slice(0,3):Object.keys(v).slice(0,200);
     keys.forEach(function(c){walk(v[c],path+JVS+c,arr?np+'[]':np+'.'+c,cwh,dep+1)})})(jv.data,'','',false,0);
+}
+function jvOpenChanged(){
+  jv.open={'':1};var d=jv.diff;if(!d)return;
+  (function walk(v,path,sp,dep){if(!v||typeof v!=='object'||dep>6)return;
+    var arr=Array.isArray(v),dyn=schDyn(v),keys=arr?v.map(function(_,i){return i}).slice(0,3):Object.keys(v).slice(0,200);
+    keys.forEach(function(c){var q=arr?sp+'[]':sp+(dyn?'.*':'.'+c);if(d.anc[q]||d.addAll[q]||d.chg[q]){jv.open[path+JVS+c]=1;if(d.anc[q])walk(v[c],path+JVS+c,q,dep+1)}})})(jv.data,'','',0);
 }
 function jvGet(path){var v=jv.data;path.split(JVS).slice(1).forEach(function(k){v=v==null?v:v[k]});return v}
 function jvLabel(path){return path.split(JVS).slice(1).map(function(k,i){return /^\d+$/.test(k)?'['+k+']':(i?'.':'')+k}).join('')||'root'}
@@ -1287,26 +1420,26 @@ function jvFind(q){
       walk(c,path+JVS+k)}}})(jv.data,'');
   return out;
 }
-function jvTreeHtml(){return jv.data==null?'<p class="note" style="margin:8px">Nothing loaded yet.</p>':jvNode('root',jv.data,'',0,'',false)}
+function jvTreeHtml(){return jv.data==null?'<p class="note" style="margin:8px">Nothing loaded yet.</p>':jvNode('root',jv.data,'',0,'',false,'')}
 function jvResHtml(){
   if(!jv.q)return '';var f=jvFind(jv.q);
   return '<div class="jres"><p class="note" style="margin:0 0 6px">'+(f.length?f.length+(f.length>=200?'+':'')+' match'+(f.length===1?'':'es')+'. Click one to jump to it in the tree.':'No keys or values match.')+'</p>'+f.slice(0,60).map(function(x){return '<button type="button" class="jhit" data-jvg="'+esc(x.p)+'"><span class="jk">'+esc(jvLabel(x.p))+'</span> = '+jvLeaf(x.v)+'</button>'}).join('')+'</div>';
 }
 function jvDraw(){var t=document.getElementById('jvTree'),q=document.getElementById('jvRes');if(t)t.innerHTML=jvTreeHtml();if(q)q.innerHTML=jvResHtml()}
-function jvLoad(data,name,size){jv.data=data;jv.name=name;jv.size=size||0;jv.err='';jv.q='';jv.open={'':1};jv.more={};jv.busy='';jv.f='all';jv.use=jvProbe(data);render()}
+function jvLoad(data,name,size){jv.data=data;jv.name=name;jv.size=size||0;jv.err='';jv.q='';jv.open={'':1};jv.more={};jv.busy='';jv.f='all';jv.use=jvProbe(data);jv.diff=null;render();jvDiffLoad(data)}
 function jsonReader(){
   var ms=allMatches(),top=jv.data&&typeof jv.data==='object'?Object.keys(jv.data):[];
   return '<div class="panel"><h2>JSON reader</h2><p class="note" style="margin:0 0 10px">Open a match ledger from a file, or look inside a stored match. Click an arrow to open a branch. Long lists show the first 100 and load more on request.</p>'+
     '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><label class="btn ghost" style="cursor:pointer">Open a JSON file<input type="file" id="jvFile" accept=".json,application/json" style="display:none"></label>'+
     (ms.length?'<select id="jvMatch" aria-label="Stored match" style="background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:8px 10px;font:inherit"><option value="">Stored match…</option>'+ms.map(function(m){return '<option value="'+esc(m.id)+'">'+esc(mtitle(m.doc))+'</option>'}).join('')+'</select>'+(canEdit?'<button class="btn ghost" type="button" data-jvsrc="raw">Raw ledger</button>':'')+'<button class="btn ghost" type="button" data-jvsrc="doc">Stored data</button>':'')+
     (jv.busy?'<span class="note" style="margin:0">'+esc(jv.busy)+'</span>':'')+'</div>'+
-    (jv.err?'<p class="note" style="color:#d33;margin:10px 0 0">'+esc(jv.err)+'</p>':'')+'</div>'+
+    (jv.err?'<p class="note" style="color:#d33;margin:10px 0 0">'+esc(jv.err)+'</p>':'')+'</div>'+schBasePanel()+
     (jv.data!=null?'<div class="panel"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:0 0 10px"><strong>'+esc(jv.name||'JSON')+'</strong><span class="note" style="margin:0">'+(jv.size?(jv.size/1024<1024?num(jv.size/1024,0)+' KB':num(jv.size/1048576,1)+' MB')+' &middot; ':'')+(Array.isArray(jv.data)?'array of '+jv.data.length:top.length+' top-level key'+(top.length===1?'':'s'))+'</span><input type="search" id="jvQ" placeholder="Search keys and values" value="'+esc(jv.q)+'" style="flex:1;min-width:180px;max-width:320px;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:7px 9px;font:inherit"><button class="btn ghost" type="button" data-jvall="1">Open top level</button><button class="btn ghost" type="button" data-jvall="0">Fold all</button></div>'+
-    (jv.use?'<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:0 0 10px"><span class="gxchips" style="margin:0">'+[['all','All fields'],['unused','Not shown on the site']].map(function(x){return '<button type="button" data-jvf="'+x[0]+'" aria-pressed="'+(jv.f===x[0])+'">'+x[1]+'</button>'}).join('')+'</span>'+(jv.f==='unused'?'<button class="btn ghost" type="button" data-jvun="1">Open everything not shown</button>':'')+'<span class="note" style="margin:0"><span class="jstar">*</span> marks a field the site reads. A field with no star is in the ledger but unused, so it is a candidate for a new view.</span></div>':(jv.data&&typeof jv.data==='object'&&jv.name.indexOf('(stored data)')<0?'<p class="note" style="margin:0 0 10px">This file is not a match ledger, so fields are not marked.</p>':''))+
-    '<div id="jvRes">'+jvResHtml()+'</div><div id="jvTree" class="jtree">'+jvTreeHtml()+'</div></div>':'');
+    (jv.use?'<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:0 0 10px"><span class="gxchips" style="margin:0">'+[['all','All fields'],['unused','Not shown on the site']].concat(jv.diff?[['changed','New or changed']]:[]).map(function(x){return '<button type="button" data-jvf="'+x[0]+'" aria-pressed="'+(jv.f===x[0])+'">'+x[1]+'</button>'}).join('')+'</span>'+(jv.f==='unused'?'<button class="btn ghost" type="button" data-jvun="1">Open everything not shown</button>':'')+'<span class="note" style="margin:0"><span class="jstar">*</span> marks a field the site reads. A field with no star is in the ledger but unused, so it is a candidate for a new view.</span></div>':(jv.data&&typeof jv.data==='object'&&jv.name.indexOf('(stored data)')<0?'<p class="note" style="margin:0 0 10px">This file is not a match ledger, so fields are not marked.</p>':''))+
+    (jv.diff?'<div style="margin:0 0 12px"><p class="note" style="margin:0 0 6px"><strong>'+(jv.diff.n?'Compared with '+jv.diffN+' earlier ledger'+(jv.diffN===1?'':'s')+': '+esc(schCounts(jv.diff)):'Same format as the '+jv.diffN+' earlier ledger'+(jv.diffN===1?'':'s'))+'</strong>'+(jv.diff.n?'. Removed fields are not in this file, so they are listed here and cannot be marked in the tree.':'')+'</p>'+(jv.diff.n?schPanel(jv.diff):'')+'</div>':'')+'<div id="jvRes">'+jvResHtml()+'</div><div id="jvTree" class="jtree">'+jvTreeHtml()+'</div></div>':'');
 }
 document.addEventListener('click',function(e){
-  var fl=e.target.closest&&e.target.closest('[data-jvf]');if(fl){jv.f=fl.dataset.jvf;if(jv.f==='unused')jvOpenUnused();render();return}
+  var fl=e.target.closest&&e.target.closest('[data-jvf]');if(fl){jv.f=fl.dataset.jvf;if(jv.f==='unused')jvOpenUnused();else if(jv.f==='changed')jvOpenChanged();render();return}
   var un=e.target.closest&&e.target.closest('[data-jvun]');if(un){jvOpenUnused();jvDraw();return}
   var t=e.target.closest&&e.target.closest('[data-jvt]');if(t){var k=t.dataset.jvt;if(jv.open[k])delete jv.open[k];else jv.open[k]=1;jvDraw();return}
   var m=e.target.closest&&e.target.closest('[data-jvm]');if(m){jv.more[m.dataset.jvm]=(jv.more[m.dataset.jvm]||100)+200;jvDraw();return}
@@ -2324,6 +2457,8 @@ function viewUpload(){if(!canEdit)return '<div><h1>Upload</h1></div>'+empty('Adm
     h+='<div class="panel scroll"><table><thead><tr><th scope="col"><button type="button" disabled>File</button></th><th scope="col"><button type="button" disabled>Length</button></th><th scope="col"><button type="button" disabled>Players</button></th><th scope="col"><button type="button" disabled>Status</button></th><th scope="col"><button type="button" disabled></button></th></tr></thead><tbody>'+
     uploads.map(function(u,i){return '<tr><td><strong>'+esc(u.name)+'</strong></td><td>'+(u.doc?dur(u.doc.duration):'-')+'</td><td>'+(u.doc?u.doc.players.length:'-')+'</td><td class="'+(u.err?'err':u.saved?'ok':'')+'">'+esc(u.err||(u.saved?'Saved'+(u.rawSaved?' (raw ledger kept)':u.rawNote?'. '+u.rawNote:''):u.dup?'Already saved':'Ready'))+'</td><td>'+(u.doc&&!u.saved&&!u.dup&&db&&canWrite?'<button class="btn" type="button" data-save="'+i+'">Save</button> ':'')+(u.doc&&u.raw&&/^\s*\ufeff?\s*\{/.test(u.raw)?'<button class="btn ghost" type="button" data-expraw="'+i+'" title="The file as you uploaded it, with every field">Original JSON</button> ':'')+(u.doc?'<button class="btn ghost" type="button" data-expdoc="'+i+'" title="What this site stores, plus per skill numbers">Parsed JSON</button> ':'')+'<button class="btn" type="button" data-discard="'+i+'" style="background:transparent;color:var(--fg);border:1px solid var(--line)">Drop</button></td></tr>'}).join('')+'</tbody></table></div>';
   }
+  uploads.filter(function(u){return u.sch}).forEach(function(u){
+    h+='<div class="panel"><h2>Format of '+esc(u.name)+'</h2>'+(u.sch.none?'<p class="note" style="margin:0">There is no ledger format baseline yet, so new, removed and changed fields cannot be marked. Build one under Admin, JSON reader.</p>':u.sch.d.n?'<p class="note" style="margin:0 0 8px"><strong>Compared with '+u.sch.n+' earlier ledger'+(u.sch.n===1?'':'s')+': '+esc(schCounts(u.sch.d))+'.</strong> This is a warning only. The file can still be saved'+(u.sch.d.removed.some(function(x){return x.reads})||u.sch.d.changed.some(function(x){return x.reads})||u.sch.d.cols.some(function(x){return x.reads})?', but the importer reads some of the fields marked below, so check the match afterwards':'')+'. Open it in the JSON reader to see where each field sits.</p>'+schPanel(u.sch.d):'<p class="note" style="margin:0">Same format as the '+u.sch.n+' earlier ledger'+(u.sch.n===1?'':'s')+'. No new, removed or changed fields.</p>')+'</div>'});
   h+='<div class="panel"><h2>What the logs contain</h2><p class="note" style="margin:8px 0 0">Per player: damage (to players, mobs, boss), damage taken, kills, deaths, mob and boss kills, score, damage per 30 seconds, kill and capture events. Class is inferred from the vitals and regen effects. Old CSV combat logs name every hit AeonResolvedDamageEffect and record no player to player healing, so they cannot feed ability or healing pages. Match ledgers (JSON) name every ability and record healing, overheal, potions and food, so upload those instead.</p></div>';
   return h;
 }
@@ -3157,6 +3292,8 @@ function handleFiles(list){
       u.raw=txt;
       try{u.id=hashText(txt);u.doc=parseAnyLog(txt,f.name.replace(/^[0-9a-f]{8}-/,''));
         if(remote[u.id])u.dup=true;else local[u.id]=u.doc}catch(err){u.err=err.message}
+      if(u.doc&&canEdit&&/^\s*\ufeff?\s*\{/.test(txt)){var led=null;try{led=JSON.parse(txt.replace(/^\ufeff/,''))}catch(x){}
+        if(led)schLoad().then(function(b){u.sch=b?{d:schDiff(b,schemaOf(led)),n:b.ledgers}:{none:true};render()})}
       render()},function(){u.err='Could not read the file.';render()});
   });render();
 }
@@ -3179,7 +3316,7 @@ function saveRaw(u){
   if(!u.doc||!u.doc.ledger||!u.raw||u.rawSaved)return;
   if(u.raw.length>4000000){u.rawNote='Raw ledger is over 4 MB, not kept.';render();return}
   var led;try{led=JSON.parse(u.raw.replace(/^\ufeff/,''))}catch(x){return}
-  api('PUT','/api/doc?c=raw&id='+encodeURIComponent(u.id),{fileName:u.name,savedAt:Date.now(),ledger:led}).then(function(){u.rawSaved=true;render()},function(err){u.rawNote='Raw ledger not kept: '+(err&&err.code||'error');render()});
+  api('PUT','/api/doc?c=raw&id='+encodeURIComponent(u.id),{fileName:u.name,savedAt:Date.now(),ledger:led}).then(function(){u.rawSaved=true;render();schRecord(u)},function(err){u.rawNote='Raw ledger not kept: '+(err&&err.code||'error');render()});
 }
 /* rebuild a stored match from its kept raw ledger with the current importer */
 function rebuildMatch(id){
