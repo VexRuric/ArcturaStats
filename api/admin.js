@@ -9,7 +9,7 @@ module.exports = L.handler(async (req, res) => {
   if (req.method === 'GET') {
     /* a designer sees the bug tracker only, never the account list */
     if (!isA) return L.send(res, 200, { users: [], players: Object.keys(st0.players).length, bugs: st0.bugs || {} });
-    const users = Object.keys(st0.users).map(id => ({ id, name: st0.users[id].name, avatar: st0.users[id].avatar || null, seen: st0.users[id].seen || 0, admin: st0.admins.indexOf(id) >= 0, designer: (st0.designers || []).indexOf(id) >= 0, claim: st0.byUser[id] || null }))
+    const users = Object.keys(st0.users).map(id => ({ id, name: st0.users[id].name, avatar: st0.users[id].avatar || null, seen: st0.users[id].seen || 0, admin: st0.admins.indexOf(id) >= 0, designer: (st0.designers || []).indexOf(id) >= 0, claim: st0.byUser[id] || null, theme: (st0.users[id].theme || {}).t || null }))
       .sort((a, b) => (b.admin - a.admin) || (b.designer - a.designer) || a.name.localeCompare(b.name));
     return L.send(res, 200, { users, players: Object.keys(st0.players).length, bugs: st0.bugs || {} });
   }
@@ -51,6 +51,15 @@ module.exports = L.handler(async (req, res) => {
       if (!st.bugs[key] && Object.keys(st.bugs).length >= 3000) return { code: 409, error: 'too_many_bugs' };
       const bd = String(b.build || '').slice(0, 40), who = st.users && st.users[s0.id] && st.users[s0.id].name;
       st.bugs[key] = { s: status, by: s0.id || null, n: who ? String(who).slice(0, 40) : null, at: Date.now(), b: /^[A-Za-z0-9_.-]*$/.test(bd) ? bd : '' };
+      return { code: 200, ok: true };
+    }
+    /* Test accounts: an admin sets (or clears, with an empty theme) the appearance of any account. */
+    if (op === 'setTheme') {
+      const u = st.users[b.id]; if (!u) return { code: 404, error: 'no_such_user' };
+      const t = String(b.theme || '');
+      if (t === '') { delete u.theme; return { code: 200, ok: true }; }
+      if (L.THEMES.indexOf(t) < 0) return { code: 400, error: 'bad_theme' };
+      u.theme = { t, d: (u.theme && u.theme.d) || 'comfortable' };
       return { code: 200, ok: true };
     }
     if (op === 'release') {

@@ -19,6 +19,24 @@
   --bg:#f3f1ee; --panel:#ffffff; --panel2:#ece9e4; --line:#d6d1c9; --fg:#1c2027; --muted:#6a7280;
   --accent:#a86a00; --accent-ink:#ffffff; --good:#23885a; --bad:#bf3b40;
   --c-assassin:#8a3fd0; --c-hunter:#2e8a3a; --c-mystic:#1b78c4; --c-priest:#9a7b00; --c-warrior:#c24a26; --c-none:#6a7280; color-scheme:light}
+/* Account themes. Every theme sets all the colours, so none depends on the device being light or dark. */
+:root[data-theme="contrast"]{--bg:#000000; --panel:#0a0a0a; --panel2:#151515; --line:#8c8c8c; --fg:#ffffff; --muted:#cfcfcf; --accent:#ffd23f; --accent-ink:#000000; --good:#4dff9a; --bad:#ff7070;
+  --c-assassin:#dcb0ff; --c-hunter:#80ff8c; --c-mystic:#80c8ff; --c-priest:#fff27d; --c-warrior:#ffa080; --c-none:#cfcfcf; color-scheme:dark}
+:root[data-theme="midnight"]{--bg:#0a0f1e; --panel:#101733; --panel2:#17204a; --line:#27325f; --fg:#e6ebff; --muted:#8e9acb; --accent:#6aa5ff; --accent-ink:#06142e; --good:#5fbf8f; --bad:#e0676b;
+  --c-assassin:#b680f2; --c-hunter:#6cc775; --c-mystic:#55aaf0; --c-priest:#efd36c; --c-warrior:#e8805f; --c-none:#8d97a8; color-scheme:dark}
+:root[data-theme="ember"]{--bg:#140d0b; --panel:#1d1411; --panel2:#271a15; --line:#3d2a22; --fg:#f3e8e2; --muted:#a8958b; --accent:#ff7a3d; --accent-ink:#200a02; --good:#5fbf8f; --bad:#e0676b;
+  --c-assassin:#b680f2; --c-hunter:#6cc775; --c-mystic:#55aaf0; --c-priest:#efd36c; --c-warrior:#e8805f; --c-none:#8d97a8; color-scheme:dark}
+:root[data-density="compact"] th,:root[data-density="compact"] td{padding-top:4px;padding-bottom:4px}
+:root[data-density="compact"] body{font-size:14px}
+header .hright{position:relative}
+.thmenu{position:absolute;right:0;top:100%;z-index:60;width:272px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;box-shadow:0 10px 30px rgba(0,0,0,.45);text-align:left}
+.thmenu h3{margin:0 0 8px;font:600 13px var(--font-d);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.thopt{display:flex;align-items:center;gap:10px;width:100%;background:transparent;border:1px solid transparent;border-radius:8px;padding:6px 8px;color:var(--fg);cursor:pointer;text-align:left;font:inherit}
+.thopt:hover{background:var(--panel2)}.thopt[aria-checked="true"]{border-color:var(--accent);background:var(--panel2)}
+.thsw{display:inline-flex;flex:none;border:1px solid var(--line);border-radius:6px;overflow:hidden}.thsw i{display:block;width:12px;height:22px}
+.thopt small{display:block;color:var(--muted);font-size:12px;line-height:1.2}
+.thden{display:flex;gap:6px;margin-top:6px}.thden .thopt{justify-content:center;border-color:var(--line)}
+.thmenu p{margin:10px 0 0;font-size:12px;color:var(--muted)}
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--fg);font:15px/1.45 var(--font-b);padding-block:0 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 .wrap{max-width:1100px;margin:0 auto}
@@ -1606,13 +1624,39 @@ document.addEventListener('click',function(e){
     var url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=String(m.doc.name||'match').replace(/[^\w-]+/g,'_')+'_stats.png';document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(url)},2000);cardMsg('Saved.');
   }).catch(function(x){cardMsg(x.message)});
 });
-/* ---- theme: sun/moon button, saved choice, else follows the system ---- */
-function themeNow(){var t=document.documentElement.getAttribute('data-theme');if(t==='light'||t==='dark')return t;return window.matchMedia&&matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'}
+/* ---- appearance: the theme and density belong to the account when logged in, and are also kept on this device ---- */
+var THEME_LIST=[['system','System','Follows your device',['#0e1116','#f3f1ee','#e0a63a']],['dark','Dark','The default Arctura look',['#0e1116','#151a22','#e0a63a']],['light','Light','Paper background',['#f3f1ee','#ffffff','#a86a00']],['contrast','High contrast','Black and white, strong borders',['#000000','#8c8c8c','#ffd23f']],['midnight','Midnight','Deep blue',['#0a0f1e','#101733','#6aa5ff']],['ember','Ember','Warm dark',['#140d0b','#271a15','#ff7a3d']]];
+var TH={t:'system',d:'comfortable'},thOpen=false,thMsg='';
+function themeKnown(t){return THEME_LIST.some(function(x){return x[0]===t})}
+function themeNow(){var t=TH.t;if(t==='light'||t==='dark')return t;if(t==='system')return window.matchMedia&&matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';return 'dark'}
+function themeApply(){var h=document.documentElement;if(TH.t==='system')h.removeAttribute('data-theme');else h.setAttribute('data-theme',TH.t);if(TH.d==='compact')h.setAttribute('data-density','compact');else h.removeAttribute('data-density')}
 function themeIcon(){var b=document.getElementById('themeBtn');if(!b)return;var l=themeNow()==='light';
-  b.setAttribute('aria-label',l?'Switch to dark mode':'Switch to light mode');b.title=b.getAttribute('aria-label');
+  b.setAttribute('aria-label','Appearance');b.setAttribute('aria-haspopup','true');b.setAttribute('aria-expanded',thOpen?'true':'false');b.title='Appearance: '+(THEME_LIST.filter(function(x){return x[0]===TH.t})[0]||THEME_LIST[0])[1];
   b.innerHTML=l?'<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>':'<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></svg>'}
-(function(){var s=null;try{s=localStorage.getItem('arcturaTheme')}catch(x){}if(s==='light'||s==='dark')document.documentElement.setAttribute('data-theme',s);themeIcon();
-  document.addEventListener('click',function(e){if(!(e.target.closest&&e.target.closest('#themeBtn')))return;var n=themeNow()==='light'?'dark':'light';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('arcturaTheme',n)}catch(x){}themeIcon();if(typeof render==='function')try{render()}catch(x){}})})();
+function themeMenu(){
+  var old=document.getElementById('thmenu');if(old)old.remove();themeIcon();if(!thOpen)return;
+  var el=document.createElement('div');el.id='thmenu';el.className='thmenu';el.setAttribute('role','dialog');el.setAttribute('aria-label','Appearance');
+  el.innerHTML='<h3>Theme</h3><div role="radiogroup" aria-label="Theme">'+THEME_LIST.map(function(x){return '<button type="button" class="thopt" role="radio" aria-checked="'+(TH.t===x[0])+'" data-th="'+x[0]+'"><span class="thsw" aria-hidden="true">'+x[3].map(function(c){return '<i style="background:'+c+'"></i>'}).join('')+'</span><span>'+x[1]+'<small>'+x[2]+'</small></span></button>'}).join('')+'</div>'+
+    '<h3 style="margin-top:12px">Table density</h3><div class="thden" role="radiogroup" aria-label="Table density">'+[['comfortable','Comfortable'],['compact','Compact']].map(function(x){return '<button type="button" class="thopt" role="radio" aria-checked="'+(TH.d===x[0])+'" data-thd="'+x[0]+'">'+x[1]+'</button>'}).join('')+'</div>'+
+    '<p role="status">'+esc(thMsg||(me?'Saved to your account, so it follows you to any device.':'Saved on this device. Log in with Discord to keep it on your account.'))+'</p>';
+  var host=document.querySelector('header .hright');if(host)host.appendChild(el)}
+function themeLocal(){try{localStorage.setItem('arcturaTheme',TH.t);localStorage.setItem('arcturaDensity',TH.d)}catch(x){}}
+function themeSet(t,d){
+  var ch=(t&&t!==TH.t)||(d&&d!==TH.d);if(t&&themeKnown(t))TH.t=t;if(d==='compact'||d==='comfortable')TH.d=d;
+  themeApply();themeLocal();thMsg='';
+  if(me){thMsg='Saving to your account';api('POST','/api/theme',{theme:TH.t,density:TH.d}).then(function(){thMsg='Saved to your account, so it follows you to any device.';themeMenu()},function(){thMsg='Could not save to your account. It is kept on this device.';themeMenu()})}
+  themeMenu();if(ch&&typeof render==='function')try{render()}catch(x){}}
+/* the account's saved choice wins over what this device remembered */
+function themeFromAccount(a){
+  if(!a||!themeKnown(a.t))return;var d=a.d==='compact'?'compact':'comfortable';if(a.t===TH.t&&d===TH.d)return;
+  TH.t=a.t;TH.d=d;themeApply();themeLocal();themeMenu();if(typeof render==='function')try{render()}catch(x){}}
+(function(){var s=null,d=null;try{s=localStorage.getItem('arcturaTheme');d=localStorage.getItem('arcturaDensity')}catch(x){}if(s&&themeKnown(s))TH.t=s;if(d==='compact')TH.d='compact';themeApply();themeIcon();
+  document.addEventListener('click',function(e){var t=e.target;if(!t||!t.closest)return;
+    if(t.closest('#themeBtn')){thOpen=!thOpen;themeMenu();return}
+    var o=t.closest('[data-th]');if(o){themeSet(o.dataset.th,null);return}
+    o=t.closest('[data-thd]');if(o){themeSet(null,o.dataset.thd);return}
+    if(thOpen&&!t.closest('#thmenu')){thOpen=false;themeMenu()}});
+  document.addEventListener('keydown',function(e){if(e.key==='Escape'&&thOpen){thOpen=false;themeMenu();var b=document.getElementById('themeBtn');if(b)b.focus()}})})();
 /* ---- Skills tab: what the stored match data supports (per player skill stats: casts, hits, crits, kills, damage pipeline) ---- */
 var skFilter={cls:[],match:'all',grp:'class',x:{},o:{},util:false};
 var SKM={np:['Players',0],casts:['Casts',0],hits:['Hits',0],hpc:['Hits per cast',2],crit:['Crit %',1],kills:['Kills',0],dp:['PvP damage',0],de:['PvE damage',0],total:['Total damage',0],dpc:['Damage per cast',0],mitp:['Mitigated %',1]};
@@ -3179,7 +3223,7 @@ function fetchDoc(kind,it){
 }
 function refresh(force){
   return api('GET','/api/index').then(function(ix){
-    me=ix.me&&ix.me.role?ix.me:null;claims=ix.claims||{};pubIds={};(ix.pub||[]).forEach(function(k){pubIds[k]=true});discordOn=!!ix.discord;
+    me=ix.me&&ix.me.role?ix.me:null;if(me&&me.theme)themeFromAccount(me.theme);claims=ix.claims||{};pubIds={};(ix.pub||[]).forEach(function(k){pubIds[k]=true});discordOn=!!ix.discord;
     var was=canEdit+'|'+canDesign;canEdit=!!(me&&me.role==='admin');canDesign=!!(me&&(me.role==='admin'||me.role==='designer'));canWrite=canEdit;if(canEdit+'|'+canDesign!==was)adminData=null;
     var sig=JSON.stringify([ix.matches.map(function(x){return x.id+x.v}),ix.snapshots.map(function(x){return x.id+x.v}),claims,me,ix.pub]);
     if(!force&&sig===lastSig&&loaded)return;
@@ -3249,8 +3293,8 @@ function accountsPanel(){
   var d=adminData;
   h+='<p class="note" style="margin-top:0">People who logged in with Discord. Users see player and match data and can claim one player. Designers also see breakdowns, graphs and skills and the checks and bugs on this page, but cannot manage accounts or delete matches. Admins can do everything.</p>';
   if(!d.users.length)h+='<p class="note">Nobody has logged in with Discord yet.</p>';
-  else h+='<div class="scroll"><table><thead><tr><th scope="col">Discord</th><th scope="col">Claimed player</th><th scope="col">Role</th><th scope="col"></th></tr></thead><tbody>'+d.users.map(function(u){
-    return '<tr><td>'+avatarImg(u)+esc(u.name)+'</td><td>'+(u.claim?'<a class="plink" href="#player-'+slug(u.claim)+'">'+esc(u.claim)+'</a>':'-')+'</td><td>'+(u.admin?'<span class="tag ok">Admin</span>':u.designer?'<span class="tag ok">Designer</span>':'<span class="tag">User</span>')+'</td><td style="text-align:right;white-space:nowrap">'+
+  else h+='<div class="scroll"><table><thead><tr><th scope="col">Discord</th><th scope="col">Claimed player</th><th scope="col">Role</th><th scope="col">Theme</th><th scope="col"></th></tr></thead><tbody>'+d.users.map(function(u){
+    return '<tr><td>'+avatarImg(u)+esc(u.name)+'</td><td>'+(u.claim?'<a class="plink" href="#player-'+slug(u.claim)+'">'+esc(u.claim)+'</a>':'-')+'</td><td>'+(u.admin?'<span class="tag ok">Admin</span>':u.designer?'<span class="tag ok">Designer</span>':'<span class="tag">User</span>')+'</td><td><select data-athm="'+esc(u.id)+'" aria-label="Theme for '+esc(u.name)+'"><option value="">Not set</option>'+THEME_LIST.map(function(x){return '<option value="'+x[0]+'"'+(u.theme===x[0]?' selected':'')+'>'+x[1]+'</option>'}).join('')+'</select></td><td style="text-align:right;white-space:nowrap">'+
       (u.admin?'<button class="btn ghost" type="button" data-aop="removeAdmin:'+esc(u.id)+'">Remove admin</button>':(u.designer?'<button class="btn ghost" type="button" data-aop="removeDesigner:'+esc(u.id)+'">Remove designer</button>':'<button class="btn ghost" type="button" data-aop="makeDesigner:'+esc(u.id)+'">Make designer</button>')+' <button class="btn" type="button" data-aop="makeAdmin:'+esc(u.id)+'">Make admin</button>')+(u.claim?' <button class="btn ghost" type="button" data-aop="release:'+esc(u.claim)+'">Release claim</button>':'')+'</td></tr>'}).join('')+'</tbody></table></div>';
   return h+'</div>';
 }
@@ -3275,6 +3319,7 @@ document.addEventListener('click',function(e){
   }
 });
 document.addEventListener('keydown',function(e){if(e.key==='Escape'&&loginOpen){loginOpen=false;renderAuth()}});
+document.addEventListener('change',function(e){var t=e.target;if(!t||!t.dataset||t.dataset.athm===undefined)return;api('POST','/api/admin',{op:'setTheme',id:t.dataset.athm,theme:t.value}).then(function(){adminData=null;return refresh(true)}).then(function(){if(canDesign)loadAdmin()},function(err){authMsg=ERR[err.code]||'Could not set the theme.';render()})});
 render();renderAuth();
 (function(){var q=new URLSearchParams(location.search);if(q.get('authError')){authMsg=AUTHERR[q.get('authError')]||'Login failed.';loginOpen=true;history.replaceState(null,'',location.pathname+location.hash)}})();
 refresh(true).then(function(){renderAuth()});

@@ -138,7 +138,7 @@ function isDesigner(s, st) {
 function who(s, st) {
   if (!s) return { role: null };
   const u = st.users[s.id]; if (!u) return { role: null };
-  return { role: st.admins.indexOf(s.id) >= 0 ? 'admin' : (st.designers || []).indexOf(s.id) >= 0 ? 'designer' : 'user', via: 'discord', id: s.id, name: u.name, avatar: u.avatar || null, claim: st.byUser[s.id] || null };
+  return { role: st.admins.indexOf(s.id) >= 0 ? 'admin' : (st.designers || []).indexOf(s.id) >= 0 ? 'designer' : 'user', via: 'discord', id: s.id, name: u.name, avatar: u.avatar || null, claim: st.byUser[s.id] || null, theme: u.theme || null };
 }
 
 /* ---------- http helpers ---------- */
@@ -174,4 +174,7 @@ const safeEq = (a, b) => { const h = x => crypto.createHash('sha256').update(Str
 const isBot = n => /^SpawnedPlayer_\d+$/i.test(n) || /^(BP_|Roshan)/i.test(n) || /_C_\d+$/.test(n);
 const ID_OK = /^[A-Za-z0-9_-]{1,80}$/;
 
-module.exports = { isDesigner, COOKIE, OCOOKIE, DISCORD, putJSON, delPath, listDocs, getJSON, readState, mutate, sign, unsign, cookies, setCookie, session, isAdmin, who, send, redirect, body, site, handler, safeEq, isBot, ID_OK };
+/* Account appearance: the only values an account may store. */
+const THEMES = ['system', 'dark', 'light', 'contrast', 'midnight', 'ember'], DENSITIES = ['comfortable', 'compact'];
+
+module.exports = { THEMES, DENSITIES, isDesigner, COOKIE, OCOOKIE, DISCORD, putJSON, delPath, listDocs, getJSON, readState, mutate, sign, unsign, cookies, setCookie, session, isAdmin, who, send, redirect, body, site, handler, safeEq, isBot, ID_OK };
