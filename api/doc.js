@@ -9,7 +9,9 @@ const route = L.handler(async (req, res) => {
   /* raw: the uploaded Match Ledger exactly as parsed, kept so any later feature can be rebuilt from it. Admin only, never cached, never cross-origin.
      schema: what the fields of earlier ledgers looked like, used to mark new, removed and changed fields. Same rules as raw. */
   if ((c === 'raw' || c === 'schema') && req.method === 'GET') {
-    const stR = await L.readState(); if (!L.isAdmin(L.session(req), stR)) return L.send(res, 403, { error: 'admin_only' });
+    /* schema/changes is the list of format changes found in saved ledgers; designers may read it, nothing else here */
+    const stR = await L.readState(); const sR = L.session(req);
+    if (!(c === 'schema' && id === 'changes' ? L.isDesigner(sR, stR) : L.isAdmin(sR, stR))) return L.send(res, 403, { error: 'admin_only' });
     const dr = await L.getJSON(p); if (!dr) return L.send(res, 404, { error: 'not_found' });
     res.statusCode = 200; res.setHeader('Content-Type', 'application/json'); res.setHeader('Cache-Control', 'private, no-store');
     return res.end(JSON.stringify(dr));

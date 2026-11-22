@@ -1186,6 +1186,19 @@ function viewAdmin(){
   addIssue('short','Low','Match shorter than 5 minutes',short,'Probably a crash, a restart or a test.');
   addIssue('practice','Low','Practice match (no other human player)',practice,'Left out of rated numbers when Rated matches only is on.');
   addIssue('bigDoc','High','Stored match near the 3.5 MiB size limit',bigDoc,'The site rejects a match document over 3.5 MiB, so a bigger log would fail to save.');
+  /* ledger format findings, from the stored changes. Each saved ledger that changed the format is one problem per kind, on that match. */
+  (function(){
+    if(FMT.doc===undefined){fmtLoad().then(function(){render()});return}
+    var fm=FMT.doc;if(!fm||!fm.list.length)return;var have={};ms.forEach(function(m){have[m.id]=m});
+    var K={removed:[],changed:[],shifted:[],cols:[],added:[]};
+    fm.list.forEach(function(e){if(!have[e.id])return;e.items.forEach(function(x){if(K[x.k])K[x.k].push({m:e.id,mn:mtitle(have[e.id].doc),t:(x.r?'[site reads this] ':'')+x.p+': '+x.n})})});
+    var DN=' Designer note: ';
+    addIssue('fmtRemoved','High','Ledger format: a field earlier ledgers had is gone',K.removed,'Earlier ledgers all carried this field and this one does not. Anything on the site that reads it is now blank or wrong. The game needs to write it again, or the importer needs to stop expecting it.');
+    addIssue('fmtChanged','High','Ledger format: a field changed type',K.changed,'The field kept its name but now holds a different kind of value, for example a number that became text or a list.'+DN+'a type change usually means the field was reworked, so check with the devs whether it also means something different now before trusting any number built from it.');
+    addIssue('fmtCols','Medium','Ledger format: a column list changed',K.cols,'A list of column names gained or lost columns or changed order. Values are read by position, so a reorder shifts every value into the wrong stat.');
+    addIssue('fmtShifted','Medium','Ledger format: a field is on a new scale',K.shifted,'The type is the same, but the numbers are 5 times bigger or smaller than in any earlier ledger.'+DN+'the field may now measure something different, such as damage per hit becoming damage in total, or milliseconds becoming seconds. Ask the devs, then compare builds before and after on this field. A real balance change can also move a number this far.');
+    addIssue('fmtAdded','Low','Ledger format: a new field appeared',K.added,'A field earlier ledgers did not have. Nothing on the site reads it yet, so it is only a chance to show new data.');
+  })();
   var nh=Object.keys(T.humans).length;
   var ov='<div class="kpis"><div class="kpi"><b>'+T.matches+'</b><small>Matches</small></div><div class="kpi"><b>'+num(T.mins/60,1)+'</b><small>Hours logged</small></div><div class="kpi"><b>'+nh+'</b><small>Human players</small></div><div class="kpi"><b>'+Object.keys(T.bots).length+'</b><small>Bot names seen</small></div><div class="kpi"><b>'+num(T.dmg)+'</b><small>Player damage</small></div><div class="kpi"><b>'+num(T.kills)+' / '+num(T.deaths)+'</b><small>Kills / deaths</small></div></div>';
   var SEV={High:0,Medium:1,Low:2},STL={open:'Open',devs:'With devs',fixed:'Fixed',ignored:'Ignored'},cnt={open:0,devs:0,fixed:0,ignored:0};
@@ -1247,9 +1260,10 @@ function schDyn(v){if(!v||typeof v!=='object'||Array.isArray(v))return false;var
 function schUp(p){return p.replace(/(\.[^.\[\]]*|\[\])$/,'')}
 function schNorm(p){return p.replace(/\.-?\d+(?=\.|\[|$)/g,'.*')}
 function schemaOf(data){
-  var out={},cols={},emp={};
+  var out={},cols={},emp={},nm={};
   (function walk(v,np){
     var t=schType(v),o=out[np]||(out[np]={});o[t]=1;
+    if(t==='number'&&isFinite(v)){var q=nm[np]||(nm[np]=[0,0]);q[0]+=Math.abs(v);q[1]++}
     if(t==='array'){
       if(!v.length)emp[np]=1;
       if(/\.cols$/.test(np)&&v.length<=60&&v.every(function(x){return typeof x==='string'}))cols[np]=v.slice();
@@ -1260,7 +1274,7 @@ function schemaOf(data){
       keys.forEach(function(k){walk(v[k],np+(dyn?'.*':'.'+k))});
     }
   })(data,'');
-  return {p:out,cols:cols,emp:emp};
+  return {p:out,cols:cols,emp:emp,nm:nm};
 }
 function schNew(){return {v:1,ledgers:0,ids:[],paths:{},cols:{},read:{},hist:[],updated:0}}
 function schReads(base,p){return Object.keys(base.read||{}).some(function(k){return k===p||k.indexOf(p+'.')===0||k.indexOf(p+'[')===0})}
@@ -1284,20 +1298,29 @@ function schDiff(base,sc){
   var tops=function(m){return Object.keys(m).filter(function(p){return !m[schUp(p)]}).map(function(p){
     var kids=Object.keys(m).filter(function(q){return q!==p&&q.indexOf(p)===0&&/^[.\[]/.test(q.slice(p.length))}).length;
     return {p:p,t:m[p],kids:kids,reads:schReads(base,p)}})};
-  var d={added:tops(added),removed:tops(removed),changed:changed,cols:cl,addAll:added,chg:{},addTop:{},anc:{}};
-  d.added.forEach(function(x){d.addTop[x.p]=x});changed.forEach(function(x){d.chg[x.p]=x});
-  [Object.keys(added),changed.map(function(x){return x.p})].forEach(function(l){l.forEach(function(p){for(var q=schUp(p);q;q=schUp(q))d.anc[q]=1})});
-  d.n=d.added.length+d.removed.length+d.changed.length+d.cols.length;
+  /* Same type, different meaning cannot be seen from the type. What can be seen is the size of the numbers: a field whose average is
+     5 times above or below everything earlier ledgers showed has probably changed what it measures (per hit becoming a total, a value
+     now in seconds instead of milliseconds). Needs 5 earlier ledgers that had numbers there. */
+  var shift=[],chP={};changed.forEach(function(x){chP[x.p]=1});
+  Object.keys(sc.nm||{}).forEach(function(p){
+    var b=base.paths[p],v=b&&b.v;if(!v||v.n<5||chP[p])return;var a=sc.nm[p],m=a[0]/a[1];
+    if((v.hi>0&&m>=1&&m>v.hi*5)||(v.lo>=1&&m<v.lo/5))shift.push({p:p,m:m,lo:v.lo,hi:v.hi,shift:true,reads:schReads(base,p)})});
+  var d={added:tops(added),removed:tops(removed),changed:changed,cols:cl,shift:shift,addAll:added,chg:{},addTop:{},anc:{}};
+  d.added.forEach(function(x){d.addTop[x.p]=x});changed.forEach(function(x){d.chg[x.p]=x});shift.forEach(function(x){d.chg[x.p]=x});
+  [Object.keys(added),changed.map(function(x){return x.p}),shift.map(function(x){return x.p})].forEach(function(l){l.forEach(function(p){for(var q=schUp(p);q;q=schUp(q))d.anc[q]=1})});
+  d.n=d.added.length+d.removed.length+d.changed.length+d.cols.length+shift.length;
   return d;
 }
-function schAdd(base,data,id,name,quiet){
+function schAdd(base,data,id,name,quiet,rec){
   if(id&&base.ids.indexOf(id)>=0)return false;
-  var sc=schemaOf(data),diff=base.ledgers&&!quiet?schDiff(base,sc):null,pr=jvProbe(data);
+  var sc=schemaOf(data),diff=base.ledgers&&(!quiet||(rec&&base.ledgers>=10))?schDiff(base,sc):null,pr=jvProbe(data);
   Object.keys(sc.p).forEach(function(p){var e=base.paths[p]||(base.paths[p]={t:{},n:0});e.n++;Object.keys(sc.p[p]).forEach(function(t){e.t[t]=(e.t[t]||0)+1})});
+  Object.keys(sc.nm).forEach(function(p){var a=sc.nm[p],m=+(a[0]/a[1]).toPrecision(4),e=base.paths[p];if(!e)return;var v=e.v||(e.v={lo:m,hi:m,n:0});if(m<v.lo)v.lo=m;if(m>v.hi)v.hi=m;v.n++});
   Object.keys(sc.cols).forEach(function(p){base.cols[p]=sc.cols[p]});
   if(pr)Object.keys(pr.acc).forEach(function(p){base.read[schNorm(p)]=1});
   base.ledgers++;if(id){base.ids.push(id);if(base.ids.length>300)base.ids.shift()}
-  if(diff&&diff.n){base.hist.unshift({id:id||'',name:name||'',t:Date.now(),a:diff.added.length,r:diff.removed.length,c:diff.changed.length,k:diff.cols.length,ex:diff.added.concat(diff.removed).concat(diff.changed).slice(0,4).map(function(x){return x.p})});if(base.hist.length>40)base.hist.length=40}
+  if(diff&&diff.n){base.hist.unshift({id:id||'',name:name||'',t:Date.now(),a:diff.added.length,r:diff.removed.length,c:diff.changed.length,k:diff.cols.length,sh:diff.shift.length,ex:diff.added.concat(diff.removed).concat(diff.changed).concat(diff.shift).slice(0,4).map(function(x){return x.p})});if(base.hist.length>40)base.hist.length=40}
+  if(rec&&diff&&diff.n&&id)fmtPut(rec,id,name,diff);
   return true;
 }
 function schLoad(force){
@@ -1310,22 +1333,47 @@ function schLoad(force){
 function schSave(base){base.updated=Date.now();return api('PUT','/api/doc?c=schema&id=baseline',base).then(function(){SCH.base=base})}
 /* the baseline is built from every raw ledger on the site, oldest first */
 function schBuild(){
-  var ms=allMatches().slice().sort(function(a,b){return playedAt(a.doc)-playedAt(b.doc)}).map(function(m){return m.id}),base=schNew(),i=0,got=0;
+  var ms=allMatches().slice().sort(function(a,b){return playedAt(a.doc)-playedAt(b.doc)}).map(function(m){return m.id}),base=schNew(),rec=fmtNew(),i=0,got=0;
   SCH.msg='';SCH.busy='Reading raw ledgers 0 of '+ms.length;render();
   (function next(){
     if(i>=ms.length){
       if(!got){SCH.busy='';SCH.msg='No raw ledgers are stored yet, so there is nothing to build from.';render();return}
-      schSave(base).then(function(){SCH.busy='';SCH.msg='Baseline built from '+got+' ledger'+(got===1?'':'s')+'.';render()},function(err){SCH.busy='';SCH.msg='Could not save the baseline: '+(err&&err.code||'error');render()});return}
+      schSave(base).then(function(){return fmtSave(rec)}).then(function(){SCH.busy='';SCH.msg='Baseline built from '+got+' ledger'+(got===1?'':'s')+'.';render()},function(err){SCH.busy='';SCH.msg='Could not save the baseline: '+(err&&err.code||'error');render()});return}
     var id=ms[i++];SCH.busy='Reading raw ledgers '+i+' of '+ms.length;
-    api('GET','/api/doc?c=raw&id='+encodeURIComponent(id)).then(function(r){if(r&&r.ledger&&typeof r.ledger==='object'){schAdd(base,r.ledger,id,r.fileName,true);got++}next()},function(){next()});
+    api('GET','/api/doc?c=raw&id='+encodeURIComponent(id)).then(function(r){if(r&&r.ledger&&typeof r.ledger==='object'){schAdd(base,r.ledger,id,r.fileName,true,rec);got++}next()},function(){next()});
   })();
 }
 /* after an upload is saved its format joins the baseline, so the next upload is compared with it too */
 function schRecord(u){
   schLoad().then(function(base){
     if(!base||!u.raw)return;var led;try{led=JSON.parse(u.raw.replace(/^\ufeff/,''))}catch(x){return}
-    if(!schAdd(base,led,u.id,u.name))return;
-    schSave(base).then(function(){u.schSaved=true;render()},function(){})});
+    fmtLoad(true).then(function(rec){
+      if(!schAdd(base,led,u.id,u.name,false,rec))return;
+      schSave(base).then(function(){return fmtSave(rec)}).then(function(){u.schSaved=true;render()},function(){})})});
+}
+/* ---- format findings for designers ----
+   The baseline is admin only. What a saved ledger changed is kept in a second, smaller document that designers can read, so the
+   Bugs and the Scorecard can show it. One entry per match: {id,name,t,items:[{k,p,n,r}]}. k is removed, changed, shifted, cols or added; r is true when the site reads the field. */
+var FMT={doc:undefined,p:null};
+function fmtNew(){return {v:1,list:[],updated:0}}
+function fmtLoad(force){
+  if(!canDesign)return Promise.resolve(null);
+  if(!force&&FMT.doc!==undefined)return Promise.resolve(FMT.doc);
+  if(FMT.p&&!force)return FMT.p;
+  FMT.p=api('GET','/api/doc?c=schema&id=changes').then(function(d){FMT.doc=d&&Array.isArray(d.list)?d:fmtNew();FMT.p=null;return FMT.doc},function(){FMT.doc=fmtNew();FMT.p=null;return FMT.doc});
+  return FMT.p;
+}
+function fmtSave(rec){rec.updated=Date.now();return api('PUT','/api/doc?c=schema&id=changes',rec).then(function(){FMT.doc=rec})}
+function fmtPut(rec,id,name,d){
+  var it=[],ty=function(a){return a.join('/')};
+  d.removed.slice(0,15).forEach(function(x){it.push({k:'removed',p:x.p,n:'Was '+ty(x.t)+(x.kids?' with '+x.kids+' field'+(x.kids===1?'':'s')+' inside':'')+' in earlier ledgers, now missing',r:x.reads})});
+  d.changed.slice(0,15).forEach(function(x){it.push({k:'changed',p:x.p,n:'Type changed from '+ty(x.from)+' to '+ty(x.to.filter(function(t){return x.from.indexOf(t)<0}))+(x.to.some(function(t){return x.from.indexOf(t)>=0})?' in some places':''),r:x.reads})});
+  d.shift.slice(0,15).forEach(function(x){it.push({k:'shifted',p:x.p,n:'Same type, but the average value is now '+num(x.m,2)+' where earlier ledgers ranged '+num(x.lo,2)+' to '+num(x.hi,2),r:x.reads})});
+  d.cols.slice(0,10).forEach(function(x){it.push({k:'cols',p:x.p,n:x.moved?'Same columns in a different order, so every position shifted':(x.added.length?'Added: '+x.added.join(', ')+'. ':'')+(x.removed.length?'Removed: '+x.removed.join(', ')+'.':''),r:x.reads})});
+  d.added.slice(0,10).forEach(function(x){it.push({k:'added',p:x.p,n:'New '+ty(x.t)+(x.kids?' with '+x.kids+' field'+(x.kids===1?'':'s')+' inside':''),r:false})});
+  rec.list=rec.list.filter(function(e){return e.id!==id});
+  rec.list.unshift({id:id,name:name||'',t:Date.now(),items:it});
+  if(rec.list.length>150)rec.list.length=150;
 }
 function schLabel(p){return p||'(root)'}
 function schRow(tag,cls,p,note,reads){return '<tr><td style="text-align:left"><span class="tag '+cls+'">'+tag+'</span></td><td style="text-align:left;white-space:normal;word-break:break-all"><code>'+esc(schLabel(p))+'</code></td><td style="text-align:left;white-space:normal">'+esc(note||'')+'</td><td style="text-align:left">'+(reads?'<span class="tag err" title="The importer reads this field, so something on the site may now be empty or wrong">Site reads this</span>':'')+'</td></tr>'}
@@ -1335,17 +1383,18 @@ function schPanel(d,cap){
   add(d.removed,function(x){return schRow('Removed','err',x.p,'Was '+x.t.join('/')+(x.kids?' with '+x.kids+' field'+(x.kids===1?'':'s')+' inside':'')+' in earlier ledgers',x.reads)});
   add(d.changed,function(x){return schRow('Changed','warn',x.p,'Was '+x.from.join('/')+', now '+x.to.filter(function(t){return x.from.indexOf(t)<0}).join('/')+(x.to.some(function(t){return x.from.indexOf(t)>=0})?' in some places':''),x.reads)});
   add(d.cols,function(x){return schRow('Columns','warn',x.p,(x.moved?'Same columns in a different order, so every position shifted. Was '+x.from.join(', ')+'; now '+x.to.join(', '):(x.added.length?'Added: '+x.added.join(', ')+'. ':'')+(x.removed.length?'Removed: '+x.removed.join(', ')+'.':'')),x.reads)});
+  add(d.shift,function(x){return schRow('Shifted','warn',x.p,'Same type, but the average value is now '+num(x.m,2)+' where earlier ledgers ranged '+num(x.lo,2)+' to '+num(x.hi,2)+'. It may now measure something different',x.reads)});
   add(d.added,function(x){return schRow('New','ok',x.p,x.t.join('/')+(x.kids?' with '+x.kids+' field'+(x.kids===1?'':'s')+' inside':'')+'. Nothing on the site reads it yet',false)});
   return '<div class="scroll"><table><thead><tr><th scope="col" style="text-align:left">Change</th><th scope="col" style="text-align:left">Field</th><th scope="col" style="text-align:left">Detail</th><th scope="col"></th></tr></thead><tbody>'+rows.join('')+'</tbody></table></div>'+(more?'<p class="note" style="margin:6px 0 0">'+more+' more not shown.</p>':'');
 }
-function schCounts(d){var o=[];if(d.removed.length)o.push(d.removed.length+' removed');if(d.changed.length)o.push(d.changed.length+' changed');if(d.cols.length)o.push(d.cols.length+' column list'+(d.cols.length===1?'':'s')+' changed');if(d.added.length)o.push(d.added.length+' new');return o.join(', ')}
+function schCounts(d){var o=[];if(d.removed.length)o.push(d.removed.length+' removed');if(d.changed.length)o.push(d.changed.length+' changed');if(d.cols.length)o.push(d.cols.length+' column list'+(d.cols.length===1?'':'s')+' changed');if(d.shift.length)o.push(d.shift.length+' with values on a new scale');if(d.added.length)o.push(d.added.length+' new');return o.join(', ')}
 function schBasePanel(){
   if(!canEdit)return '';var b=SCH.base;
   var h='<div class="panel"><h2>Ledger format baseline</h2>';
   if(b===undefined){schLoad().then(function(){render()});return h+'<p class="note">Loading</p></div>'}
   h+='<p class="note" style="margin:0 0 10px">New, removed and changed fields are found by comparing a ledger with the ones already on the site.'+(b?' The baseline holds the format of '+b.ledgers+' ledger'+(b.ledgers===1?'':'s')+', updated '+esc(new Date(b.updated).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}))+'. Each ledger you save joins it.':' There is no baseline yet. Build one from the raw ledgers already stored.')+'</p>';
   h+='<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><button class="btn" type="button" data-schbuild="1"'+(SCH.busy?' disabled':'')+'>'+(b?'Rebuild from stored ledgers':'Build from stored ledgers')+'</button>'+(b?'<button class="btn ghost" type="button" data-schreset="1"'+(SCH.busy?' disabled':'')+'>Clear baseline</button>':'')+(SCH.busy?'<span class="note" style="margin:0">'+esc(SCH.busy)+'</span>':SCH.msg?'<span class="note" style="margin:0">'+esc(SCH.msg)+'</span>':'')+'</div>';
-  if(b&&b.hist&&b.hist.length)h+='<h3 class="note" style="margin:14px 0 6px">Recent format changes</h3><div class="scroll"><table><thead><tr><th scope="col" style="text-align:left">When</th><th scope="col" style="text-align:left">File</th><th scope="col" style="text-align:left">What changed</th><th scope="col" style="text-align:left">First fields</th></tr></thead><tbody>'+b.hist.slice(0,10).map(function(x){var o=[];if(x.r)o.push(x.r+' removed');if(x.c)o.push(x.c+' changed');if(x.k)o.push(x.k+' column list');if(x.a)o.push(x.a+' new');return '<tr><td style="text-align:left">'+esc(new Date(x.t).toLocaleDateString(undefined,{month:'short',day:'numeric'}))+'</td><td style="text-align:left">'+esc(x.name||x.id)+'</td><td style="text-align:left">'+esc(o.join(', '))+'</td><td style="text-align:left;white-space:normal;word-break:break-all"><code>'+esc((x.ex||[]).join('  '))+'</code></td></tr>'}).join('')+'</tbody></table></div>';
+  if(b&&b.hist&&b.hist.length)h+='<h3 class="note" style="margin:14px 0 6px">Recent format changes</h3><div class="scroll"><table><thead><tr><th scope="col" style="text-align:left">When</th><th scope="col" style="text-align:left">File</th><th scope="col" style="text-align:left">What changed</th><th scope="col" style="text-align:left">First fields</th></tr></thead><tbody>'+b.hist.slice(0,10).map(function(x){var o=[];if(x.r)o.push(x.r+' removed');if(x.c)o.push(x.c+' changed');if(x.k)o.push(x.k+' column list');if(x.sh)o.push(x.sh+' shifted');if(x.a)o.push(x.a+' new');return '<tr><td style="text-align:left">'+esc(new Date(x.t).toLocaleDateString(undefined,{month:'short',day:'numeric'}))+'</td><td style="text-align:left">'+esc(x.name||x.id)+'</td><td style="text-align:left">'+esc(o.join(', '))+'</td><td style="text-align:left;white-space:normal;word-break:break-all"><code>'+esc((x.ex||[]).join('  '))+'</code></td></tr>'}).join('')+'</tbody></table></div>';
   return h+'</div>';
 }
 function jvDiffLoad(data){
@@ -1355,7 +1404,8 @@ function jvDiffLoad(data){
 function jvTag(sp){
   var d=jv.diff;if(!d)return '';
   if(d.addTop[sp])return '<span class="jtag jnew" title="Not in earlier ledgers">New</span>';
-  var c=d.chg[sp];if(c)return '<span class="jtag jchg" title="'+esc('Was '+c.from.join('/')+', now '+c.to.join('/'))+'">Changed</span>';
+  var c=d.chg[sp];if(c&&c.shift)return '<span class="jtag jchg" title="'+esc('Average value is now '+num(c.m,2)+', earlier ledgers ranged '+num(c.lo,2)+' to '+num(c.hi,2))+'">Shifted</span>';
+  if(c)return '<span class="jtag jchg" title="'+esc('Was '+c.from.join('/')+', now '+c.to.join('/'))+'">Changed</span>';
   return '';
 }
 document.addEventListener('click',function(e){
@@ -3117,6 +3167,13 @@ function dzChecks(g,bugs){
   add({id:'unattr',proof:function(){var al=un.all.slice().sort(function(a,b){return b.fs-a.fs}),tf=0,ts=0;al.forEach(function(x){tf+=x.fs;ts+=x.sk});return '<p class="note" style="margin:0 0 8px">No problem found. For '+al.length+' player entries, what victims lost to the player is '+num(tf)+' and the damage on the player skills is '+num(ts)+', a gap of '+num(100*Math.abs(tf-ts)/Math.max(1,tf),1)+'%. The biggest are below.</p>'+dzList(al.slice(0,8),[['Player',function(x){return esc(x.p)}],['Class',function(x){return clsPlain(x.cls)}],['Lost by victims',function(x){return num(x.fs)}],['On skills',function(x){return num(x.sk)}],['Gap',function(x){return num(x.fs-x.sk,0)}]])},grp:'Data',title:'Damage that no skill accounts for',target:'None',status:un.length?'fail':'pass',
     sum:un.length?un.slice(0,3).map(function(x){return x.p+' '+num(x.miss,0)+' of '+num(x.of,0)}).join(', '):'Every hit is credited to a skill.',
     ev:function(){return dzList(un,[['Build',function(x){return esc(x.bd)}],['Match',function(x){return esc(x.m)}],['Player',function(x){return esc(x.p)}],['Class',function(x){return clsPlain(x.cls)}],['Not credited',function(x){return num(x.miss,0)+' of '+num(x.of,0)}]])+'<p class="note">What victims lost to this player is higher than the damage on the player skills, so some hits belong to no skill. AimedShot is the likely cause so far.</p>'}});
+  /* ledger format: what the matches of this build changed in the ledger layout */
+  var fmIds={};g.ids.forEach(function(i){fmIds[i]=1});
+  var fmL=((FMT.doc&&FMT.doc.list)||[]).filter(function(e){return fmIds[e.id]}),fmI=[];fmL.forEach(function(e){e.items.forEach(function(x){fmI.push({n:e.name,id:e.id,k:x.k,p:x.p,t:x.n,r:x.r})})});
+  var fmBad=fmI.filter(function(x){return x.k==='removed'||x.k==='changed'}),fmWarn=fmI.filter(function(x){return x.k==='shifted'||x.k==='cols'});
+  add({id:'format',proof:function(){return '<p class="note" style="margin:0">No problem found. '+(FMT.doc&&FMT.doc.updated?'The ledgers of this build were compared with the ones saved before them and no field was removed, retyped, reordered or moved to a new scale.':'No format record exists yet. An admin builds it under Admin, JSON reader.')+'</p>'},grp:'Data',title:'Ledger format',target:'No field removed or retyped, no column list changed, no number on a new scale',status:fmBad.length?'fail':fmWarn.length?'warn':'pass',
+    sum:fmI.length?fmBad.length+' removed or retyped, '+fmWarn.length+' column or scale changes'+(fmI.length-fmBad.length-fmWarn.length?', '+(fmI.length-fmBad.length-fmWarn.length)+' new':'')+'. '+fmI.slice(0,2).map(function(x){return x.p}).join(', '):'No format change in these matches.',
+    ev:function(){return dzList(fmI,[['Match',function(x){return '<a class="plink" href="#match-'+esc(x.id)+'">'+esc(x.n||x.id)+'</a>'}],['Change',function(x){return esc(x.k)}],['Field',function(x){return '<code>'+esc(x.p)+'</code>'+(x.r?' <span class="tag err">Site reads this</span>':'')}],['Detail',function(x){return esc(x.t)}]])+'<p class="note">Designer note: a field that changed type, or whose numbers moved to a new scale, may now mean something different. Ask the devs before trusting stats built from it. Fixing or ignoring the matching problem on the Bugs tab closes it there.</p>'}});
   /* bugs */
   var ids={};g.ids.forEach(function(i){ids[i]=1});
   var mine=(bugs||[]).filter(function(b){return b.m&&ids[b.m]}),act=mine.filter(function(b){return b.s==='open'||b.s==='devs'}),hi=act.filter(function(b){return b.sev==='High'}),again=mine.filter(function(b){return b.s==='fixed'&&b.ls&&bugs.seenAgain&&bugs.seenAgain(b)});
@@ -3134,7 +3191,8 @@ function dzChecks(g,bugs){
     acc:rows.filter(function(a){return a.att>=10}).length+' skills with 10 or more attempts were checked.',
     over:rows.filter(function(a){return a.he>0}).length+' healing skills were checked.',
     seen:'The skill rows are compared with the skills actually cast.',
-    swap:'Read from the spawn snapshots.'};
+    swap:'Read from the spawn snapshots.',
+    format:'The ledger layout of each match in this build was compared with the ledgers saved before it.'};
   out.forEach(function(o){o.chk=CHK[o.id]||''});
   return out;
 }
