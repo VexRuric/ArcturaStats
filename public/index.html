@@ -831,9 +831,9 @@ function anaMatchRows(d){
   var best=null;rows.forEach(function(r){if(!best||r.rate>best.rate)best=r});if(best&&rows.length>1)best.mvp=1;
   return rows;
 }
-function anaEventRows(ms){
+function anaEventRows(ms,split){
   var P={};
-  ms.forEach(function(m){anaMatchRows(m.doc).forEach(function(r){var a=P[r.name]||(P[r.name]={name:r.name,team:r.team,cl:{},games:0,rateSum:0,mvp:0});
+  ms.forEach(function(m){anaMatchRows(m.doc).forEach(function(r){var pk=split?r.name+'|'+r.team:r.name,a=P[pk]||(P[pk]={name:r.name,team:r.team,cl:{},games:0,rateSum:0,mvp:0});
     a.team=r.team;a.games++;a.rateSum+=r.rate;a.mvp+=r.mvp;if(r.cls)a.cl[r.cls]=(a.cl[r.cls]||0)+1;ANA_SUM.forEach(function(k){a[k]=(a[k]||0)+(r[k]||0)})})});
   return Object.keys(P).map(function(n){var a=P[n];a.rate=a.rateSum/a.games;a.main=Object.keys(a.cl).sort(function(x,y){return a.cl[y]-a.cl[x]})[0]||'';return anaFinish(a)});
 }
@@ -1123,7 +1123,7 @@ function copyBugs(){
 }
 var DOC_LIMIT=3.5*1024*1024,DOC_WARN=0.8*DOC_LIMIT;
 /* position check limits: kill distance between attacker and defender, kill event vs sampled defender, map bound, movement while dead, sample gap (s), standing still (units, s) */
-var POSMAX={kill:75,loc:40,bound:350,dead:5,gap:15,still:8,stillSec:120};
+var POSMAX={kill:75,loc:40,bound:350,dead:5,gap:15,still:8,stillSec:120,mob:40,camp:100,obj:60,cp:40,pair:1};
 function viewAdmin(){
   lastBugPanel='';
   var h='<div><h1>Admin</h1><p class="sub">Match handling, uploads, accounts, and automatic checks that find problems in the logs, the game and the balance '+statusLine()+'</p></div>';
@@ -1143,7 +1143,7 @@ function viewAdmin(){
   function addIssue(id,sev,check,items,detail){
     var g={},o=[];items.forEach(function(x){var k=x.m||'all';if(!g[k]){g[k]={key:id+':'+k,id:id,sev:sev,check:check,detail:detail,m:x.m||null,mn:x.mn||'All matches',ctx:x.m?matchCtx(x.m):'',who:[]};o.push(g[k])}if(x.t)g[k].who.push(x.t)});
     o.forEach(function(b){bl.push(b)})}
-  var ssZero=[],commitHi=[],noKind=[],noSkill=[],ovSkill=[],ovItem=[],scoreBad=[],noRes=[],posKill=[],posKillLoc=[],posOob=[],posDead=[],posGap=[],posFrozen=[],oldFmt=[],noClass=[],noTeam=[],priest0=[],killNoDmg=[],short=[],bigDoc=[],hits=[],practice=[],noCols=[],noCore=[],noOther=[],oddType=[],blankType=[];
+  var ssZero=[],commitHi=[],noKind=[],noSkill=[],ovSkill=[],ovItem=[],scoreBad=[],noRes=[],posKill=[],posKillLoc=[],posOob=[],posDead=[],posGap=[],posFrozen=[],posNoXY=[],posMob=[],posObj=[],posPair=[],oldFmt=[],noClass=[],noTeam=[],priest0=[],killNoDmg=[],short=[],bigDoc=[],hits=[],practice=[],noCols=[],noCore=[],noOther=[],oddType=[],blankType=[];
   ms.forEach(function(m){var d=m.doc;T.mins+=(d.duration||0)/60;T.rows+=d.rows||0;
     var sz=JSON.stringify(d).length;if(sz>sizeMax)sizeMax=sz;if(sz>DOC_WARN)bigDoc.push({m:m.id,mn:mtitle(d)});
     if(!hasResult(d))noRes.push({m:m.id,mn:mtitle(d),t:d.ledger?(d.endReason||'no end reason'):''});if(d.scoreCheck&&d.scoreCheck.ok===false)scoreBad.push({m:m.id,mn:mtitle(d),t:'reported '+JSON.stringify(d.scoreCheck.reported)+' vs sum of types '+JSON.stringify(d.scoreCheck.sumOfTypes)});if(!d.v||d.v<2)oldFmt.push({m:m.id,mn:mtitle(d)});if((d.duration||0)<300)short.push({m:m.id,mn:mtitle(d)});if(isPractice(d))practice.push({m:m.id,mn:mtitle(d)});
@@ -1154,7 +1154,7 @@ function viewAdmin(){
       Object.keys(d.types).forEach(function(t){if(t==='')blankType.push({m:m.id,mn:mtitle(d),t:d.types[t]+' rows'});else if(KNOWN_TYPES.indexOf(t)<0)oddType.push({m:m.id,mn:mtitle(d),t:t+' ('+d.types[t]+')'})})}
     var tms=d.teams||{};Object.keys(tms).forEach(function(k){var a=teams[k]||(teams[k]={team:+k,matches:0,w:0,l:0,dr:0,kills:0,points:0,relics:0});a.matches++;a.kills+=tms[k].kills;a.points+=tms[k].points;a.relics+=tms[k].relics;var o=outcome(d,+k);if(o==='win')a.w++;else if(o==='loss')a.l++;else if(o==='draw')a.dr++});
     /* Positions: each player has a sample every 5 s as [t,x,y,alive]; a kill event carries x,y. Attacker and defender are compared at the kill time. */
-    var posBy={};(d.players||[]).forEach(function(q){if(q.pos&&q.pos.length&&!isBot(q.name))posBy[q.name]=q.pos});
+    var posBy={};(d.players||[]).forEach(function(q){if(q.pos&&q.pos.length)posBy[q.name]=q.pos});
     var posAt=function(nm,t){var a=posBy[nm],i,lo=null,hi=null;if(!a)return null;for(i=0;i<a.length;i++){if(a[i][0]<=t)lo=a[i];else{hi=a[i];break}}if(!lo&&!hi)return null;
       if(!lo)return {x:hi[1],y:hi[2],al:hi[3],d:hi[0]-t};if(!hi)return {x:lo[1],y:lo[2],al:lo[3],d:t-lo[0]};
       var f=hi[0]>lo[0]?(t-lo[0])/(hi[0]-lo[0]):0;return {x:lo[1]+(hi[1]-lo[1])*f,y:lo[2]+(hi[2]-lo[2])*f,al:lo[3],d:Math.min(t-lo[0],hi[0]-t)}};
@@ -1162,11 +1162,27 @@ function viewAdmin(){
       (d.log||[]).forEach(function(e){if(e.k!=='kill'||!e.b)return;var v=posAt(e.b,e.t),a=posAt(e.a,e.t);
         if(v&&a&&v.d<=5&&a.d<=5){var dist=Math.hypot(a.x-v.x,a.y-v.y);if(dist>POSMAX.kill)posKill.push({m:m.id,mn:mtitle(d),t:e.a+' killed '+e.b+(e.sk?' with '+e.sk:'')+' from '+Math.round(dist)+' units away at '+dur(e.t)})}
         if(v&&v.d<=5&&e.x!=null&&e.y!=null){var dl=Math.hypot(e.x-v.x,e.y-v.y);if(dl>POSMAX.loc)posKillLoc.push({m:m.id,mn:mtitle(d),t:e.b+' died at '+dur(e.t)+': event says ('+Math.round(e.x)+', '+Math.round(e.y)+'), sampled position is ('+Math.round(v.x)+', '+Math.round(v.y)+'), '+Math.round(dl)+' units apart'})}});
-      Object.keys(posBy).forEach(function(nm){var a=posBy[nm],i,oob=0,dead=0,gap=0,gapMax=0,run0=-1,runBest=0;
-        for(i=0;i<a.length;i++){if(Math.abs(a[i][1])>POSMAX.bound||Math.abs(a[i][2])>POSMAX.bound)oob++;
+      /* every event with x,y: the kill and death pair, NPC (mob and boss) kills, control points and relics. NPCs have no track of their own, so a mob kill is checked against the killer and the camps. The ledger has no z. */
+      var okN=function(v){return typeof v==='number'&&isFinite(v)},pairK={},pairD={};
+      (d.log||[]).forEach(function(e){var ev=e.k;if(ev!=='kill'&&ev!=='death'&&ev!=='mob'&&ev!=='boss'&&ev!=='cp'&&ev!=='relic')return;
+        var lab=(ev==='mob'?e.a+' killed a mob'+(e.tier?' ('+e.tier+' camp)':''):ev==='boss'?e.a+' killed the boss':ev==='cp'?(e.ty||'change')+' of '+(e.cp||'a control point'):ev==='relic'?e.a+' relic '+(e.ty||''):ev==='kill'?e.a+' killed '+e.b:e.b+' died')+' at '+dur(e.t);
+        if(!okN(e.x)||!okN(e.y)){posNoXY.push({m:m.id,mn:mtitle(d),t:lab+': no usable x, y ('+e.x+', '+e.y+')'});return}
+        if(e.x===0&&e.y===0&&ev!=='boss'&&ev!=='cp')posNoXY.push({m:m.id,mn:mtitle(d),t:lab+': position is exactly (0, 0), probably a default'});
+        if(ev==='kill')pairK[e.t+'|'+e.b]=e;if(ev==='death')pairD[e.t+'|'+e.b]=e;
+        var who=posAt(e.a,e.t);
+        if(ev==='mob'&&who&&who.d<=5){var dm=Math.hypot(who.x-e.x,who.y-e.y);if(dm>POSMAX.mob)posMob.push({m:m.id,mn:mtitle(d),t:lab+': the mob position ('+Math.round(e.x)+', '+Math.round(e.y)+') is '+Math.round(dm)+' units from the killer'})}
+        if(ev==='mob'&&typeof MAPCAMPS!=='undefined'){var bd=1e9;MAPCAMPS.forEach(function(c){if(!e.tier||c[2]===e.tier){var q=Math.hypot(c[0]-e.x,c[1]-e.y);if(q<bd)bd=q}});if(bd>POSMAX.camp&&bd<1e9)posMob.push({m:m.id,mn:mtitle(d),t:lab+': '+Math.round(bd)+' units from the nearest '+(e.tier||'any')+' camp'})}
+        if(ev==='boss'){var db=Math.hypot(e.x,e.y);if(db>POSMAX.obj)posObj.push({m:m.id,mn:mtitle(d),t:lab+': event at ('+Math.round(e.x)+', '+Math.round(e.y)+'), '+Math.round(db)+' units from the boss arena centre'})}
+        if(ev==='cp'){var z=typeof MAPZONES!=='undefined'&&MAPZONES[e.cp];if(!z)posObj.push({m:m.id,mn:mtitle(d),t:lab+': unknown control point name'});else{var dz2=Math.hypot(e.x-z[0],e.y-z[1]);if(dz2>POSMAX.cp)posObj.push({m:m.id,mn:mtitle(d),t:lab+': event at ('+Math.round(e.x)+', '+Math.round(e.y)+'), '+Math.round(dz2)+' units from the point'})}}
+        if(ev==='relic'&&who&&who.d<=5){var dr=Math.hypot(who.x-e.x,who.y-e.y);if(dr>POSMAX.obj)posObj.push({m:m.id,mn:mtitle(d),t:lab+': event position is '+Math.round(dr)+' units from the player'})}});
+      Object.keys(pairK).forEach(function(k){var a=pairK[k],b=pairD[k];if(!b)posPair.push({m:m.id,mn:mtitle(d),t:a.a+' killed '+a.b+' at '+dur(a.t)+': no matching death event'});else if(okN(a.x)&&okN(b.x)&&Math.hypot(a.x-b.x,a.y-b.y)>POSMAX.pair)posPair.push({m:m.id,mn:mtitle(d),t:a.a+' killed '+a.b+' at '+dur(a.t)+': kill at ('+Math.round(a.x)+', '+Math.round(a.y)+'), death at ('+Math.round(b.x)+', '+Math.round(b.y)+')'})});
+      Object.keys(pairD).forEach(function(k){if(!pairK[k]){var b=pairD[k];posPair.push({m:m.id,mn:mtitle(d),t:b.b+' died at '+dur(b.t)+': no matching kill event'})}});
+      Object.keys(posBy).forEach(function(nm){var a=posBy[nm],i,oob=0,bad=0,dead=0,gap=0,gapMax=0,run0=-1,runBest=0;
+        for(i=0;i<a.length;i++){if(!okN(a[i][0])||!okN(a[i][1])||!okN(a[i][2]))bad++;if(Math.abs(a[i][1])>POSMAX.bound||Math.abs(a[i][2])>POSMAX.bound)oob++;
           if(i){var p0=a[i-1],p1=a[i];if(!p0[3]&&!p1[3]&&Math.hypot(p1[1]-p0[1],p1[2]-p0[2])>POSMAX.dead)dead++;
             if(p0[3]&&p1[3]&&p1[0]-p0[0]>POSMAX.gap){gap++;if(p1[0]-p0[0]>gapMax)gapMax=p1[0]-p0[0]}}
           if(a[i][3]){if(run0<0||Math.hypot(a[i][1]-a[run0][1],a[i][2]-a[run0][2])>POSMAX.still){run0=i}else if(a[i][0]-a[run0][0]>runBest)runBest=a[i][0]-a[run0][0]}else run0=-1}
+        if(bad)posNoXY.push({m:m.id,mn:mtitle(d),t:nm+': '+bad+' position sample'+(bad===1?'':'s')+' with no usable time, x or y'});
         if(oob)posOob.push({m:m.id,mn:mtitle(d),t:nm+': '+oob+' sample'+(oob===1?'':'s')+' beyond '+POSMAX.bound+' units from the map centre'});
         if(dead)posDead.push({m:m.id,mn:mtitle(d),t:nm+' moved while dead in '+dead+' sample'+(dead===1?'':'s')});
         if(gap)posGap.push({m:m.id,mn:mtitle(d),t:nm+': '+gap+' gap'+(gap===1?'':'s')+' in the samples while alive, longest '+Math.round(gapMax)+' s'});
@@ -1207,6 +1223,10 @@ function viewAdmin(){
   addIssue('posKill','Medium','A kill happened with attacker and defender far apart',posKill,'The attacker and defender sampled positions at the kill time are more than '+POSMAX.kill+' units apart. Samples are 5 seconds apart, so a fast mover can add some distance, but this is well past what the skills reach. Either a position is wrong, the kill is credited to the wrong player, or the killing effect (a damage over time tick) outlived its caster.');
   addIssue('posKillLoc','Medium','A kill location does not match the defender position',posKillLoc,'The x, y on the kill event should be where the defender fell. It is more than '+POSMAX.loc+' units from the defender own position sample at that moment.');
   addIssue('posOob','High','A player position is outside the map',posOob,'A sample is more than '+POSMAX.bound+' units from the map centre. The map CPs sit about 150 out and normal play stays inside about 220.');
+  addIssue('posNoXY','High','An event or position sample has no usable position',posNoXY,'Every kill, death, mob, boss, control point and relic event, and every 5 second player sample, needs a number for x and y or the heat map cannot place it. An exact (0, 0) on a kill, death, mob or relic is usually a default written when the position was not read. The ledger holds x and y only, so height (z) cannot be checked.');
+  addIssue('posMob','Medium','An NPC kill position does not fit the killer or the camps',posMob,'A mob kill event carries the position of the kill. It should be near the killer (mobs die to ranged hits, so some distance is normal) and inside a camp of the same tier. The camp check allows '+POSMAX.camp+' units, the killer check '+POSMAX.mob+'. The heat map places mob kills on a camp from this position.');
+  addIssue('posObj','Medium','A boss, control point or relic position is off',posObj,'Boss events should sit within '+POSMAX.obj+' units of the arena centre, control point events within '+POSMAX.cp+' units of that point, and relic events within '+POSMAX.obj+' units of the player who did it.');
+  addIssue('posPair','Medium','A kill and its death event disagree',posPair,'Each kill has a matching death event at the same time for the same victim, and both are logged where the victim fell. Either one is missing or the positions differ by more than '+POSMAX.pair+' unit.');
   addIssue('posDead','Medium','A dead player kept moving',posDead,'Two samples in a row with the player dead show a move of more than '+POSMAX.dead+' units. The position may follow a spectator camera or the alive flag may be wrong.');
   addIssue('posGap','Low','Gaps in a living player position samples',posGap,'Samples should arrive every 5 seconds. A gap over '+POSMAX.gap+' seconds between two alive samples leaves the heat map and the kill distance check without data for that stretch.');
   addIssue('posFrozen','Low','A player stood still for 2 minutes or more',posFrozen,'Alive and within '+POSMAX.still+' units for '+POSMAX.stillSec+' seconds or longer. Could be an AFK player, a stuck player or a camper, so it is only a note.');
@@ -1753,7 +1773,7 @@ function objPanel(d,pl){
 /* ---- Discord stat card: both teams as one PNG (always dark Arctura look, independent of the page theme) ---- */
 /* each team's top accolades for the stats image: top performer first, then story and category awards */
 function cardAcc(ms,isEvent){
-  try{var rows=isEvent?anaEventRows(ms):anaMatchRows(ms[0].doc),story=storyAwards(ms,isEvent).filter(function(x){return x.t!=='Class Dominator'}),o={};
+  try{var rows=isEvent?anaEventRows(ms,true):anaMatchRows(ms[0].doc),story=storyAwards(ms,isEvent).filter(function(x){return x.t!=='Class Dominator'}),o={};
     [0,1].forEach(function(t){var tr=rows.filter(function(r){return r.team===t}).sort(function(a,b){return b.rate-a.rate}),l=[];
       if(tr.length>1)l.push({t:'Top performer',n:tr[0].name,v:num(tr[0].rate)+' rating'});
       story.filter(function(x){return x.r.team===t}).concat(anaAwards(tr,isEvent).filter(function(x){return x.t!=='MVP'})).forEach(function(x){l.push({t:x.t,n:x.r.name,v:String(x.v),story:!!x.story})});
@@ -1769,7 +1789,7 @@ function buildStatCard(d,acc){
   var cols=[['Player',0,'l'],['Class',230,'l'],['K',420],['D',470],['A',520],['Pts',590],['Dmg',690],['Dmg taken',810],['Heal',920],['Relic',1000],['CP',1060],['Boss dmg',1160],['Rating',1260]];
   var cx={};cols.forEach(function(c){cx[c[0]]=c});
   var o='',y=0;
-  var title=win!=null?teamName(win).toUpperCase()+' VICTORY':hasResult(d)&&d.result.winner==='draw'?'DRAW':'MATCH RESULT';
+  var title=win!=null?teamName(win).toUpperCase()+' VICTORY':hasResult(d)&&d.result.winner==='draw'?'DRAW':d.__ev?'EVENT RESULT':'MATCH RESULT';
   var sc=tks.map(function(t){return (tm[t]||{}).points}).filter(function(v){return v!=null});
   var logo=document.getElementById('logo');
   if(logo&&logo.src)o+='<image x="'+PAD+'" y="14" width="'+Math.round(86*1.5)+'" height="86" href="'+logo.src+'" xlink:href="'+logo.src+'"/>';
@@ -1777,7 +1797,7 @@ function buildStatCard(d,acc){
   o+='<text x="'+W/2+'" y="92" font-size="20" text-anchor="middle" fill="'+C.muted+'">'+esc(d.__ev?d.name:mtitle(d))+'  ·  '+dur(d.duration||0)+(sc.length>1?'  ·  '+sc.join(' : '):'')+'</text>';
   o+='<rect x="0" y="112" width="'+W+'" height="4" fill="'+C.acc+'"/>';y=134;
   tks.forEach(function(t){
-    var rows=ps.filter(function(p){return p.team===t}).map(function(p){return {p:p,r:perf(p,d).r}}).sort(function(a,b){return b.r-a.r});
+    var rows=ps.filter(function(p){return p.team===t}).map(function(p){return {p:p,r:p.__r!=null?p.__r:perf(p,d).r}}).sort(function(a,b){return b.r-a.r});
     var best=rows[0]&&rows[0].p,s=tm[t]||{},bh=48,rh=38,ch=((acc&&acc[t])||[]).slice(0,6),ah=ch.length?Math.ceil(ch.length/3)*60+24:0,h=bh+30+rows.length*rh+10+ah;
     o+='<rect x="'+PAD+'" y="'+y+'" width="'+(W-2*PAD)+'" height="'+h+'" rx="10" fill="'+C.panel+'"/>';
     var fh=40,fw=Math.round(fh*0.75),fl=TFLAG[t];
@@ -1793,8 +1813,8 @@ function buildStatCard(d,acc){
       if(i%2===0)o+='<rect x="'+(PAD+10)+'" y="'+ry+'" width="'+(W-2*PAD-20)+'" height="'+(rh-2)+'" rx="5" fill="'+C.alt+'"/>';
       var nm=String(p.name);if(nm.length>16)nm=nm.slice(0,15)+'…';
       o+='<text x="'+(PAD+22)+'" y="'+by+'" font-size="21" font-weight="700" fill="'+C.fg+'">'+esc(nm)+'</text>';
-      if(p===best&&rows.length>1)o+='<rect x="'+(PAD+24+nm.length*11.5)+'" y="'+(ry+8)+'" width="42" height="20" rx="10" fill="'+C.acc+'"/><text x="'+(PAD+24+nm.length*11.5+21)+'" y="'+(ry+23)+'" font-size="12" font-weight="800" text-anchor="middle" fill="#1a1305">TOP</text>';
-      o+='<text x="'+(PAD+14+230+8)+'" y="'+by+'" font-size="18" fill="'+({Assassin:'#b680f2',Hunter:'#6cc775',Mystic:'#55aaf0',Priest:'#efd36c',Warrior:'#e8805f'}[p.cls]||'#8d97a8')+'">'+esc(p.cls||'?')+'</text>';
+      if(p===best&&rows.length>1)o+='<rect x="'+(PAD+24+nm.length*13.5)+'" y="'+(ry+8)+'" width="42" height="20" rx="10" fill="'+C.acc+'"/><text x="'+(PAD+24+nm.length*13.5+21)+'" y="'+(ry+23)+'" font-size="12" font-weight="800" text-anchor="middle" fill="#1a1305">TOP</text>';
+      o+='<text x="'+(PAD+14+230+8)+'" y="'+by+'" font-size="18" fill="'+({Assassin:'#b680f2',Hunter:'#6cc775',Mystic:'#55aaf0',Priest:'#efd36c',Warrior:'#e8805f'}[p.cls]||'#8d97a8')+'">'+esc(p.__cls||p.cls||'?')+'</text>';
       var v={K:p.kills||0,D:p.deaths||0,A:p.assists||0,Pts:p.score||0,Dmg:num(p.dmg||0),'Dmg taken':num(p.taken||0),Heal:num(p.heal||0),Relic:p.relicCaps||0,CP:p.cpCaps||0,'Boss dmg':num(p.dmgB||0),Rating:num(q.r,0)};
       Object.keys(v).forEach(function(k){var c=cx[k];o+='<text x="'+(PAD+14+c[1]+18)+'" y="'+by+'" font-size="21" text-anchor="middle" fill="'+(k==='Rating'?C.acc:C.fg)+'" font-weight="'+(k==='Pts'||k==='Rating'?700:400)+'">'+esc(v[k])+'</text>'});
     });
@@ -1811,15 +1831,17 @@ function buildStatCard(d,acc){
   var H=y+30;
   return {W:W,H:H,svg:'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" font-family="Barlow, Segoe UI, Roboto, Arial, sans-serif"><rect width="'+W+'" height="'+H+'" fill="'+C.bg+'"/>'+o+'</svg>'};
 }
-function evMergedDoc(ms,name){
-  var P={},tp={0:0,1:0},w={0:0,1:0},dur=0;
-  ms.forEach(function(m){var d=m.doc;dur+=d.duration||0;[0,1].forEach(function(t){tp[t]+=((d.teams||{})[t]||{}).points||0;if(hasResult(d)&&d.result.winner===t)w[t]++});
-    (d.players||[]).forEach(function(p){var a=P[p.name]||(P[p.name]={name:p.name,cls:p.cls,team:p.team,tc:{}});a.tc[p.team]=(a.tc[p.team]||0)+1;
-      Object.keys(p).forEach(function(k){if(typeof p[k]==='number'&&k!=='team')a[k]=(a[k]||0)+p[k]})})});
-  var pl=Object.keys(P).map(function(n){var a=P[n];a.team=+Object.keys(a.tc).sort(function(x,y){return a.tc[y]-a.tc[x]})[0];delete a.tc;return a});
-  var tm={};[0,1].forEach(function(t){var r={points:tp[t],kills:0,relics:0};pl.forEach(function(p){if(p.team===t){r.kills+=p.kills||0;r.relics+=p.relicCaps||0}});tm[t]=r});
-  var res=w[0]===w[1]?null:{winner:w[0]>w[1]?0:1,src:'log'};
-  return {__ev:true,name:(name||'Event')+'  ('+w[0]+' - '+w[1]+')',duration:dur,players:pl,teams:tm,result:res};
+function evMergedDoc(ms,name,total){
+  var P={},tm={0:{points:0,kills:0,relics:0},1:{points:0,kills:0,relics:0}},w={0:0,1:0},dr=0;
+  ms.forEach(function(m){var d=m.doc;dr+=d.duration||0;[0,1].forEach(function(t){var q=(d.teams||{})[t]||{};tm[t].points+=q.points||0;tm[t].kills+=q.kills||0;tm[t].relics+=q.relics||0;if(hasResult(d)&&d.result.winner===t)w[t]++});
+    (d.players||[]).forEach(function(p){/* players change teams between matches, so each team gets its own row for a player with that stint's numbers only */
+      var pk=p.name+'|'+p.team,a=P[pk]||(P[pk]={name:p.name,cls:p.cls,team:p.team,tc:{},cc:{},co:[],rs:0,rn:0});a.tc[p.team]=(a.tc[p.team]||0)+1;if(p.cls){if(!a.cc[p.cls]){a.cc[p.cls]=0;a.co.push(p.cls)}a.cc[p.cls]++}
+      /* the rating is the average of the player's match ratings, the same number the event page and the Top performer card use */
+      if(!d.noDmg){a.rs+=perf(p,d).r;a.rn++}
+      Object.keys(p).forEach(function(k){if(typeof p[k]==='number'&&k!=='team'&&k!=='uid'){if(k==='maxHit')a[k]=Math.max(a[k]||0,p[k]);else a[k]=(a[k]||0)+p[k]}})})});
+  var pl=Object.keys(P).map(function(n){var a=P[n];a.team=+Object.keys(a.tc).sort(function(x,y){return a.tc[y]-a.tc[x]})[0];a.cls=a.co.slice().sort(function(x,y){return a.cc[y]-a.cc[x]})[0]||a.cls;a.__cls=a.co.length>1?a.co.slice(0,2).join(' / ')+(a.co.length>2?' +'+(a.co.length-2):''):'';a.__r=a.rn?a.rs/a.rn:null;delete a.tc;delete a.cc;delete a.co;delete a.rs;delete a.rn;return a});
+  var res=w[0]===w[1]?null:{winner:w[0]>w[1]?0:1,src:'log'},f=w[0]>=w[1]?[0,1]:[1,0];
+  return {__ev:true,name:(name||'Event')+'  ('+teamName(f[0])+' '+w[f[0]]+' - '+w[f[1]]+' '+teamName(f[1])+')'+(total&&total>ms.length?'  ·  '+ms.length+' of '+total+' matches found':''),duration:dr,players:pl,teams:tm,result:res};
 }
 function statCardPng(d,acc){
   var c=buildStatCard(d,acc);
@@ -1834,7 +1856,7 @@ function cardMsg(t){var el=document.getElementById('cardMsg');if(el){el.textCont
 document.addEventListener('click',function(e){
   var b=e.target.closest&&e.target.closest('[data-card]');if(!b)return;
   var h=location.hash.replace('#',''),id=h.indexOf('match-')===0?h.slice(6):'',m=everyMatch().filter(function(x){return x.id===id})[0];
-  if(!m&&(h.indexOf('event-')===0||h.indexOf('snapshot-')===0)){var sid=h.slice(h.indexOf('-')+1),sn=snaps[sid];if(sn){var evm=(sn.matchIds||[]).map(function(k){return everyMatch().filter(function(x){return x.id===k})[0]}).filter(Boolean);if(evm.length)m={doc:evMergedDoc(evm,sn.name),acc:cardAcc(evm,true)}}}
+  if(!m&&(h.indexOf('event-')===0||h.indexOf('snapshot-')===0)){var sid=h.slice(h.indexOf('-')+1),sn=snaps[sid];if(sn){var evm=(sn.matchIds||[]).map(function(k){return everyMatch().filter(function(x){return x.id===k})[0]}).filter(Boolean);if(evm.length)m={doc:evMergedDoc(evm,sn.name,(sn.matchIds||[]).length),acc:cardAcc(evm,true)}}}
   if(!m)return;
   var mode=b.dataset.card;
   statCardPng(m.doc,m.acc||cardAcc([m],false)).then(function(blob){
