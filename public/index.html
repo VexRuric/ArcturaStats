@@ -1122,6 +1122,8 @@ function copyBugs(){
   try{navigator.clipboard.writeText(t).then(function(){done('Copied '+L.length+' bug'+(L.length===1?'':'s')+' for the devs.')},function(){done('Copy failed. Your browser blocked clipboard access.')})}catch(e){done('Copy failed. Your browser blocked clipboard access.')}
 }
 var DOC_LIMIT=3.5*1024*1024,DOC_WARN=0.8*DOC_LIMIT;
+/* position check limits: kill distance between attacker and defender, kill event vs sampled defender, map bound, movement while dead, sample gap (s), standing still (units, s) */
+var POSMAX={kill:75,loc:40,bound:350,dead:5,gap:15,still:8,stillSec:120};
 function viewAdmin(){
   lastBugPanel='';
   var h='<div><h1>Admin</h1><p class="sub">Match handling, uploads, accounts, and automatic checks that find problems in the logs, the game and the balance '+statusLine()+'</p></div>';
@@ -1141,7 +1143,7 @@ function viewAdmin(){
   function addIssue(id,sev,check,items,detail){
     var g={},o=[];items.forEach(function(x){var k=x.m||'all';if(!g[k]){g[k]={key:id+':'+k,id:id,sev:sev,check:check,detail:detail,m:x.m||null,mn:x.mn||'All matches',ctx:x.m?matchCtx(x.m):'',who:[]};o.push(g[k])}if(x.t)g[k].who.push(x.t)});
     o.forEach(function(b){bl.push(b)})}
-  var ssZero=[],commitHi=[],noKind=[],noSkill=[],ovSkill=[],ovItem=[],scoreBad=[],noRes=[],oldFmt=[],noClass=[],noTeam=[],priest0=[],killNoDmg=[],short=[],bigDoc=[],hits=[],practice=[],noCols=[],noCore=[],noOther=[],oddType=[],blankType=[];
+  var ssZero=[],commitHi=[],noKind=[],noSkill=[],ovSkill=[],ovItem=[],scoreBad=[],noRes=[],posKill=[],posKillLoc=[],posOob=[],posDead=[],posGap=[],posFrozen=[],oldFmt=[],noClass=[],noTeam=[],priest0=[],killNoDmg=[],short=[],bigDoc=[],hits=[],practice=[],noCols=[],noCore=[],noOther=[],oddType=[],blankType=[];
   ms.forEach(function(m){var d=m.doc;T.mins+=(d.duration||0)/60;T.rows+=d.rows||0;
     var sz=JSON.stringify(d).length;if(sz>sizeMax)sizeMax=sz;if(sz>DOC_WARN)bigDoc.push({m:m.id,mn:mtitle(d)});
     if(!hasResult(d))noRes.push({m:m.id,mn:mtitle(d),t:d.ledger?(d.endReason||'no end reason'):''});if(d.scoreCheck&&d.scoreCheck.ok===false)scoreBad.push({m:m.id,mn:mtitle(d),t:'reported '+JSON.stringify(d.scoreCheck.reported)+' vs sum of types '+JSON.stringify(d.scoreCheck.sumOfTypes)});if(!d.v||d.v<2)oldFmt.push({m:m.id,mn:mtitle(d)});if((d.duration||0)<300)short.push({m:m.id,mn:mtitle(d)});if(isPractice(d))practice.push({m:m.id,mn:mtitle(d)});
@@ -1151,13 +1153,31 @@ function viewAdmin(){
       OTHER_TYPES.forEach(function(t){if(!d.types[t])noOther.push({m:m.id,mn:mtitle(d),t:t})});
       Object.keys(d.types).forEach(function(t){if(t==='')blankType.push({m:m.id,mn:mtitle(d),t:d.types[t]+' rows'});else if(KNOWN_TYPES.indexOf(t)<0)oddType.push({m:m.id,mn:mtitle(d),t:t+' ('+d.types[t]+')'})})}
     var tms=d.teams||{};Object.keys(tms).forEach(function(k){var a=teams[k]||(teams[k]={team:+k,matches:0,w:0,l:0,dr:0,kills:0,points:0,relics:0});a.matches++;a.kills+=tms[k].kills;a.points+=tms[k].points;a.relics+=tms[k].relics;var o=outcome(d,+k);if(o==='win')a.w++;else if(o==='loss')a.l++;else if(o==='draw')a.dr++});
+    /* Positions: each player has a sample every 5 s as [t,x,y,alive]; a kill event carries x,y. Attacker and defender are compared at the kill time. */
+    var posBy={};(d.players||[]).forEach(function(q){if(q.pos&&q.pos.length&&!isBot(q.name))posBy[q.name]=q.pos});
+    var posAt=function(nm,t){var a=posBy[nm],i,lo=null,hi=null;if(!a)return null;for(i=0;i<a.length;i++){if(a[i][0]<=t)lo=a[i];else{hi=a[i];break}}if(!lo&&!hi)return null;
+      if(!lo)return {x:hi[1],y:hi[2],al:hi[3],d:hi[0]-t};if(!hi)return {x:lo[1],y:lo[2],al:lo[3],d:t-lo[0]};
+      var f=hi[0]>lo[0]?(t-lo[0])/(hi[0]-lo[0]):0;return {x:lo[1]+(hi[1]-lo[1])*f,y:lo[2]+(hi[2]-lo[2])*f,al:lo[3],d:Math.min(t-lo[0],hi[0]-t)}};
+    if(d.ledger&&Object.keys(posBy).length){
+      (d.log||[]).forEach(function(e){if(e.k!=='kill'||!e.b)return;var v=posAt(e.b,e.t),a=posAt(e.a,e.t);
+        if(v&&a&&v.d<=5&&a.d<=5){var dist=Math.hypot(a.x-v.x,a.y-v.y);if(dist>POSMAX.kill)posKill.push({m:m.id,mn:mtitle(d),t:e.a+' killed '+e.b+(e.sk?' with '+e.sk:'')+' from '+Math.round(dist)+' units away at '+dur(e.t)})}
+        if(v&&v.d<=5&&e.x!=null&&e.y!=null){var dl=Math.hypot(e.x-v.x,e.y-v.y);if(dl>POSMAX.loc)posKillLoc.push({m:m.id,mn:mtitle(d),t:e.b+' died at '+dur(e.t)+': event says ('+Math.round(e.x)+', '+Math.round(e.y)+'), sampled position is ('+Math.round(v.x)+', '+Math.round(v.y)+'), '+Math.round(dl)+' units apart'})}});
+      Object.keys(posBy).forEach(function(nm){var a=posBy[nm],i,oob=0,dead=0,gap=0,gapMax=0,run0=-1,runBest=0;
+        for(i=0;i<a.length;i++){if(Math.abs(a[i][1])>POSMAX.bound||Math.abs(a[i][2])>POSMAX.bound)oob++;
+          if(i){var p0=a[i-1],p1=a[i];if(!p0[3]&&!p1[3]&&Math.hypot(p1[1]-p0[1],p1[2]-p0[2])>POSMAX.dead)dead++;
+            if(p0[3]&&p1[3]&&p1[0]-p0[0]>POSMAX.gap){gap++;if(p1[0]-p0[0]>gapMax)gapMax=p1[0]-p0[0]}}
+          if(a[i][3]){if(run0<0||Math.hypot(a[i][1]-a[run0][1],a[i][2]-a[run0][2])>POSMAX.still){run0=i}else if(a[i][0]-a[run0][0]>runBest)runBest=a[i][0]-a[run0][0]}else run0=-1}
+        if(oob)posOob.push({m:m.id,mn:mtitle(d),t:nm+': '+oob+' sample'+(oob===1?'':'s')+' beyond '+POSMAX.bound+' units from the map centre'});
+        if(dead)posDead.push({m:m.id,mn:mtitle(d),t:nm+' moved while dead in '+dead+' sample'+(dead===1?'':'s')});
+        if(gap)posGap.push({m:m.id,mn:mtitle(d),t:nm+': '+gap+' gap'+(gap===1?'':'s')+' in the samples while alive, longest '+Math.round(gapMax)+' s'});
+        if(runBest>=POSMAX.stillSec)posFrozen.push({m:m.id,mn:mtitle(d),t:nm+' stayed within '+POSMAX.still+' units for '+dur(runBest)+' while alive'})})}
     var fromSum={};(d.players||[]).forEach(function(q){(q.from||[]).forEach(function(f){fromSum[f[0]]=(fromSum[f[0]]||0)+f[1]})});
     (d.players||[]).forEach(function(p){
       if(isBot(p.name)){T.bots[p.name]=1;return}T.humans[p.name]=1;
       T.dmg+=p.dmg;T.kills+=p.kills;T.deaths+=p.deaths;T.boss+=p.bossKills;
       if(!p.cls)noClass.push({m:m.id,mn:mtitle(d),t:p.name});if(p.team==null||p.team<0)noTeam.push({m:m.id,mn:mtitle(d),t:p.name});
       (p.skills||[]).forEach(function(k){var nmk=p.name+' '+skName(k.skill);if(k.acc&&k.acc.k==='Skillshot'&&k.casts>=5&&!k.acc.a)ssZero.push({m:m.id,mn:mtitle(d),t:nmk+' ('+k.casts+' casts, '+(k.pvp.hits+k.pve.hits)+' hits)'});if(k.cm>k.casts)commitHi.push({m:m.id,mn:mtitle(d),t:nmk+' committed '+k.cm+', cast '+k.casts});if(k.nk)noKind.push({m:m.id,mn:mtitle(d),t:nmk+' ('+k.casts+' casts, '+(k.pvp.hits+k.pve.hits)+' hits)'})});
-      (function(){var sk=0;(p.skills||[]).forEach(function(k){sk+=k.pvp.hl});var fs=fromSum[p.name]||0;if(fs-sk>=100&&fs-sk>0.03*fs)noSkill.push({m:m.id,mn:mtitle(d),t:p.name+' '+Math.round(fs-sk)+' of '+Math.round(fs)+' damage'})})();
+      (function(){var sk=0;(p.skills||[]).forEach(function(k){sk+=k.pvp.hl});var fs=fromSum[p.name]||0;if(fs-sk>=100&&fs-sk>0.03*fs){var gap=fs-sk,cand=(p.skills||[]).filter(function(k){return k.acc&&k.acc.k==='Skillshot'&&!k.acc.a&&k.casts>=1&&!((k.pvp.hits||0)+(k.pve.hits||0))}).map(function(k){return skName(k.skill)+' ('+k.casts+' cast'+(k.casts===1?'':'s')+')'}),fl=gap>=290&&Math.abs(gap/300-Math.round(gap/300))*300<=Math.max(3,0.004*gap)?Math.round(gap/300):0;noSkill.push({m:m.id,mn:mtitle(d),t:p.name+(p.cls?' ('+p.cls+')':'')+' '+Math.round(gap)+' of '+Math.round(fs)+' damage'+(fl?', exactly '+fl+' hits of 300 (flat, not reduced by armor)':'')+(cand.length?'. Likely source, skillshots with casts but no recorded hits: '+cand.join(', '):'')})}})();
       (p.skills||[]).forEach(function(k){var x=k.he;if(x&&x.o>=500&&x.e+x.o>0&&x.o/(x.e+x.o)>=0.5)ovSkill.push({m:m.id,mn:mtitle(d),t:p.name+' '+skName(k.skill)+' '+Math.round(100*x.o/(x.e+x.o))+'% ('+Math.round(x.o)+' wasted)'})});
       (p.it||[]).forEach(function(x){if(x.o>=300&&x.h+x.o>0&&x.o/(x.h+x.o)>=0.5)ovItem.push({m:m.id,mn:mtitle(d),t:p.name+' '+x.k+' '+Math.round(100*x.o/(x.h+x.o))+'% ('+Math.round(x.o)+' wasted)'})});
       if(p.cls==='Priest'&&!p.heal)priest0.push({m:m.id,mn:mtitle(d),t:p.name});
@@ -1183,7 +1203,13 @@ function viewAdmin(){
   addIssue('skillshot0','Medium','A skillshot was cast but no attempts were recorded',ssZero,'The skill has casts but its accuracy block shows zero attempts, so accuracy cannot be measured and its hits may be missing from the skill. AimedShot does this in every match so far.');
   addIssue('commitHi','Low','A skill committed more than it was cast',commitHi,'Committed (resources spent) is higher than casts, which should not happen. The cast counter may not see every start of a charged or multi-step skill.');
   addIssue('nokind','Low','A skill has no accuracy kind',noKind,'Every other skill reports an accuracy block or a kind such as Unset or Utility. These report neither, so their accuracy cannot be graded. ArcaneWall and Voidsnare do this.');
-  addIssue('noskill','Medium','A player dealt damage that none of their skills account for',noSkill,'What victims lost to this player (damageTakenFrom) is higher than the sum of the damage on the player\'s own skills, so some hits are not credited to any skill. Skills for those hits are missing from the skill list, or are not counted.');
+  addIssue('noskill','Medium','A player dealt damage that none of their skills account for',noSkill,'What victims lost to this player (damageTakenFrom) is higher than the sum of the damage on the player\'s own skills, so some hits are not credited to any skill. Skills for those hits are missing from the skill list, or are not counted. Seen so far: multi-part skillshots (Warrior Leap, which deals a flat 300 to each enemy it lands on, and Hunter Aimed Shot) land damage but record 0 attempts and 0 hits, so the damage reaches the victim and the player total but no skill. The Likely source line names such skills.');
+  addIssue('posKill','Medium','A kill happened with attacker and defender far apart',posKill,'The attacker and defender sampled positions at the kill time are more than '+POSMAX.kill+' units apart. Samples are 5 seconds apart, so a fast mover can add some distance, but this is well past what the skills reach. Either a position is wrong, the kill is credited to the wrong player, or the killing effect (a damage over time tick) outlived its caster.');
+  addIssue('posKillLoc','Medium','A kill location does not match the defender position',posKillLoc,'The x, y on the kill event should be where the defender fell. It is more than '+POSMAX.loc+' units from the defender own position sample at that moment.');
+  addIssue('posOob','High','A player position is outside the map',posOob,'A sample is more than '+POSMAX.bound+' units from the map centre. The map CPs sit about 150 out and normal play stays inside about 220.');
+  addIssue('posDead','Medium','A dead player kept moving',posDead,'Two samples in a row with the player dead show a move of more than '+POSMAX.dead+' units. The position may follow a spectator camera or the alive flag may be wrong.');
+  addIssue('posGap','Low','Gaps in a living player position samples',posGap,'Samples should arrive every 5 seconds. A gap over '+POSMAX.gap+' seconds between two alive samples leaves the heat map and the kill distance check without data for that stretch.');
+  addIssue('posFrozen','Low','A player stood still for 2 minutes or more',posFrozen,'Alive and within '+POSMAX.still+' units for '+POSMAX.stillSec+' seconds or longer. Could be an AFK player, a stuck player or a camper, so it is only a note.');
   addIssue('ovskill','Low','A heal skill spent half or more of its healing as overheal',ovSkill,'The heal landed on targets that were nearly full, so most of it did nothing. Compare the skill cost and cooldown with its real effect. If it happens in every match, the heal may be too big for the health pools, auto targeting may be picking full health allies, or the heal may be applying to the caster by mistake.');
   addIssue('ovitem','Low','A potion or food was mostly overheal',ovItem,'Consumable health that went past the maximum. Players may be drinking at near full health, or the item may restore far more than the pool needs. Check the item value against the class health pool.');
   addIssue('priest0','Medium','Priest with zero healing logged',priest0,'Healing to other players is not reaching the combat log, or the Priest never healed. Both need a look.');
