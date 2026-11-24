@@ -892,7 +892,7 @@ function storyAwards(docs,isEvent){
       else add('fb',1,'First Blood','First player kill of the match',f.a,'First kill of the match, at '+dur(f.t)+' on '+esc(f.b))}
     (d.players||[]).forEach(function(p){if(hideBots&&isBot(p.name)||p.team!==0&&p.team!==1||(p.deaths||0)>0||!(A.players[p.name]&&A.players[p.name].alive>=0.6*(d.duration||1e9)))return;
       var out=(p.dmg||0)+(p.heal||0);if(!(out>0))return;
-      if(isEvent){gh[p.name]=(gh[p.name]||0)+1}else add('gh',out,'Ghost','Never died; most damage plus healing among players with no deaths',p.name,'Never died, '+num(out)+' damage and healing')})});
+      if(isEvent){gh[p.name]=(gh[p.name]||0)+1}else add('gh',out,'Ghost','Never died; most damage plus healing among players with no deaths',p.name,'No deaths, '+num(out)+' dmg+heal')})});
   if(isEvent){
     var fn=Object.keys(fb).sort(function(a,b){return fb[b].n-fb[a].n})[0];
     if(fn&&fb[fn].n>=2){var p=null;docs.forEach(function(m){((m.doc||m).players||[]).forEach(function(q){if(q.name===fn)p=q})});best.fb={score:1,aw:{t:'First Blood',d:'Most first player kills of a match across the event',r:{name:fn,team:p&&p.team,main:p&&p.cls||''},v:fb[fn].n+' first bloods',story:1}}}
@@ -1775,7 +1775,6 @@ function objPanel(d,pl){
 function cardAcc(ms,isEvent){
   try{var rows=isEvent?anaEventRows(ms,true):anaMatchRows(ms[0].doc),story=storyAwards(ms,isEvent).filter(function(x){return x.t!=='Class Dominator'}),o={};
     [0,1].forEach(function(t){var tr=rows.filter(function(r){return r.team===t}).sort(function(a,b){return b.rate-a.rate}),l=[];
-      if(tr.length>1)l.push({t:'Top performer',n:tr[0].name,v:num(tr[0].rate)+' rating'});
       story.filter(function(x){return x.r.team===t}).concat(anaAwards(tr,isEvent).filter(function(x){return x.t!=='MVP'})).forEach(function(x){l.push({t:x.t,n:x.r.name,v:String(x.v),story:!!x.story})});
       o[t]=l});
     return o}catch(x){return {}}
@@ -1786,7 +1785,8 @@ function buildStatCard(d,acc){
   var tks=[];ps.forEach(function(p){if(p.team>=0&&tks.indexOf(p.team)<0)tks.push(p.team)});tks.sort();
   var win=hasResult(d)&&d.result.winner!=='draw'?d.result.winner:null;if(win!=null)tks.sort(function(a,b){return (b===win)-(a===win)||a-b});
   var tm=d.teams||{},tcol=function(t){return TEAMS[t]?TEAMS[t].col:'#8d97a8'},tcl=function(t){return TEAMS[t]?'#'+[1,3,5].map(function(i){var v=parseInt(tcol(t).substr(i,2),16);return ('0'+Math.round(v+(255-v)*0.45).toString(16)).slice(-2)}).join(''):'#c8cdd6'};
-  var cols=[['Player',0,'l'],['Class',230,'l'],['K',420],['D',470],['A',520],['Pts',590],['Dmg',690],['Dmg taken',810],['Heal',920],['Relic',1000],['CP',1060],['Boss dmg',1160],['Rating',1260]];
+  /* players are sorted by rating, which is not shown */
+  var cols=[['Player',0,'l'],['Class',230,'l'],['K',440],['D',505],['A',570],['Pts',655],['Dmg',775],['Dmg taken',915],['Heal',1040],['Relic',1130],['CP',1200],['Boss dmg',1310]];
   var cx={};cols.forEach(function(c){cx[c[0]]=c});
   var o='',y=0;
   var title=win!=null?teamName(win).toUpperCase()+' VICTORY':hasResult(d)&&d.result.winner==='draw'?'DRAW':d.__ev?'EVENT RESULT':'MATCH RESULT';
@@ -1815,8 +1815,8 @@ function buildStatCard(d,acc){
       o+='<text x="'+(PAD+22)+'" y="'+by+'" font-size="21" font-weight="700" fill="'+C.fg+'">'+esc(nm)+'</text>';
       if(p===best&&rows.length>1)o+='<rect x="'+(PAD+24+nm.length*13.5)+'" y="'+(ry+8)+'" width="42" height="20" rx="10" fill="'+C.acc+'"/><text x="'+(PAD+24+nm.length*13.5+21)+'" y="'+(ry+23)+'" font-size="12" font-weight="800" text-anchor="middle" fill="#1a1305">TOP</text>';
       o+='<text x="'+(PAD+14+230+8)+'" y="'+by+'" font-size="18" fill="'+({Assassin:'#b680f2',Hunter:'#6cc775',Mystic:'#55aaf0',Priest:'#efd36c',Warrior:'#e8805f'}[p.cls]||'#8d97a8')+'">'+esc(p.__cls||p.cls||'?')+'</text>';
-      var v={K:p.kills||0,D:p.deaths||0,A:p.assists||0,Pts:p.score||0,Dmg:num(p.dmg||0),'Dmg taken':num(p.taken||0),Heal:num(p.heal||0),Relic:p.relicCaps||0,CP:p.cpCaps||0,'Boss dmg':num(p.dmgB||0),Rating:num(q.r,0)};
-      Object.keys(v).forEach(function(k){var c=cx[k];o+='<text x="'+(PAD+14+c[1]+18)+'" y="'+by+'" font-size="21" text-anchor="middle" fill="'+(k==='Rating'?C.acc:C.fg)+'" font-weight="'+(k==='Pts'||k==='Rating'?700:400)+'">'+esc(v[k])+'</text>'});
+      var v={K:p.kills||0,D:p.deaths||0,A:p.assists||0,Pts:p.score||0,Dmg:num(p.dmg||0),'Dmg taken':num(p.taken||0),Heal:num(p.heal||0),Relic:p.relicCaps||0,CP:p.cpCaps||0,'Boss dmg':num(p.dmgB||0)};
+      Object.keys(v).forEach(function(k){var c=cx[k];o+='<text x="'+(PAD+14+c[1]+18)+'" y="'+by+'" font-size="21" text-anchor="middle" fill="'+C.fg+'" font-weight="'+(k==='Pts'?700:400)+'">'+esc(v[k])+'</text>'});
     });
     if(ch.length){var cw=(W-2*PAD-28-24)/3,ay=y+bh+30+rows.length*rh+16;
       o+='<text x="'+(PAD+14)+'" y="'+(ay+4)+'" font-size="13" font-weight="700" letter-spacing="1" fill="'+C.muted+'">ACCOLADES</text>';
