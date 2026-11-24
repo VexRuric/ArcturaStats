@@ -1814,7 +1814,8 @@ function buildStatCard(d,acc){
       var nm=String(p.name);if(nm.length>16)nm=nm.slice(0,15)+'…';
       o+='<text x="'+(PAD+22)+'" y="'+by+'" font-size="21" font-weight="700" fill="'+C.fg+'">'+esc(nm)+'</text>';
       if(p===best&&rows.length>1)o+='<rect x="'+(PAD+24+nm.length*13.5)+'" y="'+(ry+8)+'" width="42" height="20" rx="10" fill="'+C.acc+'"/><text x="'+(PAD+24+nm.length*13.5+21)+'" y="'+(ry+23)+'" font-size="12" font-weight="800" text-anchor="middle" fill="#1a1305">TOP</text>';
-      o+='<text x="'+(PAD+14+230+8)+'" y="'+by+'" font-size="18" fill="'+({Assassin:'#b680f2',Hunter:'#6cc775',Mystic:'#55aaf0',Priest:'#efd36c',Warrior:'#e8805f'}[p.cls]||'#8d97a8')+'">'+esc(p.__cls||p.cls||'?')+'</text>';
+      var CCOL={Assassin:'#b680f2',Hunter:'#6cc775',Mystic:'#55aaf0',Priest:'#efd36c',Warrior:'#e8805f'};
+      o+='<text x="'+(PAD+14+230+8)+'" y="'+by+'" font-size="18" fill="#8d97a8">'+String(p.__cls||p.cls||'?').split(' / ').map(function(c,ci){var mm=/^(\S+)(.*)$/.exec(c)||[c,c,''];return (ci?' / ':'')+'<tspan fill="'+(CCOL[mm[1]]||'#8d97a8')+'">'+esc(mm[1])+'</tspan>'+esc(mm[2])}).join('')+'</text>';
       var v={K:p.kills||0,D:p.deaths||0,A:p.assists||0,Pts:p.score||0,Dmg:num(p.dmg||0),'Dmg taken':num(p.taken||0),Heal:num(p.heal||0),Relic:p.relicCaps||0,CP:p.cpCaps||0,'Boss dmg':num(p.dmgB||0)};
       Object.keys(v).forEach(function(k){var c=cx[k];o+='<text x="'+(PAD+14+c[1]+18)+'" y="'+by+'" font-size="21" text-anchor="middle" fill="'+C.fg+'" font-weight="'+(k==='Pts'?700:400)+'">'+esc(v[k])+'</text>'});
     });
