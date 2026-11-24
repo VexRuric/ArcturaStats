@@ -337,7 +337,7 @@ var TABS=[['players','Players'],['classes','Classes'],['skills','Skills'],['fact
 var $view=document.getElementById('view'),$nav=document.getElementById('nav');
 var remote={},local={},snaps={},snapDraft={name:'',sel:{}},evEdit={id:'',v:''},evMsg='',delSel={},confirmKey='',db=null,user=null,canWrite=true,canEdit=false,canDesign=false,loaded=false,dbState='loading';
 var sortState={dzsk:{k:'share',d:-1},dzb:{k:'t0',d:1},gxcv:{k:'dealt',d:-1},gxov:{k:'pct',d:-1},gxovs:{k:'pct',d:-1},gxovi:{k:'pct',d:-1},skcmp:{k:'total',d:-1},gxs:{k:'total',d:-1},gxsk:{k:'casts',d:-1},gxac:{k:'casts',d:-1},gxrg:{k:'he',d:-1},gxcp:{k:'caps',d:-1},gxrl:{k:'pk',d:-1},gxmb:{k:'tot',d:-1},bkm:{k:'dmg',d:-1},bkskill:{k:'total',d:-1},skills:{k:'total',d:-1},skusers:{k:'total',d:-1},objs:{k:'mobT',d:-1},snplayers:{k:'score',d:-1},snfac:{k:'team',d:1},fplayers:{k:'rating',d:-1},cboard:{k:'rating',d:-1},pside:{k:'name',d:1},adteam:{k:'team',d:1},adcls:{k:'dpm',d:-1},admatch:{k:'t',d:-1},players:{k:'rating',d:-1},match:{k:'rating',d:-1},classes:{k:'avgDmg',d:-1},pclass:{k:'rating',d:-1},phist:{k:'t',d:-1}};
-var hideBots=true,ratedOnly=false,uploads=[];
+var hideBots=true,ratedOnly=false,uploads=[],offBuilds={},bfKey='';
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function num(v,d){if(v==null||isNaN(v))return '-';return Number(v).toLocaleString(undefined,{maximumFractionDigits:d||0,minimumFractionDigits:d||0})}
@@ -345,7 +345,19 @@ function dur(s){s=Math.round(s);return Math.floor(s/60)+':'+String(s%60).padStar
 function isBot(n){return /^SpawnedPlayer_\d+$/i.test(n)||/^(BP_|Roshan)/i.test(n)||/_C_\d+$/.test(n)}
 function clsPlain(c){return '<span class="cls"><i class="dot" style="background:'+(CCOL[c]||'var(--c-none)')+'"></i>'+esc(c||'Unknown')+'</span>'}
 function clsCell(c){var s='<span class="cls"><i class="dot" style="background:'+(CCOL[c]||'var(--c-none)')+'"></i>'+esc(c||'Unknown')+'</span>';return CCOL[c]?'<a class="plink" href="#class-'+c+'" style="border:0">'+s+'</a>':s}
-function allMatches(){var m={},k;for(k in local)m[k]=local[k];for(k in remote)m[k]=remote[k];return Object.keys(m).map(function(id){return {id:id,doc:m[id],saved:!!remote[id]}}).sort(function(a,b){return (b.doc.uploadedAt||0)-(a.doc.uploadedAt||0)})}
+/* everyMatch is every match there is. allMatches is what the public stats count: it leaves out matches from builds an admin switched off
+   (Designer, Builds). Admin tools, Designer balance views, events and direct match links use everyMatch. */
+function buildKey(d){return d&&d.ledger?((d.meta||{}).skillsHash||'unknown'):''}
+function everyMatch(){var m={},k;for(k in local)m[k]=local[k];for(k in remote)m[k]=remote[k];return Object.keys(m).map(function(id){return {id:id,doc:m[id],saved:!!remote[id]}}).sort(function(a,b){return (b.doc.uploadedAt||0)-(a.doc.uploadedAt||0)})}
+function allMatches(){return everyMatch().filter(function(m){var k=buildKey(m.doc);return !(k&&offBuilds[k])})}
+/* Build filter for the Admin Overview and Bugs & checks and for the Designer views: '' is every build, otherwise one skills hash */
+function bfOk(m){return !bfKey||buildKey(m.doc)===bfKey}
+function bfList(){var G={};everyMatch().forEach(function(m){var k=buildKey(m.doc);if(!k)return;var t=playedAt(m.doc),g=G[k]||(G[k]={key:k,n:0,t:0});g.n++;if(t>g.t)g.t=t});
+  var o=Object.keys(G).map(function(k){return G[k]}).sort(function(a,b){return a.t-b.t});if(bfKey&&!G[bfKey])bfKey='';return o}
+function bfSelect(){var L=bfList();if(!L.length)return '';
+  return '<label class="chk">Build <select id="bfSel"><option value="">All builds</option>'+L.map(function(g,i){return '<option value="'+esc(g.key)+'"'+(g.key===bfKey?' selected':'')+'>'+esc((g.key==='unknown'?'No skills hash':g.key)+' ('+g.n+' match'+(g.n===1?'':'es')+')'+(i===L.length-1?', newest':'')+(offBuilds[g.key]?', off in stats':''))+'</option>'}).join('')+'</select></label>'}
+function bfBar(){var s=bfSelect();return s?'<div class="panel" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><strong>Build data</strong>'+s+'<span class="note" style="margin:0">'+(bfKey?'Showing one build only.':'Showing every build, including builds switched off in the stats.')+'</span></div>':''}
+function hiddenMatches(){return everyMatch().length-allMatches().length}
 
 /* ---- skill model ----
    Rating 100 = the reference performance below. Per match, default weights: damage/min 35%, score/min 25%, kills/min 20%, survival 20%.
@@ -397,7 +409,7 @@ function history(name){
 }
 function tier(r){return r<70?'Novice':r<90?'Developing':r<110?'Solid':r<130?'Strong':'Elite'}
 function isPractice(d){return (d.players||[]).filter(function(p){return !isBot(p.name)}).length<2}
-function playerNames(){var s={};allMatches().forEach(function(m){(m.doc.players||[]).forEach(function(p){s[p.name]=1})});return Object.keys(s)}
+function playerNames(){var s={};everyMatch().forEach(function(m){(m.doc.players||[]).forEach(function(p){s[p.name]=1})});return Object.keys(s)}
 
 /* ---- aggregate ---- */
 function aggregate(){
@@ -444,7 +456,7 @@ function statusLine(){
 }
 function viewPlayers(){
   var rows=aggregate(),ms=allMatches();
-  var h='<div class="bar"><div><h1>Player rankings</h1><p class="sub">'+ms.length+' match'+(ms.length===1?'':'es')+' from uploaded combat logs '+statusLine()+'</p></div>'+
+  var h='<div class="bar"><div><h1>Player rankings</h1><p class="sub">'+ms.length+' match'+(ms.length===1?'':'es')+' from uploaded combat logs'+(hiddenMatches()?', '+hiddenMatches()+' more from builds switched off are left out':'')+' '+statusLine()+'</p></div>'+
     '<div style="display:flex;flex-direction:column;gap:6px"><label class="chk"><input type="checkbox" id="botsChk"'+(hideBots?' checked':'')+'> Hide bots (SpawnedPlayer_N, BP_ mobs)</label><label class="chk"><input type="checkbox" id="ratedChk"'+(ratedOnly?' checked':'')+'> Rated matches only (skip practice against bots)</label></div></div>';
   if(!rows.length)return h+empty(ms.length?'No players to show':'No matches yet',ms.length?'Every player in the saved matches is a test bot. Untick the box above to see them.':'Upload a combat log on the Upload tab to build the rankings.');
   var tot=rows.reduce(function(s,r){s.k+=r.kills;s.d+=r.dmg;s.n+=r.matches;return s},{k:0,d:0,n:0});
@@ -594,7 +606,7 @@ function outcome(d,team){var r=d&&d.result;if(!r||r.winner==null)return null;if(
 function hasResult(d){return !!(d&&d.result&&d.result.winner!=null)}
 function resultTag(d){if(!hasResult(d))return '<span class="tag">Result not recorded</span>';var r=d.result;return '<span class="tag '+(r.winner==='draw'?'':'ok')+'">'+(r.winner==='draw'?'Draw':teamName(r.winner)+' won')+' ('+(r.src==='log'?'from log':'set by hand')+')</span>'}
 function setResult(id,w){
-  var m=allMatches().filter(function(x){return x.id===id})[0];if(!m||!db||!m.saved)return;
+  var m=everyMatch().filter(function(x){return x.id===id})[0];if(!m||!db||!m.saved)return;
   var d=Object.assign({},m.doc);if(w==='clear')delete d.result;else d.result={winner:w==='draw'?'draw':parseInt(w,10),src:'manual'};
   db.collection('matches').doc(id).set(d).then(function(){},function(){})
 }
@@ -612,7 +624,7 @@ function evRename(id){
 }
 function snapDelete(id){db&&db.collection('snapshots').doc(id).delete().then(function(){location.hash='admin'},function(){})}
 function snapshotPanel(){
-  var ms=allMatches().filter(function(m){return m.saved}).sort(function(a,b){return playedAt(a.doc)-playedAt(b.doc)});
+  var ms=everyMatch().filter(function(m){return m.saved}).sort(function(a,b){return playedAt(a.doc)-playedAt(b.doc)});
   var list=Object.keys(snaps).map(function(k){return {id:k,s:snaps[k]}}).sort(function(a,b){return (b.s.createdAt||0)-(a.s.createdAt||0)});
   var n=Object.keys(snapDraft.sel).filter(function(k){return snapDraft.sel[k]}).length;
   var h='<div class="panel"><h2>Events</h2><p class="note" style="margin-top:0">Pick the matches from one night of testing and save them as an event. Each event gets its own stats page and can be renamed there.</p>';
@@ -1028,7 +1040,7 @@ function anaEventSections(ms,part){
 function viewSnapshot(id){
   var s=snaps[id];
   if(!s)return '<div><h1>Event not found</h1></div>'+empty(dbState==='loading'?'Loading':'No event with that id','It may have been deleted, or it is still loading.');
-  var ms=(s.matchIds||[]).map(function(k){return allMatches().filter(function(m){return m.id===k})[0]}).filter(Boolean).sort(function(a,b){return playedAt(a.doc)-playedAt(b.doc)});
+  var ms=(s.matchIds||[]).map(function(k){return everyMatch().filter(function(m){return m.id===k})[0]}).filter(Boolean).sort(function(a,b){return playedAt(a.doc)-playedAt(b.doc)});
   var missing=(s.matchIds||[]).length-ms.length;
   var h='<div class="bar"><div><p class="sub" style="margin:0">'+(canEdit?'<a class="plink" href="#admin">Admin</a>':'<a class="plink" href="#events">Events</a>')+' / Event '+pubTag(id)+'</p><h1>'+esc(s.name)+'</h1><p class="sub">'+ms.length+' match'+(ms.length===1?'':'es')+', created '+esc(new Date(s.createdAt||0).toLocaleDateString())+(missing?' <span class="tag warn">'+missing+' match'+(missing===1?'':'es')+' no longer stored</span>':'')+'</p></div><div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><label class="chk"><input type="checkbox" id="botsChk"'+(hideBots?' checked':'')+'> Hide bot players</label><button class="btn ghost" type="button" data-card="copy">Copy stats image</button><button class="btn ghost" type="button" data-card="save">Save PNG</button><span class="note" id="cardMsg" role="status" style="margin:0"></span>'+(canEdit?'<button class="btn ghost" type="button" data-expev="'+esc(id)+'">Export JSON</button>'+pubBtn(id)+'<button class="btn ghost" type="button" data-snapdel="'+esc(id)+'">Delete event</button>':'')+'</div></div>';
   if(canEdit)h+='<div class="panel" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><label for="evName" class="note" style="margin:0">Event name</label><input id="evName" type="text" maxlength="80" value="'+esc(evEdit.id===id?evEdit.v:s.name)+'" style="flex:1 1 260px;padding:8px 10px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--fg);font:inherit"><button class="btn" type="button" data-evrename="'+esc(id)+'">Save name</button>'+(evMsg?'<span class="note err" role="alert" style="margin:0">'+esc(evMsg)+'</span>':'')+'</div>';
@@ -1086,7 +1098,7 @@ function delMatches(ids){
   Promise.all(ids.map(function(id){return db.collection('matches').doc(id).delete()})).then(function(){delSel={};confirmKey='';render()},function(){confirmKey='';render()});
 }
 function bulkIds(kind){
-  return allMatches().filter(function(m){return m.saved&&(kind==='all'||(kind==='practice'&&isPractice(m.doc))||(kind==='summary'&&m.doc.summary)||(kind==='sel'&&delSel[m.id]))}).map(function(m){return m.id});
+  return everyMatch().filter(function(m){return m.saved&&(kind==='all'||(kind==='practice'&&isPractice(m.doc))||(kind==='summary'&&m.doc.summary)||(kind==='sel'&&delSel[m.id]))}).map(function(m){return m.id});
 }
 function confirmBtn(key,label,ids,danger){
   var on=confirmKey===key;
@@ -1101,7 +1113,7 @@ function dataPanel(){
   return '<div class="panel"><h2>Clear logs</h2><p class="note" style="margin-top:0">Deleting removes the stored match for everyone and cannot be undone. Events keep their name but lose the deleted matches. Each button asks you to click twice.</p><div style="display:flex;gap:10px;flex-wrap:wrap">'+confirmBtn('practice','Delete practice matches vs bots',pr)+confirmBtn('summary','Delete imported summaries',su)+confirmBtn('all','Delete ALL matches',al,true)+'</div><p class="note">Pick individual matches on the Matches tab.</p></div>';
 }
 var bugFilter='active',bugMsg='',lastBugs=[],lastBugPanel='',lastBugCount=0;
-function bugNewestBuild(){var n=null;allMatches().forEach(function(m){if(m.doc.ledger&&(!n||playedAt(m.doc)>playedAt(n.doc)))n=m});return n?((n.doc.meta||{}).skillsHash||''):''}
+function bugNewestBuild(){var n=null;everyMatch().forEach(function(m){if(m.doc.ledger&&(!n||playedAt(m.doc)>playedAt(n.doc)))n=m});return n?((n.doc.meta||{}).skillsHash||''):''}
 function bugWho(a){var u=[];a.forEach(function(x){if(u.indexOf(x)<0)u.push(x)});return u.slice(0,6).join(', ')+(u.length>6?' and '+(u.length-6)+' more':'')}
 function copyBugs(){
   var L=lastBugs.filter(function(b){return b.s==='devs'});
@@ -1114,7 +1126,7 @@ function viewAdmin(){
   lastBugPanel='';
   var h='<div><h1>Admin</h1><p class="sub">Match handling, uploads, accounts, and automatic checks that find problems in the logs, the game and the balance '+statusLine()+'</p></div>';
   if(!canDesign)return h+empty('Designers and admins only','This page is for designers and admins.');
-  var ms=allMatches();if(!ms.length)return adminShell(h,empty('No matches yet','Upload combat logs in the Upload section.'),'',0);
+  var ms=everyMatch().filter(bfOk);if(!ms.length)return adminShell(h,empty(bfKey?'No matches in this build':'No matches yet','Upload combat logs in the Upload section.'),'',0);
   var T={matches:ms.length,mins:0,rows:0,dmg:0,kills:0,deaths:0,boss:0,pts:0,relics:0,humans:{},bots:{}};
   var teams={},cls={},bl=[],sizeMax=0;
   var EXPECT_COLS=['Time','Type','Source','Target','Message','Effective','TeamIndex','Killer','Victim','Ability','Critical','MobCampTier','PlayersPresent','ScoreAwarded'],
@@ -1333,7 +1345,7 @@ function schLoad(force){
 function schSave(base){base.updated=Date.now();return api('PUT','/api/doc?c=schema&id=baseline',base).then(function(){SCH.base=base})}
 /* the baseline is built from every raw ledger on the site, oldest first */
 function schBuild(){
-  var ms=allMatches().slice().sort(function(a,b){return playedAt(a.doc)-playedAt(b.doc)}).map(function(m){return m.id}),base=schNew(),rec=fmtNew(),i=0,got=0;
+  var ms=everyMatch().slice().sort(function(a,b){return playedAt(a.doc)-playedAt(b.doc)}).map(function(m){return m.id}),base=schNew(),rec=fmtNew(),i=0,got=0;
   SCH.msg='';SCH.busy='Reading raw ledgers 0 of '+ms.length;render();
   (function next(){
     if(i>=ms.length){
@@ -1478,7 +1490,7 @@ function jvResHtml(){
 function jvDraw(){var t=document.getElementById('jvTree'),q=document.getElementById('jvRes');if(t)t.innerHTML=jvTreeHtml();if(q)q.innerHTML=jvResHtml()}
 function jvLoad(data,name,size){jv.data=data;jv.name=name;jv.size=size||0;jv.err='';jv.q='';jv.open={'':1};jv.more={};jv.busy='';jv.f='all';jv.use=jvProbe(data);jv.diff=null;render();jvDiffLoad(data)}
 function jsonReader(){
-  var ms=allMatches(),top=jv.data&&typeof jv.data==='object'?Object.keys(jv.data):[];
+  var ms=everyMatch(),top=jv.data&&typeof jv.data==='object'?Object.keys(jv.data):[];
   return '<div class="panel"><h2>JSON reader</h2><p class="note" style="margin:0 0 10px">Open a match ledger from a file, or look inside a stored match. Click an arrow to open a branch. Long lists show the first 100 and load more on request.</p>'+
     '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><label class="btn ghost" style="cursor:pointer">Open a JSON file<input type="file" id="jvFile" accept=".json,application/json" style="display:none"></label>'+
     (ms.length?'<select id="jvMatch" aria-label="Stored match" style="background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:8px 10px;font:inherit"><option value="">Stored match…</option>'+ms.map(function(m){return '<option value="'+esc(m.id)+'">'+esc(mtitle(m.doc))+'</option>'}).join('')+'</select>'+(canEdit?'<button class="btn ghost" type="button" data-jvsrc="raw">Raw ledger</button>':'')+'<button class="btn ghost" type="button" data-jvsrc="doc">Stored data</button>':'')+
@@ -1496,7 +1508,7 @@ document.addEventListener('click',function(e){
   var g=e.target.closest&&e.target.closest('[data-jvg]');if(g){var parts=g.dataset.jvg.split(JVS),acc='';jv.open[''] =1;if(jv.f!=='all'){jv.f='all';render()}parts.slice(1,-1).forEach(function(x){acc+=JVS+x;jv.open[acc]=1;var par=jvGet(acc.split(JVS).slice(0,-1).join(JVS));if(Array.isArray(par)&&/^\d+$/.test(x)&&+x>=(jv.more[acc.split(JVS).slice(0,-1).join(JVS)]||100))jv.more[acc.split(JVS).slice(0,-1).join(JVS)]=+x+1});jvDraw();return}
   var a=e.target.closest&&e.target.closest('[data-jvall]');if(a){jv.open={'':1};if(a.dataset.jvall==='1'&&jv.data&&typeof jv.data==='object')Object.keys(jv.data).forEach(function(k){jv.open[JVS+k]=1});jvDraw();return}
   var sc=e.target.closest&&e.target.closest('[data-jvsrc]');if(sc){var sel=document.getElementById('jvMatch'),id=sel&&sel.value;if(!id){jv.err='Pick a stored match first.';render();return}
-    var mm=allMatches().filter(function(x){return x.id===id})[0];if(!mm)return;
+    var mm=everyMatch().filter(function(x){return x.id===id})[0];if(!mm)return;
     if(sc.dataset.jvsrc==='doc'){var txt=JSON.stringify(mm.doc);jvLoad(JSON.parse(txt),mtitle(mm.doc)+' (stored data)',txt.length);return}
     jv.busy='Loading the raw ledger...';jv.err='';render();
     api('GET','/api/doc?c=raw&id='+encodeURIComponent(id)).then(function(r){jvLoad(r.ledger,(r.fileName||mtitle(mm.doc))+' (raw ledger)',JSON.stringify(r.ledger).length)},function(err){jv.busy='';jv.err=err&&err.code==='not_found'?'No raw ledger was kept for this match. It was saved before raw ledgers were kept. Re-upload the original file, or open its stored data.':'Could not load the raw ledger: '+(err&&err.code||'error');render()});
@@ -1510,7 +1522,7 @@ function adminShell(h,ov,bg,nb){
   var secs=[['overview','Overview'],['bugs','Bugs &amp; checks'+(nb?' ('+nb+')':'')],['json','JSON reader']];
   if(canEdit)secs.push(['handler','Match handler'],['upload','Upload'],['accounts','Accounts']);
   var sn=subTabs('admin',secs);
-  return h+sn.h+(sn.cur==='json'?jsonReader():sn.cur==='bugs'?bg:sn.cur==='handler'&&canEdit?matchHandler():sn.cur==='upload'&&canEdit?viewUpload():sn.cur==='accounts'&&canEdit?accountsPanel():ov);
+  return h+sn.h+(sn.cur==='overview'||sn.cur==='bugs'?bfBar():'')+(sn.cur==='json'?jsonReader():sn.cur==='bugs'?bg:sn.cur==='handler'&&canEdit?matchHandler():sn.cur==='upload'&&canEdit?viewUpload():sn.cur==='accounts'&&canEdit?accountsPanel():ov);
 }
 /* Match handler: pick matches, delete one (click twice), or make an event from the picked ones and publish it in one step */
 var evModal=null;
@@ -1524,7 +1536,7 @@ function evDelete(id){
   (pubIds[id]?api('POST','/api/admin',{op:'unpublish',id:id}).then(go,go):go()).then(function(){confirmKey='';adminData=null;return refresh(true)},function(){confirmKey='';render()});
 }
 function matchHandler(){
-  var ms=allMatches().filter(function(m){return m.saved}).sort(function(a,b){return playedAt(b.doc)-playedAt(a.doc)||(b.doc.uploadedAt||0)-(a.doc.uploadedAt||0)});
+  var ms=everyMatch().filter(function(m){return m.saved}).sort(function(a,b){return playedAt(b.doc)-playedAt(a.doc)||(b.doc.uploadedAt||0)-(a.doc.uploadedAt||0)});
   var n=ms.filter(function(m){return delSel[m.id]}).length,gh='style="background:transparent;color:var(--fg);border:1px solid var(--line)"';
   var h='<div class="panel"><h2>Match handler</h2><p class="note" style="margin-top:0">Tick matches, then create an event from them or export them. Delete removes a match for everyone and cannot be undone, so the button asks you to click twice.</p>'+
     '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><button class="btn" type="button" data-delall="1" '+gh+'>Select all</button><button class="btn" type="button" data-delall="0" '+gh+'>Clear selection</button>'+
@@ -1542,14 +1554,14 @@ function matchHandler(){
 }
 function evModalHtml(){
   if(!evModal)return '';
-  var n=allMatches().filter(function(m){return m.saved&&delSel[m.id]}).length;
+  var n=everyMatch().filter(function(m){return m.saved&&delSel[m.id]}).length;
   return '<div class="modalbg" data-evmbg="1"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="evmT"><h2 id="evmT">New event</h2><p class="note" style="margin:0 0 12px">'+n+' match'+(n===1?'':'es')+' selected.</p>'+
     '<label class="note" for="evmName" style="display:block;margin:0 0 4px">Event name</label><input id="evmName" type="text" maxlength="80" placeholder="Name, for example Test night Nov 9" value="'+esc(evModal.name)+'" style="width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--fg);font:inherit">'+
     (evModal.err?'<p class="note err" role="alert">'+esc(evModal.err)+'</p>':'')+
     '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px"><button class="btn" type="button" data-evmgo="pub"'+(evModal.busy?' disabled':'')+'>'+(evModal.busy?'Working...':'Publish')+'</button><button class="btn ghost" type="button" data-evmgo="draft"'+(evModal.busy?' disabled':'')+'>Save without publishing</button><button class="btn ghost" type="button" data-evmclose="1">Cancel</button></div></div></div>';
 }
 function evmCreate(pub){
-  var ids=allMatches().filter(function(m){return m.saved&&delSel[m.id]}).map(function(m){return m.id});
+  var ids=everyMatch().filter(function(m){return m.saved&&delSel[m.id]}).map(function(m){return m.id});
   if(!db||!ids.length||!evModal||evModal.busy)return;
   evModal.busy=true;evModal.err='';render();
   var id='s'+Date.now().toString(36),doc={name:(evModal.name||'').trim()||('Event '+new Date().toLocaleDateString()),matchIds:ids,createdAt:Date.now()};
@@ -1586,7 +1598,7 @@ function mcCard(x){
   return h+'</div></div>';
 }
 function viewMatches(){
-  var all=allMatches().sort(function(a,b){return playedAt(b.doc)-playedAt(a.doc)||(b.doc.uploadedAt||0)-(a.doc.uploadedAt||0)});
+  var all=everyMatch().sort(function(a,b){return playedAt(b.doc)-playedAt(a.doc)||(b.doc.uploadedAt||0)-(a.doc.uploadedAt||0)});
   var h='<div><h1>Matches</h1>';
   if(!all.length)return h+'<p class="sub">0 stored '+statusLine()+'</p></div>'+empty('No matches yet','Matches appear here once an admin uploads them.');
   var claim=me&&me.claim?me.claim:'',q=mf.q.trim().toLowerCase(),infos=all.map(mcInfo),hiddenPrac=0;
@@ -1795,8 +1807,8 @@ function statCardPng(d,acc){
 function cardMsg(t){var el=document.getElementById('cardMsg');if(el){el.textContent=t;setTimeout(function(){if(el.textContent===t)el.textContent=''},4000)}}
 document.addEventListener('click',function(e){
   var b=e.target.closest&&e.target.closest('[data-card]');if(!b)return;
-  var h=location.hash.replace('#',''),id=h.indexOf('match-')===0?h.slice(6):'',m=allMatches().filter(function(x){return x.id===id})[0];
-  if(!m&&(h.indexOf('event-')===0||h.indexOf('snapshot-')===0)){var sid=h.slice(h.indexOf('-')+1),sn=snaps[sid];if(sn){var evm=(sn.matchIds||[]).map(function(k){return allMatches().filter(function(x){return x.id===k})[0]}).filter(Boolean);if(evm.length)m={doc:evMergedDoc(evm,sn.name),acc:cardAcc(evm,true)}}}
+  var h=location.hash.replace('#',''),id=h.indexOf('match-')===0?h.slice(6):'',m=everyMatch().filter(function(x){return x.id===id})[0];
+  if(!m&&(h.indexOf('event-')===0||h.indexOf('snapshot-')===0)){var sid=h.slice(h.indexOf('-')+1),sn=snaps[sid];if(sn){var evm=(sn.matchIds||[]).map(function(k){return everyMatch().filter(function(x){return x.id===k})[0]}).filter(Boolean);if(evm.length)m={doc:evMergedDoc(evm,sn.name),acc:cardAcc(evm,true)}}}
   if(!m)return;
   var mode=b.dataset.card;
   statCardPng(m.doc,m.acc||cardAcc([m],false)).then(function(blob){
@@ -1849,7 +1861,7 @@ function ovTxt(v){return v==null?'-':num(v,0)+'%'}
 function itemOv(p){var a=0,u=0,h=0;(p.it||[]).forEach(function(x){u+=x.u;h+=x.h;a+=x.o});return {uses:u,health:h,over:a,pct:h+a>0?100*a/(h+a):null}}
 function skName(n){return String(n||'').split('.').pop()||'?'}
 function skillAgg(){
-  var ms=allMatches().filter(function(m){return skFilter.match==='all'||m.id===skFilter.match}),A={},users={},nm=0,nps=0;
+  var ms=everyMatch().filter(function(m){return skFilter.match==='all'||m.id===skFilter.match}),A={},users={},nm=0,nps=0;
   ms.forEach(function(m){var any=false;(m.doc.players||[]).forEach(function(p){
     if(hideBots&&isBot(p.name))return;if(skFilter.cls.length&&skFilter.cls.indexOf(p.cls)<0)return;
     (p.skills||[]).forEach(function(k){any=true;var ky=skFilter.grp==='class'?(p.cls||'')+'|'+k.skill:k.skill;var a=A[ky]||(A[ky]={key:ky,pd:{},skill:k.skill,name:skName(k.skill),casts:0,hitsP:0,hitsE:0,crits:0,kills:0,dp:0,de:0,mit:0,pre:0,pl:{},cl:{},he:0,ho:0,hn:0});a.cl[p.cls||'']=(a.cl[p.cls||'']||0)+1;var hk=k.he||{};a.he+=hk.e||0;a.ho+=hk.o||0;a.hn+=hk.n||0;
@@ -1915,7 +1927,7 @@ document.addEventListener('click',function(e){
 document.addEventListener('toggle',function(e){var d=e.target;if(d&&d.classList&&d.classList.contains('skgrp'))skFilter.o[d.dataset.skgCls]=d.open},true);
 function viewSkills(){
   if(!canDesign)return '<div><h1>Skills</h1></div>'+empty('Designers and admins only','Skill breakdowns are for designers and admins.');
-  var ms=allMatches();
+  var ms=everyMatch();
   if(!ms.length)return '<div><h1>Skills</h1></div>'+empty('No matches yet','Upload a match to see skill usage.');
   var G=skillAgg(),rows=G.rows;
   var h='<div class="bar"><div><h1>Skills</h1><p class="sub">'+G.matches+' of '+G.all+' match'+(G.all===1?'':'es')+' with skill data. Casts, hits, crits, kills and damage per skill, from the combat ledger.</p></div>'+
@@ -2035,7 +2047,7 @@ function viewBreakdown(id,d){
 }
 document.addEventListener('change',function(e){var id=e.target.id;if(id==='bkPlayer'){bk.player=e.target.value;render()}else if(id==='bkMetric'){bk.metric=e.target.value;render()}});
 function viewMatch(id){
-  var m=allMatches().filter(function(x){return x.id===id})[0];
+  var m=everyMatch().filter(function(x){return x.id===id})[0];
   if(!m)return '<div><h1>Match not found</h1></div>'+empty('No match with that id','It may have been removed, or it is still loading.');
   var d=m.doc;
   var AN=analyze(d);
@@ -2819,7 +2831,7 @@ document.addEventListener('click',function(e){
       mapS.ph=Math.min(mx,mapS.ph+st);var sl=document.getElementById('mapPh');if(sl)sl.value=mapS.ph;mapSched();
       if(mapS.ph>=mx){clearInterval(mapS.timer);mapS.timer=0;var b=document.querySelector('[data-mapplay]');if(b)b.textContent='Play'}},120);return}
   var r=e.target.closest&&e.target.closest('[data-mapev]');
-  if(r){var p=r.dataset.mapev.split(':'),m=allMatches().filter(function(x){return x.id===p[0]})[0],ev=m&&m.doc.log&&m.doc.log[+p[1]];
+  if(r){var p=r.dataset.mapev.split(':'),m=everyMatch().filter(function(x){return x.id===p[0]})[0],ev=m&&m.doc.log&&m.doc.log[+p[1]];
     if(ev){mapS.focus={x:ev.x,y:ev.y};if(mapS.match!=='all'){mapS.ph=ev.t;var s=document.getElementById('mapPh');if(s)s.value=ev.t}mapUpdate();var cv=document.getElementById('mapCv');if(cv&&cv.scrollIntoView)cv.scrollIntoView({block:'nearest',behavior:'smooth'})}return}
   var tr=e.target.closest&&e.target.closest('.mtr');
   if(tr){var rc=tr.getBoundingClientRect(),T=+tr.dataset.dur||1;mapS.ph=Math.round(T*Math.max(0,Math.min(1,(e.clientX-rc.left)/rc.width)));var s2=document.getElementById('mapPh');if(s2)s2.value=mapS.ph;mapUpdate();return}
@@ -2829,8 +2841,8 @@ document.addEventListener('keydown',function(e){if(e.key==='Enter'){var g=e.targ
 
 /* Designer: the balance and bug-hunting tools over many matches at once. Graphs run the same explorer as an event page, over every ledger match or a chosen set. Skills sits here too. */
 var dz={scope:'all',pick:{},ba:'',bb:'',sc:'',sf:false,su:false,more:false,sb:'',ex:{},dt:'all',sk:'',co:{},xs:true};
-function dzMatches(){
-  var all=allMatches().filter(function(m){return m.doc.ledger&&!(ratedOnly&&isPractice(m.doc))}).sort(function(a,b){return playedAt(b.doc)-playedAt(a.doc)});
+function dzMatches(allBuilds){
+  var all=everyMatch().filter(function(m){return m.doc.ledger&&(allBuilds||bfOk(m))&&!(ratedOnly&&isPractice(m.doc))}).sort(function(a,b){return playedAt(b.doc)-playedAt(a.doc)});
   var sel=dz.scope==='5'?all.slice(0,5):dz.scope==='10'?all.slice(0,10):dz.scope==='pick'?all.filter(function(m){return dz.pick[m.id]}):all;
   return {all:all,sel:sel};
 }
@@ -2838,7 +2850,7 @@ function dzMatches(){
    A build is the skills hash the game writes into each ledger, so matches played on the same skill data group together. */
 var DZCL=['Assassin','Hunter','Mystic','Priest','Warrior'];
 function dzBuilds(){
-  var G={};dzMatches().all.forEach(function(m){var d=m.doc,mt=d.meta||{},k=mt.skillsHash||'unknown',t=playedAt(d);
+  var G={};dzMatches(true).all.forEach(function(m){var d=m.doc,mt=d.meta||{},k=mt.skillsHash||'unknown',t=playedAt(d);
     var g=G[k]||(G[k]={key:k,project:mt.project||'',build:mt.build||'',engine:mt.engine||'',rows:mt.skillsRows,docs:[],ids:[],t0:t,t1:t,players:0});g.ids.push(m.id);
     g.docs.push(d);if(t<g.t0)g.t0=t;if(t>g.t1)g.t1=t;g.players+=(d.players||[]).filter(function(p){return !isBot(p.name)}).length});
   return Object.keys(G).map(function(k){return G[k]}).sort(function(a,b){return a.t0-b.t0});
@@ -2979,7 +2991,7 @@ function dzTrackHtml(o,tot){
   '</div>';
 }
 function dzScopeBar(G){
-  return '<div class="panel" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><strong>Matches</strong><span class="gxchips" style="margin:0" role="group" aria-label="Which matches">'+
+  return '<div class="panel" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><strong>Matches</strong>'+bfSelect()+'<span class="gxchips" style="margin:0" role="group" aria-label="Which matches">'+
     [['all','All ('+G.all.length+')'],['5','Last 5'],['10','Last 10'],['pick','Choose']].map(function(x){return '<button type="button" data-dz="'+x[0]+'" aria-pressed="'+(dz.scope===x[0])+'">'+x[1]+'</button>'}).join('')+'</span>'+
     '<span class="note" style="margin:0">'+G.sel.length+' of '+G.all.length+' counted'+(ratedOnly?', practice matches left out':'')+'.</span>'+dzXsBox(G.sel.map(function(m){return m.doc}))+
     (dz.scope==='pick'?'<div style="flex:1 1 100%;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:2px 16px">'+G.all.map(function(m){return '<label class="chk"><input type="checkbox" data-dzp="'+esc(m.id)+'"'+(dz.pick[m.id]?' checked':'')+'> '+esc(mtitle(m.doc))+'</label>'}).join('')+'</div>':'')+'</div>';
@@ -2995,8 +3007,9 @@ function viewDzBuilds(){
   var B=dzBuilds(),h='';
   if(!B.length)return empty('No ledger matches yet','Upload Match Ledger files to compare builds.');
   h+='<div class="panel"><h2>Builds</h2><p class="note" style="margin-top:0">A build is the skills hash the game writes into every ledger, so matches played on the same skill data are grouped together. Upload matches from a new build and it appears here as its own row.</p>'+
-    table('dzb',[{k:'key',l:'Skills hash',f:function(r){return esc(r.key==='unknown'?'Not recorded':r.key)}},{k:'rows',l:'Skill rows',f:function(r){return r.rows===''||r.rows==null?'-':num(r.rows)}},{k:'gb',l:'Game build',f:function(r){return esc((r.project||'?')+(r.build?' '+r.build:''))}},{k:'matches',l:'Matches',f:function(r){return num(r.matches)}},{k:'players',l:'Player entries',f:function(r){return num(r.players)}},{k:'t0',l:'First match',f:function(r){return esc(new Date(r.t0).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}))}},{k:'t1',l:'Last match',f:function(r){return esc(new Date(r.t1).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}))}}],
-      B.map(function(g){return {key:g.key,rows:g.rows,project:g.project,build:g.build,gb:(g.project||'')+g.build,matches:g.docs.length,players:g.players,t0:g.t0,t1:g.t1}}))+'</div>';
+    '<p class="note">In stats decides whether a build counts in the public stats (rankings, classes, factions, the map). A build switched Off is still here for balance work: this tab, Skill balance, the Scorecard and Bugs &amp; checks always use every build, and its matches stay open from their links. A build uploaded later starts On.'+(canEdit?' <button class="btn ghost" type="button" data-bldnew="1">Newest build only</button> <button class="btn ghost" type="button" data-bldall="1">All builds</button>':'')+'</p>'+
+    table('dzb',[{k:'key',l:'Skills hash',f:function(r){return esc(r.key==='unknown'?'Not recorded':r.key)}},{k:'rows',l:'Skill rows',f:function(r){return r.rows===''||r.rows==null?'-':num(r.rows)}},{k:'gb',l:'Game build',f:function(r){return esc((r.project||'?')+(r.build?' '+r.build:''))}},{k:'on',l:'In stats',f:function(r){var on=!offBuilds[r.key];return canEdit?'<label class="chk" style="margin:0"><input type="checkbox" data-bld="'+esc(r.key)+'"'+(on?' checked':'')+' aria-label="Count this build in the stats"> '+(on?'On':'Off')+'</label>':'<span class="tag '+(on?'ok':'')+'">'+(on?'On':'Off')+'</span>'}},{k:'matches',l:'Matches',f:function(r){return num(r.matches)}},{k:'players',l:'Player entries',f:function(r){return num(r.players)}},{k:'t0',l:'First match',f:function(r){return esc(new Date(r.t0).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}))}},{k:'t1',l:'Last match',f:function(r){return esc(new Date(r.t1).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}))}}],
+      B.map(function(g){return {key:g.key,on:offBuilds[g.key]?0:1,rows:g.rows,project:g.project,build:g.build,gb:(g.project||'')+g.build,matches:g.docs.length,players:g.players,t0:g.t0,t1:g.t1}}))+'</div>';
   var ia=Math.max(0,B.length-2),ib=B.length-1,ka=dz.ba&&B.some(function(g){return g.key===dz.ba})?dz.ba:B[ia].key,kb=dz.bb&&B.some(function(g){return g.key===dz.bb})?dz.bb:B[ib].key;
   var ga=B.filter(function(g){return g.key===ka})[0],gb=B.filter(function(g){return g.key===kb})[0];
   var ca=dzClass(ga.docs),cb=dzClass(gb.docs);
@@ -3051,6 +3064,148 @@ function viewDzSkills(G){
   h+='<div class="panel">'+
     (Math.abs(ag.med-1)>0.05?'<p class="note" style="margin:0 0 8px">Applied cooldowns run at about '+num(100*ag.med,0)+'% of authored across skills, which looks like a game-wide cooldown reduction. Only skills that are off that ratio are flagged.</p>':'')+
     '<details style="margin-top:8px"><summary class="note" style="cursor:pointer;margin:0">How to read this table</summary><p class="note">Casts/min is per player using the skill. Cooldown is the average seconds per use, with the authored value in brackets when it differs. Cost/cast is resource spent. Class share is the skill share of its class damage. Flags: cooldown ratio 12% or more off the typical ratio, under 60% of casts committing (skills that never report a commit are skipped), a skillshot with no attempts, accuracy under 30%, mostly overheal, or over half of a class damage. Small samples swing wildly, so check Players before trusting a row.</p></details></div>';
+  return h;
+}
+/* ---- Mobs: the mob system tables of a build, as reference and as checks ----
+   An admin drops the exported JSON files (the DT_MobCamp tables, DT_AeonStats_Npc, the DA_MobCamp profile and the EQS queries) on the Mobs tab.
+   They are kept in one document, schema/mobs, which designers can read. Each file replaces what it names, so one table can be updated alone. */
+var MB={doc:undefined,p:null,msg:'',busy:false};
+var MBK={arch:'ArchetypeTable',camp:'CampTable',beh:'BehaviorTable',thr:'ThreatTable',comp:'CompositionTable',abil:'AbilityLoadoutTable',rew:'RewardsTable'};
+var MBD={arch:'DT_MobCamp_Archetype',camp:'DT_MobCamp_Camp',beh:'DT_MobCamp_Behavior',thr:'DT_MobCamp_Threat',comp:'DT_MobCamp_Composition',abil:'DT_MobCamp_Abilities',rew:'DT_MobCamp_Rewards'};
+var MBT=['Easy','Med','Hard','MidBoss'];
+function mbNew(){return {v:1,updated:0,files:{},t:{},q:{},prof:null}}
+function mbLoad(force){
+  if(!canDesign)return Promise.resolve(null);
+  if(!force&&MB.doc!==undefined)return Promise.resolve(MB.doc);
+  if(MB.p&&!force)return MB.p;
+  MB.p=api('GET','/api/doc?c=schema&id=mobs').then(function(d){MB.doc=d&&d.t?d:mbNew();MB.p=null;return MB.doc},function(){MB.doc=mbNew();MB.p=null;return MB.doc});
+  return MB.p;
+}
+function mbSave(d){d.updated=Date.now();return api('PUT','/api/doc?c=schema&id=mobs',d).then(function(){MB.doc=d})}
+function mbLast(p){return String(p||'').split('.').pop().replace(/_C$/,'')}
+function mbNone(v){return v==null||v===''||v==='None'}
+function mbBlank(x){return !x||!x.AssetPathName}
+function mbEnum(v){return String(v==null?'':v).split('::').pop()}
+function mbM(cm){return num(cm/100,1)+' m'}
+function mbRows(d,k){var n=(d.prof&&d.prof[MBK[k]])||MBD[k],t=d.t[n];return t?t.rows:null}
+function mbStats(d){var a=mbRows(d,'arch'),n='DT_AeonStats_Npc';if(a)Object.keys(a).some(function(k){var p=a[k].ClassStatsTable&&a[k].ClassStatsTable.AssetPathName;if(p){n=mbLast(p);return true}return false});var t=d.t[n];return t?t.rows:null}
+/* one exported file: a DataTable, the profile that names the tables, or an EQS query */
+function mbParse(d,j,fname){
+  var arr=Array.isArray(j)?j:[j],what=[];
+  arr.forEach(function(o){
+    if(!o||typeof o!=='object')return;
+    if(o.Type==='DataTable'&&o.Rows&&typeof o.Rows==='object'){d.t[o.Name]={rows:o.Rows};what.push('table '+o.Name+' ('+Object.keys(o.Rows).length+' rows)')}
+    else if(o.Type==='AeonMobCampProfile'&&o.Properties){var pr={};Object.keys(MBK).forEach(function(k){var v=o.Properties[MBK[k]];if(v&&v.AssetPathName)pr[MBK[k]]=mbLast(v.AssetPathName)});d.prof=pr;what.push('profile '+o.Name)}
+    else if(o.Type==='EnvQuery'){
+      d.q[o.Name]={gen:arr.filter(function(x){return x&&/^[A-Za-z]*EnvQueryGenerator/.test(x.Type||'')}).map(function(x){return x.Type}),
+        tests:arr.filter(function(x){return x&&/EnvQueryTest/.test(x.Type||'')}).map(function(x){return x.Type}),
+        params:arr.filter(function(x){return x&&x.Type==='AIDataProvider_QueryParams'&&x.Properties}).map(function(x){return x.Properties.ParamName})};
+      what.push('query '+o.Name)}});
+  if(!what.length)return null;
+  d.files[fname]={at:Date.now(),what:what.join(', ')};return what;
+}
+function mbIngest(files){
+  MB.msg='Reading '+files.length+' file'+(files.length===1?'':'s');MB.busy=true;render();
+  mbLoad(true).then(function(d0){
+    var d=d0&&d0.t?d0:mbNew(),bad=[],ok=0;
+    return Promise.all(files.map(function(f){return f.text().then(function(tx){
+      var j;try{j=JSON.parse(tx.replace(/^\ufeff/,''))}catch(x){bad.push(f.name+' is not valid JSON');return}
+      if(mbParse(d,j,f.name))ok++;else bad.push(f.name+' is not a mob table, profile or query')})})).then(function(){
+        if(!ok){MB.busy=false;MB.msg=bad.join('. ')||'Nothing to read.';render();return}
+        return mbSave(d).then(function(){MB.busy=false;MB.msg='Saved '+ok+' file'+(ok===1?'':'s')+'.'+(bad.length?' Skipped: '+bad.join('. ')+'.':'');render()},function(err){MB.busy=false;MB.msg='Could not save: '+(err&&err.code||'error');render()})})});
+}
+document.addEventListener('change',function(e){var t=e.target;if(!t||t.id!=='mbFile'||!t.files||!t.files.length)return;mbIngest([].slice.call(t.files));t.value=''});
+document.addEventListener('click',function(e){var t=e.target;if(!t||!t.closest||!t.closest('[data-mbclear]'))return;
+  if(!confirm('Remove all stored mob data? It can be uploaded again.'))return;
+  api('DELETE','/api/doc?c=schema&id=mobs').then(function(){MB.doc=mbNew();MB.msg='Mob data removed.';render()},function(){MB.msg='Could not remove it.';render()})});
+/* which rows of a loadout can a mob actually use, and how often. Type weight is the highest Weight among a type's rows, then rows share it by their own Weight. Only worked out when every row shares a Priority. */
+function mbUsable(Ab,key){return Object.keys(Ab).filter(function(k){var r=Ab[k];return r.ArchetypeKey===key&&r.bEnabled&&!mbBlank(r.Ability)})}
+function mbChances(Ab,key){
+  var ks=mbUsable(Ab,key).filter(function(k){return !Ab[k].bSelfTarget});if(!ks.length)return {};
+  var pri=Ab[ks[0]].Priority,same=ks.every(function(k){return Ab[k].Priority===pri});if(!same)return null;
+  var ty={};ks.forEach(function(k){var r=Ab[k],t=mbNone(r.AttackTypeKey)?'#'+k:r.AttackTypeKey,o=ty[t]||(ty[t]={w:0,s:0,rows:[]});o.w=Math.max(o.w,r.Weight);o.s+=r.Weight;o.rows.push(k)});
+  var tot=0;Object.keys(ty).forEach(function(t){tot+=ty[t].w});var out={};
+  Object.keys(ty).forEach(function(t){ty[t].rows.forEach(function(k){out[k]=tot&&ty[t].s?100*ty[t].w/tot*Ab[k].Weight/ty[t].s:0})});
+  return out;
+}
+function mbChecks(d){
+  var out=[],A=mbRows(d,'arch'),C=mbRows(d,'camp'),B=mbRows(d,'beh'),Th=mbRows(d,'thr'),Co=mbRows(d,'comp'),Ab=mbRows(d,'abil'),R=mbRows(d,'rew'),S=mbStats(d);
+  var K=function(o){return o?Object.keys(o):[]};
+  function add(sev,id,title,detail,items){if(items.length)out.push({sev:sev,id:id,title:title,detail:detail,items:items})}
+  var tiers={};K(C).forEach(function(k){tiers[C[k].CampTier||k]=C[k]});
+  var loads={};K(Ab).forEach(function(k){if(!mbNone(Ab[k].ArchetypeKey))loads[Ab[k].ArchetypeKey]=1});
+  var ref=[];
+  K(A).forEach(function(k){var a=A[k];
+    if(B&&!B[a.BehaviorRow])ref.push('Archetype '+k+': behavior row '+a.BehaviorRow+' does not exist');
+    if(Th&&!Th[a.ThreatRow])ref.push('Archetype '+k+': threat row '+a.ThreatRow+' does not exist');
+    if(Ab&&!loads[a.AbilityLoadoutArchetype])ref.push('Archetype '+k+': no ability rows for loadout '+a.AbilityLoadoutArchetype);
+    if(S&&!K(S).some(function(x){return x.indexOf(a.StatsSourceId+'_')===0}))ref.push('Archetype '+k+': no stat rows for '+a.StatsSourceId)});
+  K(Co).forEach(function(k){var c=Co[k];if(C&&!tiers[c.CampTier])ref.push('Composition '+k+': camp tier '+c.CampTier+' does not exist');if(A&&!A[c.MobArchetypeRow])ref.push('Composition '+k+': archetype '+c.MobArchetypeRow+' does not exist')});
+  K(R).forEach(function(k){if(C&&!tiers[R[k].EncounterId])ref.push('Reward '+k+': encounter '+R[k].EncounterId+' is not a camp tier')});
+  add('High','ref','A table points at a row that does not exist','The name is written in one table and missing from the one it points at, so the game cannot find it.',ref);
+  var used={};K(Co).forEach(function(k){var c=Co[k];(used[c.MobArchetypeRow]=used[c.MobArchetypeRow]||[]).push(k+' x'+(c.Count||1))});
+  if(A&&Ab){var cant=[],unused=[];K(A).forEach(function(k){if(mbUsable(Ab,A[k].AbilityLoadoutArchetype).length)return;var t=k+' (loadout '+A[k].AbilityLoadoutArchetype+')';if(used[k])cant.push(t+', spawned by '+used[k].join(', '));else unused.push(t)});
+    add('High','noatk','A mob that spawns but cannot attack','Every ability row of its loadout is disabled or has no ability set, so the mob stands there. It is placed in a camp, so players will meet it.',cant);
+    add('Low','noatk2','An archetype with no usable attack (not spawned yet)','No camp uses it, so nothing breaks today, but it cannot fight until a row is enabled and given an ability.',unused)}
+  var emp=[];K(Ab).forEach(function(k){var r=Ab[k];if(r.bEnabled&&mbBlank(r.Ability))emp.push(k+' ('+r.ArchetypeKey+')')});
+  add('Medium','emptyab','An ability row is enabled but has no ability','The row is switched on and the Ability field is blank, so it is skipped when the mob picks an attack.',emp);
+  var rw=[];K(R).forEach(function(k){var x=R[k],kind=mbEnum(x.RewardKind);
+    if(kind==='Score'&&mbNone(x.ScorePointType))rw.push(k+': Score reward with ScorePointType '+(x.ScorePointType||'empty')+', so it may grant no points');
+    if(/Boon/.test(kind)&&mbBlank(x.BoonEffect))rw.push(k+': '+kind+' with no BoonEffect');
+    if(kind==='WorldPickupItem'&&mbNone(x.ItemRowName))rw.push(k+': item pickup with ItemRowName '+(x.ItemRowName||'empty'))});
+  add('Medium','rew','A reward row names nothing to give','The row exists, but the thing it should grant (the point type, the boon effect or the item) is not filled in, so a kill gives nothing for it.',rw);
+  var gap=[];if(C&&Co)Object.keys(tiers).forEach(function(t){if(!K(Co).some(function(k){return Co[k].CampTier===t}))gap.push('Camp tier '+t+' has no composition rows, so nothing spawns in it')});
+  if(C&&R)Object.keys(tiers).forEach(function(t){if(!K(R).some(function(k){return R[k].EncounterId===t}))gap.push('Camp tier '+t+' has no reward rows')});
+  add('Low','gap','A camp tier is missing a table row','Fine for a tier that is placed by hand, such as a commander. Otherwise a kill in it gives nothing, or it never spawns.',gap);
+  var ord=[];if(S){var st={};K(S).forEach(function(k){var m=/^Npc(Easy|Med|Hard|MidBoss)_(.+)$/.exec(k);if(m)(st[m[2]]=st[m[2]]||{})[m[1]]=S[k].ValueRaw});
+    Object.keys(st).forEach(function(n){var seq=MBT.filter(function(t){return st[n][t]!=null});if(seq.some(function(t,i){return i&&st[n][t]<st[n][seq[i-1]]}))ord.push(n+': '+seq.map(function(t){return t+' '+st[n][t]/100}).join(', '))})}
+  add('Medium','ord','A harder tier has a weaker stat than an easier one','Each stat should rise from Easy to Med to Hard to MidBoss. These fall at some step.',ord);
+  var ag=[];MBT.filter(function(t){return tiers[t]}).forEach(function(t,i,l){if(i&&tiers[t].AggroRadiusCm<tiers[l[i-1]].AggroRadiusCm)ag.push(l[i-1]+' aggros from '+mbM(tiers[l[i-1]].AggroRadiusCm)+', '+t+' from '+mbM(tiers[t].AggroRadiusCm))});
+  add('Low','aggro','Aggro radius shrinks as the tier gets harder','A harder camp wakes up from a shorter distance than an easier one. That can be deliberate, so check it is.',ag);
+  var nt=[];
+  K(C).forEach(function(k){var x=C[k],m=/(\d+)\s*cm\s+aggro/i.exec(x.DesignerNote||'');if(m&&+m[1]!==x.AggroRadiusCm)nt.push('Camp '+k+': the note says '+m[1]+' cm aggro, AggroRadiusCm is '+x.AggroRadiusCm)});
+  K(B).forEach(function(k){var x=B[k],n=x.DesignerNote||'',m=/(\d+(?:\.\d+)?)\s*s\s+chase/i.exec(n);
+    if(m&&+m[1]!==x.ChaseAggroSeconds)nt.push('Behavior '+k+': the note says a '+m[1]+'s chase timer, ChaseAggroSeconds is '+x.ChaseAggroSeconds);
+    if(/full heal/i.test(n)&&/KeepCurrent/.test(x.ResetHealthMode||''))nt.push('Behavior '+k+': the note says full heal on return, ResetHealthMode is '+mbEnum(x.ResetHealthMode))});
+  K(Ab).forEach(function(k){var x=Ab[k],m=/MaxRange\s+(\d+)/.exec(x.DesignerNote||'');if(m&&+m[1]!==x.MaxRangeCm)nt.push('Ability '+k+': the note says MaxRange '+m[1]+', MaxRangeCm is '+x.MaxRangeCm)});
+  add('Medium','note','A designer note disagrees with its value','The note was written for a different number than the field now holds. One of them is out of date. Only notes that quote a number are compared.',nt);
+  var dm=[];K(B).forEach(function(k){var x=B[k];if(/KeepCurrent/.test(x.ResetHealthMode||'')&&!(x.OutOfCombatRegenPerSecond>0))dm.push(k+': returns home with its current health and regenerates 0 per second')});
+  add('Medium','dmg','A mob that resets keeps its damage','With KeepCurrent and no regeneration, a mob that gives up and walks home stays hurt. Players can chip a camp, leave and come back to finish it.',dm);
+  var stk=[];K(C).forEach(function(k){var x=C[k];if(/AllowStack/.test(x.SpawnPolicy||'')&&!x.MaxStackedLivingMembers)stk.push('Camp '+k+': AllowStack with no limit on living members')});
+  add('Low','stack','Camp stacking has no limit','Pulling the pack out of the occupancy circle lets the next spawn tick add a fresh wave on top. With no cap the pile can grow without end.',stk);
+  var sk=[];[['camp','Camp'],['arch','Archetype'],['beh','Behavior'],['thr','Threat'],['comp','Composition'],['abil','Ability'],['rew','Reward']].forEach(function(x){var t=mbRows(d,x[0]);if(!t)return;var n=K(t).filter(function(k){return /^\s*SKELETON/i.test(t[k].DesignerNote||'')}).length;if(n)sk.push(x[1]+': '+n+' of '+K(t).length+' rows are marked SKELETON')});
+  add('Low','skel','Rows still marked SKELETON','Their own notes say they are placeholders, so the numbers are not final.',sk);
+  var o={High:0,Medium:1,Low:2};out.sort(function(a,b){return o[a.sev]-o[b.sev]});
+  return out;
+}
+function mbCheckList(cs,cap){
+  return cs.map(function(c){return '<div style="margin:0 0 14px"><span class="tag '+(c.sev==='High'?'err':c.sev==='Medium'?'warn':'')+'">'+c.sev+'</span> <strong>'+esc(c.title)+'</strong> <span class="note" style="margin:0">'+c.items.length+'</span><br><span class="note" style="margin:2px 0 4px">'+esc(c.detail)+'</span><ul style="margin:0;padding-left:20px">'+c.items.slice(0,cap||12).map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul>'+(c.items.length>(cap||12)?'<p class="note" style="margin:4px 0 0">'+(c.items.length-(cap||12))+' more not shown.</p>':'')+'</div>'}).join('');
+}
+function mbTab(heads,rows){return '<div class="scroll"><table><thead><tr>'+heads.map(dzTh).join('')+'</tr></thead><tbody>'+rows.map(function(r){return '<tr>'+r.map(function(c){return '<td style="text-align:left;white-space:normal">'+c+'</td>'}).join('')+'</tr>'}).join('')+'</tbody></table></div>'}
+function mbNote(x){return x?'<span class="note" style="margin:0;font-size:12px">'+esc(x)+'</span>':''}
+function viewDzMobs(){
+  if(MB.doc===undefined){mbLoad().then(function(){render()});return '<div class="panel"><p class="note">Loading</p></div>'}
+  var d=MB.doc,has=Object.keys(d.t).length||Object.keys(d.q).length,h='';
+  h+='<div class="panel"><h2>Mob system data</h2><p class="note" style="margin-top:0">The mob tables of the newest build, kept here as a reference and checked against each other. '+(has?'Updated '+esc(new Date(d.updated).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}))+'.':'Nothing has been uploaded yet.')+'</p>';
+  if(canEdit)h+='<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><label class="btn" style="cursor:pointer">Add mob files<input id="mbFile" type="file" accept=".json,application/json" multiple style="position:absolute;left:-9999px"></label>'+(has?'<button class="btn ghost" type="button" data-mbclear="1">Remove all</button>':'')+(MB.busy||MB.msg?'<span class="note" style="margin:0" role="status">'+esc(MB.msg)+'</span>':'')+'</div><p class="note" style="margin:8px 0 0">Choose the exported JSON files: the DT_MobCamp tables, DT_AeonStats_Npc, DA_MobCamp_Default and the EQS queries. A file replaces the same table that is already stored, so you can add just the one that changed.</p>';
+  else h+='<p class="note" style="margin:0">Only admins add files.</p>';
+  if(has)h+='<div class="scroll" style="margin-top:10px"><table><thead><tr>'+['File','Holds','Added'].map(dzTh).join('')+'</tr></thead><tbody>'+Object.keys(d.files).map(function(f){return '<tr><td style="text-align:left">'+esc(f)+'</td><td style="text-align:left;white-space:normal">'+esc(d.files[f].what)+'</td><td style="text-align:left">'+esc(new Date(d.files[f].at).toLocaleDateString(undefined,{month:'short',day:'numeric'}))+'</td></tr>'}).join('')+'</tbody></table></div>';
+  h+='</div>';
+  if(!has)return h;
+  var A=mbRows(d,'arch'),C=mbRows(d,'camp'),B=mbRows(d,'beh'),Th=mbRows(d,'thr'),Co=mbRows(d,'comp'),Ab=mbRows(d,'abil'),R=mbRows(d,'rew'),S=mbStats(d),K=function(o){return o?Object.keys(o):[]};
+  var cs=mbChecks(d),miss=[['Camp',C],['Archetype',A],['Behavior',B],['Threat',Th],['Composition',Co],['Abilities',Ab],['Rewards',R],['Stats',S]].filter(function(x){return !x[1]}).map(function(x){return x[0]});
+  h+='<div class="panel"><h2>Checks ('+cs.length+')</h2><p class="note" style="margin-top:0">The tables are read against each other and against their own designer notes. This finds broken names, mobs that cannot fight, empty rewards and notes that no longer match. It does not run the game, so it cannot tell whether a mechanic works.'+(miss.length?' Not uploaded yet, so the checks that need them are skipped: '+esc(miss.join(', '))+'.':'')+'</p>'+(cs.length?mbCheckList(cs):'<p class="note">No problem found.</p>')+'</div>';
+  if(C)h+='<div class="panel"><h2>Camp tiers</h2>'+mbTab(['Tier','Wakes from','Needs line of sight','Occupancy circle','Spawn policy','Living cap','Pull the pack on first hit','Note'],K(C).map(function(k){var x=C[k];return [esc(x.CampTier||k),mbM(x.AggroRadiusCm),x.bAcquireRequiresLOS?'Yes':'No',x.CampOccupancyRadiusCm?mbM(x.CampOccupancyRadiusCm):'None',esc(mbEnum(x.SpawnPolicy)),x.MaxStackedLivingMembers?x.MaxStackedLivingMembers:'No cap',x.bCampPullOnFirstDamage?'Yes':'No',mbNote(x.DesignerNote)]}))+'</div>';
+  if(Co)h+='<div class="panel"><h2>What spawns in each camp</h2>'+mbTab(['Camp','Slot','Mob','Count','Role','Armor class','Stats from','Can attack','Offset'],K(Co).sort(function(a,b){var x=Co[a],y=Co[b];return (MBT.indexOf(x.CampTier)-MBT.indexOf(y.CampTier))||(x.SlotIndex-y.SlotIndex)}).map(function(k){var c=Co[k],a=A&&A[c.MobArchetypeRow],ok=a&&Ab?mbUsable(Ab,a.AbilityLoadoutArchetype).length>0:null,o=c.SpawnOffset||{};return [esc(c.CampTier),c.SlotIndex,esc(c.MobArchetypeRow),c.Count,a?esc(mbEnum(a.Role)):'-',a&&a.StatsClassTag?esc(String(a.StatsClassTag.TagName).split('.').pop()):'-',a?esc(a.StatsSourceId):'-',ok==null?'-':ok?'<span class="tag ok">Yes</span>':'<span class="tag err">No</span>',(o.X||0)+', '+(o.Y||0)]}))+'</div>';
+  if(A)h+='<div class="panel"><h2>Mob archetypes</h2>'+mbTab(['Archetype','Pawn','Role','Behavior','Threat','Attack loadout','Armor class','Stats from','Note'],K(A).map(function(k){var a=A[k];return [esc(k),esc(mbLast(a.PawnClass&&a.PawnClass.AssetPathName)),esc(mbEnum(a.Role)),esc(a.BehaviorRow),esc(a.ThreatRow),esc(a.AbilityLoadoutArchetype),a.StatsClassTag?esc(String(a.StatsClassTag.TagName).split('.').pop()):'-',esc(a.StatsSourceId),mbNote(a.DesignerNote)]}))+'</div>';
+  if(B)h+='<div class="panel"><h2>Behavior</h2>'+mbTab(['Behavior','Guard distance','Chase timer','Stands at','Slot limit from home','On reset','Regen out of combat','Clears debuffs','Snaps aggro on debuff','Note'],K(B).map(function(k){var x=B[k];return [esc(k),x.GuardDistanceCm?mbM(x.GuardDistanceCm):'Never leaves',x.ChaseAggroSeconds+' s',mbM(x.PreferredRangeCm)+' &plusmn; '+mbM(x.PreferredRangeToleranceCm),x.CombatSlotMaxFromHomeCm?mbM(x.CombatSlotMaxFromHomeCm):'No limit',esc(mbEnum(x.ResetHealthMode)),num(x.OutOfCombatRegenPerSecond||0)+' per s',x.bResetClearsDebuffs?'Yes':'No',x.bSnapAggroOnRemainingDebuff?'Yes':'No',mbNote(x.DesignerNote)]}))+'</div>';
+  if(Ab)h+='<div class="panel"><h2>Attack loadouts</h2><p class="note" style="margin-top:0">Chance is how often a mob picks the row when several can fire. A type counts once at its highest Weight, then its rows share that by Weight. It is only worked out when the rows of a loadout share a Priority.</p>'+mbTab(['Loadout','Row','On','Ability','Type','Weight','Chance','Range','Cooldown','Priority','Note'],K(Ab).filter(function(k){return !mbNone(Ab[k].ArchetypeKey)}).map(function(k){var x=Ab[k],ch=mbChances(Ab,x.ArchetypeKey);return [esc(x.ArchetypeKey),esc(k),x.bEnabled?'<span class="tag ok">On</span>':'<span class="tag">Off</span>',mbBlank(x.Ability)?'<span class="note" style="margin:0">none set</span>':esc(mbLast(x.Ability.AssetPathName)),esc(mbNone(x.AttackTypeKey)?'Own type':x.AttackTypeKey),num(x.Weight,1),ch&&ch[k]!=null?num(ch[k],0)+'%':'-',x.bSelfTarget?'Self':mbM(x.MinRangeCm)+' to '+mbM(x.MaxRangeCm),x.CooldownOverrideSeconds<0?'Ability own':num(x.CooldownOverrideSeconds,1)+' s',x.Priority,mbNote(x.DesignerNote)]}))+'</div>';
+  if(Th)h+='<div class="panel"><h2>Threat</h2>'+mbTab(['Threat','Per damage','Starts at','Decay per s','Holds target','Switch margin','Keeps above','Note'],K(Th).map(function(k){var x=Th[k];return [esc(k),num(x.ThreatPerDamage,2),num(x.InitialAggroThreat,0),num(x.ThreatDecayPerSecond,1),num(x.TargetHoldSeconds,1)+' s',num(100*x.SwitchMarginPct,0)+'%',num(x.MinThreatToKeep,0),mbNote(x.DesignerNote)]}))+'</div>';
+  if(R)h+='<div class="panel"><h2>Rewards</h2>'+mbTab(['Camp','Row','Kind','Amount','Goes to','Orb lasts','Fills in','Note'],K(R).map(function(k){var x=R[k],kind=mbEnum(x.RewardKind),fill=kind==='Score'?(mbNone(x.ScorePointType)?'<span class="tag err">No point type</span>':esc(x.ScorePointType)):/Boon/.test(kind)?(mbBlank(x.BoonEffect)?'<span class="tag err">No boon</span>':esc(mbLast(x.BoonEffect.AssetPathName))):kind==='WorldPickupItem'?(mbNone(x.ItemRowName)?'<span class="tag err">No item</span>':esc(x.ItemRowName)):'-';return [esc(x.EncounterId),esc(k),esc(kind),x.Amount,esc(mbEnum(x.GrantPolicy)),x.PickupLifetimeSeconds?x.PickupLifetimeSeconds+' s':'-',fill,mbNote(x.DesignerNote)]}))+'</div>';
+  if(S){var srcs=[],stn=[],val={};K(S).forEach(function(k){var m=/^(Npc[A-Za-z]+)_(.+)$/.exec(k);if(!m)return;if(srcs.indexOf(m[1])<0)srcs.push(m[1]);if(stn.indexOf(m[2])<0)stn.push(m[2]);(val[m[2]]=val[m[2]]||{})[m[1]]=S[k]});
+    srcs.sort(function(a,b){var o=['NpcEasy','NpcMed','NpcHard','NpcMidBoss','NpcCommander'];return (o.indexOf(a)<0?9:o.indexOf(a))-(o.indexOf(b)<0?9:o.indexOf(b))});
+    h+='<div class="panel"><h2>Mob stats by tier</h2><p class="note" style="margin-top:0">Shown the way the designer notes write them (the stored value divided by 100).</p>'+mbTab(['Stat'].concat(srcs.map(function(x){return x.replace(/^Npc/,'')})),stn.map(function(n){return [esc(n.replace(/([a-z])([A-Z])/g,'$1 $2'))].concat(srcs.map(function(x){var e=val[n][x];return e?'<span title="'+esc(e.DesignerNote||'')+'">'+num(e.ValueRaw/100,2)+'</span>':'-'}))}))+'</div>'}
+  if(K(d.q).length)h+='<div class="panel"><h2>Queries</h2>'+mbTab(['Query','Finds','Filters','Settings it reads'],K(d.q).map(function(k){var q=d.q[k];return [esc(k),esc(q.gen.join(', ')||'-'),esc(q.tests.join(', ')||'-'),esc(q.params.join(', ')||'-')]}))+'</div>';
   return h;
 }
 /* ---- Build scorecard: did the build do what it was meant to do? ----
@@ -3167,6 +3322,11 @@ function dzChecks(g,bugs){
   add({id:'unattr',proof:function(){var al=un.all.slice().sort(function(a,b){return b.fs-a.fs}),tf=0,ts=0;al.forEach(function(x){tf+=x.fs;ts+=x.sk});return '<p class="note" style="margin:0 0 8px">No problem found. For '+al.length+' player entries, what victims lost to the player is '+num(tf)+' and the damage on the player skills is '+num(ts)+', a gap of '+num(100*Math.abs(tf-ts)/Math.max(1,tf),1)+'%. The biggest are below.</p>'+dzList(al.slice(0,8),[['Player',function(x){return esc(x.p)}],['Class',function(x){return clsPlain(x.cls)}],['Lost by victims',function(x){return num(x.fs)}],['On skills',function(x){return num(x.sk)}],['Gap',function(x){return num(x.fs-x.sk,0)}]])},grp:'Data',title:'Damage that no skill accounts for',target:'None',status:un.length?'fail':'pass',
     sum:un.length?un.slice(0,3).map(function(x){return x.p+' '+num(x.miss,0)+' of '+num(x.of,0)}).join(', '):'Every hit is credited to a skill.',
     ev:function(){return dzList(un,[['Build',function(x){return esc(x.bd)}],['Match',function(x){return esc(x.m)}],['Player',function(x){return esc(x.p)}],['Class',function(x){return clsPlain(x.cls)}],['Not credited',function(x){return num(x.miss,0)+' of '+num(x.of,0)}]])+'<p class="note">What victims lost to this player is higher than the damage on the player skills, so some hits belong to no skill. AimedShot is the likely cause so far.</p>'}});
+  /* mob system: the uploaded mob tables read against each other. These tables are not tied to one build, so every build shows the same result. */
+  var mbc=MB.doc&&MB.doc.t&&Object.keys(MB.doc.t).length?mbChecks(MB.doc):null,mbH=mbc?mbc.filter(function(x){return x.sev==='High'}):[],mbM2=mbc?mbc.filter(function(x){return x.sev==='Medium'}):[];
+  add({id:'mobdata',grp:'Data',title:'Mob system data',target:'No broken reference, no mob that cannot attack, no empty reward, no note that disagrees with its value',status:!mbc?'info':mbH.length?'fail':mbM2.length?'warn':'pass',
+    sum:!mbc?'No mob data uploaded yet. An admin adds the files on the Designer, Mobs tab.':mbc.length?mbH.length+' high, '+mbM2.length+' medium, '+(mbc.length-mbH.length-mbM2.length)+' low. '+mbc.slice(0,2).map(function(x){return x.title}).join('; '):'No problem found in the uploaded mob tables.',
+    ev:function(){return mbCheckList(mbc||[],6)+'<p class="note">The full list and the tables themselves are on the Mobs tab.</p>'}});
   /* ledger format: what the matches of this build changed in the ledger layout */
   var fmIds={};g.ids.forEach(function(i){fmIds[i]=1});
   var fmL=((FMT.doc&&FMT.doc.list)||[]).filter(function(e){return fmIds[e.id]}),fmI=[];fmL.forEach(function(e){e.items.forEach(function(x){fmI.push({n:e.name,id:e.id,k:x.k,p:x.p,t:x.n,r:x.r})})});
@@ -3192,6 +3352,7 @@ function dzChecks(g,bugs){
     over:rows.filter(function(a){return a.he>0}).length+' healing skills were checked.',
     seen:'The skill rows are compared with the skills actually cast.',
     swap:'Read from the spawn snapshots.',
+    mobdata:'The uploaded mob tables were read against each other and against their notes.',
     format:'The ledger layout of each match in this build was compared with the ledgers saved before it.'};
   out.forEach(function(o){o.chk=CHK[o.id]||''});
   return out;
@@ -3206,9 +3367,10 @@ function dzOrder(c){return {fail:0,warn:1,low:2,info:3,pass:4}[c.low?'low':c.sta
 function viewDzScore(){
   var B=dzBuilds();
   if(!B.length)return empty('No ledger matches yet','Upload Match Ledger files to score a build.');
-  var key=dz.sb&&B.some(function(g){return g.key===dz.sb})?dz.sb:B[B.length-1].key,ix=B.map(function(g){return g.key}).indexOf(key),g=B[ix],pg=ix>0?B[ix-1]:null;
-  B.forEach(function(x){x.ids=[];dzMatches().all.forEach(function(m){if(((m.doc.meta||{}).skillsHash||'unknown')===x.key)x.ids.push(m.id)})});
-  viewAdmin();var bugs=lastBugs.slice();bugs.seenAgain=function(b){var rec=(adminData&&adminData.bugs||{})[b.key];return !!(rec&&rec.at&&b.ls&&b.ls.t>rec.at)};
+  var key=dz.sb&&B.some(function(g){return g.key===dz.sb})?dz.sb:bfKey&&B.some(function(g){return g.key===bfKey})?bfKey:B[B.length-1].key,ix=B.map(function(g){return g.key}).indexOf(key),g=B[ix],pg=ix>0?B[ix-1]:null;
+  B.forEach(function(x){x.ids=[];dzMatches(true).all.forEach(function(m){if(((m.doc.meta||{}).skillsHash||'unknown')===x.key)x.ids.push(m.id)})});
+  if(MB.doc===undefined)mbLoad().then(function(){render()});
+  var bfSave=bfKey;bfKey='';viewAdmin();bfKey=bfSave;var bugs=lastBugs.slice();bugs.seenAgain=function(b){var rec=(adminData&&adminData.bugs||{})[b.key];return !!(rec&&rec.at&&b.ls&&b.ls.t>rec.at)};
   var cur=dzChecks(g,bugs),prev=pg?dzChecks(pg,bugs):null,pm={};if(prev)prev.forEach(function(c){pm[c.id]=c});
   var shown=function(c){return c.low?'low':c.status};
   var cnt={pass:0,warn:0,fail:0,low:0,info:0};cur.forEach(function(c){cnt[shown(c)]++});
@@ -3264,11 +3426,12 @@ function viewDzOverview(G){
 }
 function viewDesigner(){
   if(!canDesign)return '<div><h1>Designer</h1></div>'+empty('Designers and admins only','These tools are for designers and admins.');
-  var G=dzMatches(),sn=subTabs('designer',[['overview','Overview'],['score','Scorecard'],['graphs','Graphs'],['builds','Builds'],['balance','Skill balance'],['skills','Skills'],['bugs','Bugs'+(lastBugCount?' ('+lastBugCount+')':'')]]);
+  var G=dzMatches(),sn=subTabs('designer',[['overview','Overview'],['score','Scorecard'],['graphs','Graphs'],['builds','Builds'],['balance','Skill balance'],['skills','Skills'],['mobs','Mobs'],['bugs','Bugs'+(lastBugCount?' ('+lastBugCount+')':'')]]);
   var h='<div class="bar"><div><h1>Designer</h1><p class="sub">Balance and bug hunting across many matches at once. '+G.all.length+' ledger match'+(G.all.length===1?'':'es')+' available.</p></div>'+
     '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><a class="btn ghost" href="#map" style="text-decoration:none">Heat map</a><a class="btn ghost" href="#admin" data-dzgo="bugs" style="text-decoration:none">Bugs &amp; checks</a><a class="btn ghost" href="#admin" data-dzgo="json" style="text-decoration:none">JSON reader</a></div></div>'+sn.h;
-  if(sn.cur==='bugs'){var hb=viewAdmin();return h+(lastBugPanel||hb)}
+  if(sn.cur==='bugs'){var hb=viewAdmin();return h+bfBar()+(lastBugPanel||hb)}
   if(sn.cur==='skills')return h+viewSkills().replace('<h1>Skills</h1>','<h2 style="margin:0">Skills</h2>');
+  if(sn.cur==='mobs')return h+viewDzMobs();
   if(sn.cur==='score')return h+viewDzScore();
   if(sn.cur==='builds')return h+viewDzBuilds();
   if(!G.all.length)return h+empty('No ledger matches yet','Upload Match Ledger files to see graphs across matches.');
@@ -3317,15 +3480,15 @@ document.addEventListener('click',function(e){
   var xr=e.target.closest('[data-expraw]');if(xr){var ur=uploads[+xr.dataset.expraw];if(ur&&ur.raw)dlJson(ur.name.replace(/^[0-9a-f]{8}-/,''),ur.raw);return}
   var xd=e.target.closest('[data-expdoc]');if(xd){var ud=uploads[+xd.dataset.expdoc];if(ud&&ud.doc)exportMatches([{id:ud.id,doc:ud.doc}],(ud.doc.name||'match').replace(/\.[a-z]+$/i,''));return}
   if(e.target.closest('[data-expupl]')){exportMatches(uploads.filter(function(u){return u.doc}).map(function(u){return {id:u.id,doc:u.doc}}),'uploads');return}
-  var xm=e.target.closest('[data-expm]');if(xm){exportMatches(allMatches().filter(function(m){return xm.dataset.expm==='all'||delSel[m.id]}),xm.dataset.expm==='all'?'all-matches':'selected-matches');return}
-  var xo=e.target.closest('[data-expone]');if(xo){var mo=allMatches().filter(function(m){return m.id===xo.dataset.expone});if(mo.length)exportMatches(mo,(mo[0].doc.name||'match').replace(/\.[a-z]+$/i,''));return}
-  var xe=e.target.closest('[data-expev]');if(xe){var sn=snaps[xe.dataset.expev];if(sn){var all=allMatches();exportMatches((sn.matchIds||[]).map(function(k){return all.filter(function(m){return m.id===k})[0]}).filter(Boolean),'event-'+(sn.name||'event').replace(/[^a-z0-9]+/gi,'-').toLowerCase(),{event:{id:xe.dataset.expev,name:sn.name,createdAt:sn.createdAt}})}return}
+  var xm=e.target.closest('[data-expm]');if(xm){exportMatches(everyMatch().filter(function(m){return xm.dataset.expm==='all'||delSel[m.id]}),xm.dataset.expm==='all'?'all-matches':'selected-matches');return}
+  var xo=e.target.closest('[data-expone]');if(xo){var mo=everyMatch().filter(function(m){return m.id===xo.dataset.expone});if(mo.length)exportMatches(mo,(mo[0].doc.name||'match').replace(/\.[a-z]+$/i,''));return}
+  var xe=e.target.closest('[data-expev]');if(xe){var sn=snaps[xe.dataset.expev];if(sn){var all=everyMatch();exportMatches((sn.matchIds||[]).map(function(k){return all.filter(function(m){return m.id===k})[0]}).filter(Boolean),'event-'+(sn.name||'event').replace(/[^a-z0-9]+/gi,'-').toLowerCase(),{event:{id:xe.dataset.expev,name:sn.name,createdAt:sn.createdAt}})}return}
   var cf=e.target.closest('[data-confirm]');if(cf){var k=cf.dataset.confirm;if(confirmKey===k){if(k.indexOf('e:')===0)evDelete(k.slice(2));else delMatches(k.indexOf('m:')===0?[k.slice(2)]:bulkIds(k))}else{confirmKey=k;render()}return}
   if(confirmKey){confirmKey='';render()}
-  var da=e.target.closest('[data-delall]');if(da){var on2=da.dataset.delall==='1';allMatches().forEach(function(m){if(m.saved)delSel[m.id]=on2});render();return}
+  var da=e.target.closest('[data-delall]');if(da){var on2=da.dataset.delall==='1';everyMatch().forEach(function(m){if(m.saved)delSel[m.id]=on2});render();return}
   var dd=e.target.closest('[data-discard]');if(dd){var ui=+dd.dataset.discard,u=uploads[ui];if(u&&u.id&&local[u.id])delete local[u.id];uploads.splice(ui,1);render();return}
   if(e.target.closest('[data-discardall]')){uploads.forEach(function(u){if(u.id&&local[u.id])delete local[u.id]});uploads=[];render();return}
-  var sa=e.target.closest('[data-snapall]');if(sa){var on=sa.dataset.snapall==='1';allMatches().forEach(function(m){if(m.saved)snapDraft.sel[m.id]=on});render();return}
+  var sa=e.target.closest('[data-snapall]');if(sa){var on=sa.dataset.snapall==='1';everyMatch().forEach(function(m){if(m.saved)snapDraft.sel[m.id]=on});render();return}
   if(e.target.closest('[data-snapcreate]')){snapSave();return}
   var er=e.target.closest('[data-evrename]');if(er){evRename(er.dataset.evrename);return}
   var sd=e.target.closest('[data-snapdel]');if(sd){snapDelete(sd.dataset.snapdel);return}
@@ -3335,6 +3498,7 @@ document.addEventListener('click',function(e){
 document.addEventListener('keydown',function(e){if(e.key==='Enter'){var g=e.target.closest&&e.target.closest('tr[data-go]');if(g)location.hash=g.dataset.go}});
 document.addEventListener('change',function(e){
   if(e.target.id==='botsChk'){hideBots=e.target.checked;render()}
+  if(e.target.id==='bfSel'){bfKey=e.target.value;render();return}
   if(e.target.id==='ratedChk'){ratedOnly=e.target.checked;render()}
   if(e.target.id==='file')handleFiles(e.target.files)});
 ['dragover','dragleave','drop'].forEach(function(ev){document.addEventListener(ev,function(e){
@@ -3378,7 +3542,7 @@ function saveRaw(u){
 }
 /* rebuild a stored match from its kept raw ledger with the current importer */
 function rebuildMatch(id){
-  var m=allMatches().filter(function(x){return x.id===id})[0];if(!m||!db)return;
+  var m=everyMatch().filter(function(x){return x.id===id})[0];if(!m||!db)return;
   rebuildMsg='Rebuilding...';render();
   api('GET','/api/doc?c=raw&id='+encodeURIComponent(id)).then(function(r){
     var d=parseMatchLedger(JSON.stringify(r.ledger),(m.doc.name||r.fileName||'match ledger'));
@@ -3389,7 +3553,7 @@ function rebuildMatch(id){
 }
 var rebuildMsg='';
 function rebuildAll(){
-  var ms=allMatches().filter(function(m){return m.saved&&m.doc.ledger});if(!ms.length||!db)return;
+  var ms=everyMatch().filter(function(m){return m.saved&&m.doc.ledger});if(!ms.length||!db)return;
   var i=0,ok=0,miss=0,fail=0;rebuildMsg='Rebuilding '+ms.length+' matches...';render();
   (function next(){
     if(i>=ms.length){rebuildMsg='Rebuilt '+ok+' of '+ms.length+' from their raw ledgers'+(miss?'. '+miss+' had no raw ledger kept, re-upload those':'')+(fail?'. '+fail+' failed':'')+'.';render();return}
@@ -3418,9 +3582,9 @@ function fetchDoc(kind,it){
 }
 function refresh(force){
   return api('GET','/api/index').then(function(ix){
-    me=ix.me&&ix.me.role?ix.me:null;if(me&&me.theme)themeFromAccount(me.theme);claims=ix.claims||{};pubIds={};(ix.pub||[]).forEach(function(k){pubIds[k]=true});discordOn=!!ix.discord;
+    me=ix.me&&ix.me.role?ix.me:null;if(me&&me.theme)themeFromAccount(me.theme);claims=ix.claims||{};pubIds={};(ix.pub||[]).forEach(function(k){pubIds[k]=true});discordOn=!!ix.discord;offBuilds={};(ix.builds||[]).forEach(function(k){offBuilds[k]=true});
     var was=canEdit+'|'+canDesign;canEdit=!!(me&&me.role==='admin');canDesign=!!(me&&(me.role==='admin'||me.role==='designer'));canWrite=canEdit;if(canEdit+'|'+canDesign!==was)adminData=null;
-    var sig=JSON.stringify([ix.matches.map(function(x){return x.id+x.v}),ix.snapshots.map(function(x){return x.id+x.v}),claims,me,ix.pub]);
+    var sig=JSON.stringify([ix.matches.map(function(x){return x.id+x.v}),ix.snapshots.map(function(x){return x.id+x.v}),claims,me,ix.pub,ix.builds]);
     if(!force&&sig===lastSig&&loaded)return;
     return Promise.all([Promise.all(ix.matches.map(function(it){return fetchDoc('m',it).then(function(d){return [it.id,d]},function(){return null})})),Promise.all(ix.snapshots.map(function(it){return fetchDoc('s',it).then(function(d){return [it.id,d]},function(){return null})}))]).then(function(r){
       remote={};snaps={};r[0].forEach(function(p){if(p)remote[p[0]]=p[1]});r[1].forEach(function(p){if(p)snaps[p[0]]=p[1]});
@@ -3429,9 +3593,9 @@ function refresh(force){
 }
 function pubTag(id){return canEdit?(pubIds[id]?'<span class="tag ok">Public</span>':'<span class="tag">Private</span>'):''}
 function pubBtn(id){return canEdit?(pubIds[id]?'<button class="btn ghost" type="button" data-aop="unpublish:'+esc(id)+'">Unpublish</button>':'<button class="btn" type="button" data-aop="publish:'+esc(id)+'">Publish</button>'):''}
-function evDate(s){var t=0;(s.matchIds||[]).forEach(function(k){var m=allMatches().filter(function(x){return x.id===k})[0];if(m){var p=playedAt(m.doc);if(p>t)t=p}});return t||s.createdAt||0}
+function evDate(s){var t=0;(s.matchIds||[]).forEach(function(k){var m=everyMatch().filter(function(x){return x.id===k})[0];if(m){var p=playedAt(m.doc);if(p>t)t=p}});return t||s.createdAt||0}
 function eventCard(id,s){
-  var ms=(s.matchIds||[]).map(function(k){return allMatches().filter(function(m){return m.id===k})[0]}).filter(Boolean).sort(function(a,b){return playedAt(b.doc)-playedAt(a.doc)});
+  var ms=(s.matchIds||[]).map(function(k){return everyMatch().filter(function(m){return m.id===k})[0]}).filter(Boolean).sort(function(a,b){return playedAt(b.doc)-playedAt(a.doc)});
   var F={0:{w:0,l:0},1:{w:0,l:0}},P={},any=false;
   ms.forEach(function(m){var d=m.doc;[0,1].forEach(function(f){var o=outcome(d,f);if(o==='win'){F[f].w++;any=true}else if(o==='loss')F[f].l++});
     (d.players||[]).forEach(function(p){if(isBot(p.name))return;var a=P[p.name]||(P[p.name]={name:p.name,score:0,k:0,d:0,g:0});a.score+=p.score||0;a.k+=p.kills||0;a.d+=p.deaths||0;a.g++})});
@@ -3514,6 +3678,11 @@ document.addEventListener('click',function(e){
   }
 });
 document.addEventListener('keydown',function(e){if(e.key==='Escape'&&loginOpen){loginOpen=false;renderAuth()}});
+/* Builds in the stats (admin): switch one build on or off, or keep only the newest */
+function bldSet(body){api('POST','/api/admin',body).then(function(){return refresh(true)},function(err){authMsg=ERR[err.code]||'Could not change the builds.';render()})}
+document.addEventListener('change',function(e){var t=e.target;if(!t||!t.dataset||t.dataset.bld===undefined)return;bldSet({op:'setBuild',hash:t.dataset.bld,on:t.checked})});
+document.addEventListener('click',function(e){var t=e.target.closest&&e.target.closest('[data-bldnew],[data-bldall]');if(!t)return;
+  var L=bfList();bldSet({op:'setBuilds',off:t.dataset.bldnew?L.slice(0,-1).map(function(g){return g.key}):[]})});
 document.addEventListener('change',function(e){var t=e.target;if(!t||!t.dataset||t.dataset.athm===undefined)return;api('POST','/api/admin',{op:'setTheme',id:t.dataset.athm,theme:t.value}).then(function(){adminData=null;return refresh(true)}).then(function(){if(canDesign)loadAdmin()},function(err){authMsg=ERR[err.code]||'Could not set the theme.';render()})});
 render();renderAuth();
 (function(){var q=new URLSearchParams(location.search);if(q.get('authError')){authMsg=AUTHERR[q.get('authError')]||'Login failed.';loginOpen=true;history.replaceState(null,'',location.pathname+location.hash)}})();

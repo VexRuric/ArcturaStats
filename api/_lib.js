@@ -55,7 +55,7 @@ async function getJSON(p) {
 }
 
 /* ---------- account state: one small document, changed one request at a time ---------- */
-const blank = () => ({ users: {}, admins: [], designers: [], claims: {}, byUser: {}, players: {}, published: {}, bugs: {} });
+const blank = () => ({ users: {}, admins: [], designers: [], claims: {}, byUser: {}, players: {}, published: {}, bugs: {}, builds: {} });
 let chain = Promise.resolve();
 
 /* State is also encrypted (AES-256-GCM, key derived from SESSION_SECRET) before it is written.

@@ -12,7 +12,7 @@ const route = L.handler(async (req, res) => {
   const matches = m, snapshots = admin ? s : s.filter(x => st.published[x.id]);
   const claims = {};
   Object.keys(st.claims).forEach(p => { const u = st.users[st.claims[p]]; claims[p] = { name: u ? u.name : 'Unknown', avatar: u ? u.avatar || null : null }; });
-  L.send(res, 200, { matches, snapshots, pub: snapshots.filter(x => st.published[x.id]).map(x => x.id), claims, me, discord: !!process.env.DISCORD_CLIENT_ID });
+  L.send(res, 200, { matches, snapshots, pub: snapshots.filter(x => st.published[x.id]).map(x => x.id), claims, builds: Object.keys((st.builds && st.builds.off) || {}), me, discord: !!process.env.DISCORD_CLIENT_ID });
 });
 
 /* CORS preflight is answered here, ahead of L.handler (which rejects every non-GET without a same-origin Origin). */

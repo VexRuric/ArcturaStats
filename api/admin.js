@@ -62,6 +62,19 @@ module.exports = L.handler(async (req, res) => {
       u.theme = { t, d: (u.theme && u.theme.d) || 'comfortable' };
       return { code: 200, ok: true };
     }
+    /* Builds in the stats: an admin switches a build (its skills hash) off so its matches are left out of the public stats.
+       Designers and the admin tools still see every build. 'setBuilds' replaces the whole list of switched-off builds. */
+    if (op === 'setBuild' || op === 'setBuilds') {
+      const ok = h => typeof h === 'string' && /^[A-Za-z0-9_.-]{1,40}$/.test(h);
+      const off = Object.assign({}, (st.builds && st.builds.off) || {});
+      if (op === 'setBuild') { if (!ok(b.hash)) return { code: 400, error: 'bad_build' }; if (b.on) delete off[b.hash]; else off[b.hash] = 1; }
+      else {
+        if (!Array.isArray(b.off) || b.off.length > 200 || !b.off.every(ok)) return { code: 400, error: 'bad_build' };
+        Object.keys(off).forEach(k => delete off[k]); b.off.forEach(h => { off[h] = 1; });
+      }
+      st.builds = { off, at: Date.now(), by: s0.id || null };
+      return { code: 200, ok: true };
+    }
     if (op === 'release') {
       const id = st.claims[b.player]; if (!id) return { code: 404, error: 'not_claimed' };
       delete st.claims[b.player]; delete st.byUser[id]; return { code: 200, ok: true };
