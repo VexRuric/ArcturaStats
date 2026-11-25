@@ -3475,14 +3475,16 @@ function viewDzOverview(G){
    Raw logs and crash files are read in the browser and never uploaded. Only the finished analysis can be saved. */
 var viewReports = (function () {
   var BR = window.BR;
-  var br = { items: [], busy: '', err: '', res: null, saved: null, openKey: {}, sevOn: { critical: 1, high: 1, medium: 1, low: 0, info: 0 }, area: '', q: '', allChecks: false, more: 0, title: '', msg: '', drag: false, docs: {}, meta: {}, docBusy: '', skipped: [] };
+  var br = { items: [], busy: '', err: '', res: null, saved: null, openKey: {}, sevOn: { critical: 1, high: 1, medium: 1, low: 0, info: 0 }, area: '', q: '', allChecks: false, more: 0, title: '', msg: '', drag: false, docs: {}, meta: {}, docBusy: '', skipped: [], opt: { useLedgers: true, forcePdb: false } };
   var SEVL = { critical: 'Critical', high: 'High', medium: 'Medium', low: 'Low', info: 'Info' };
   var AREAL = { crash: 'Crash', blueprint: 'Blueprint', gameplay: 'Gameplay', data: 'Data tables', audio: 'Audio', network: 'Network', art: 'Art and assets', animation: 'Animation', vfx: 'Effects', ui: 'UI', performance: 'Performance', assets: 'Streaming', other: 'Other' };
   var STL = { open: 'Open', devs: 'With devs', fixed: 'Fixed', ignored: 'Ignored' };
   var MAXFILE = 400 * 1024 * 1024;
 
+  function bt(heads, rows) { return '<div class="brt">' + plainTable(heads, rows) + '</div>'; }
   var css = document.createElement('style');
-  css.textContent = '.brdrop{display:block;border:2px dashed var(--line);border-radius:8px;padding:26px 16px;text-align:center;color:var(--muted);cursor:pointer;background:var(--panel)}.brdrop:hover,.brdrop.on,.brdrop:focus-within{border-color:var(--accent);color:var(--fg)}.brdrop strong{display:block;color:var(--fg);font:600 18px var(--font-d);letter-spacing:.04em;text-transform:uppercase;margin-bottom:4px}' +
+  css.textContent = '.brt td,.brt th{text-align:left!important;white-space:normal!important;vertical-align:top}.brt th button{text-align:left}.brt table{width:100%}.brt td{overflow-wrap:anywhere}.brt td:first-child{white-space:nowrap!important;width:1%}' +
+    '.brdrop{display:block;border:2px dashed var(--line);border-radius:8px;padding:26px 16px;text-align:center;color:var(--muted);cursor:pointer;background:var(--panel)}.brdrop:hover,.brdrop.on,.brdrop:focus-within{border-color:var(--accent);color:var(--fg)}.brdrop strong{display:block;color:var(--fg);font:600 18px var(--font-d);letter-spacing:.04em;text-transform:uppercase;margin-bottom:4px}' +
     '.brsev{display:inline-block;min-width:68px;text-align:center}.brmeta{display:flex;gap:6px 14px;flex-wrap:wrap;color:var(--muted);font-size:13px;margin:6px 0}.brpre{margin:6px 0;padding:8px 10px;background:var(--bg);border:1px solid var(--line);border-radius:4px;font:12px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--muted)}' +
     '.brev{margin:6px 0;padding:6px 10px;border-left:3px solid var(--accent);background:var(--bg)}.brfile{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:4px 0}.brhead li{margin:4px 0}.brflt{display:flex;gap:10px 16px;flex-wrap:wrap;align-items:center;margin:8px 0}.brflt input[type=search]{flex:1 1 220px;min-width:0}';
   document.head.appendChild(css);
@@ -3506,12 +3508,12 @@ var viewReports = (function () {
     todo.forEach(function (x) {
       chain = chain.then(function () {
         var f = x.file;
-        if (f.size > MAXFILE) { br.skipped.push(f.name + ' (over ' + Math.round(MAXFILE / 1048576) + ' MB)'); return; }
+        if (f.size > MAXFILE && !/\.pdb$/i.test(f.name)) { br.skipped.push(f.name + ' (over ' + Math.round(MAXFILE / 1048576) + ' MB)'); return; }
         br.busy = 'Reading ' + f.name + ' (' + (f.size > 1048576 ? (f.size / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(f.size / 1024)) + ' KB') + ')'; render();
         return new Promise(function (r) { setTimeout(r, 30); }).then(function () { return f.slice(0, 8).arrayBuffer(); }).then(function (hb) {
           var kind = BR.sniff(x.path || f.name, new Uint8Array(hb), f.size);
           if (!kind) { br.skipped.push(f.name + ' (not a log, crash xml, ini or minidump)'); return; }
-          var p = kind === 'dmp' ? f.arrayBuffer().then(function (b) { return BR.parseMinidump(b); }) : f.text().then(function (t) { return kind === 'xml' ? BR.parseCrashXml(t) : kind === 'ini' ? BR.parseCrashIni(t) : BR.parseGameLog(t); });
+          var p = kind === 'pdb' ? BR.openPdb({ size: f.size, read: function (o, n) { return f.slice(o, o + n).arrayBuffer(); } }) : kind === 'dmp' ? f.arrayBuffer().then(function (b) { return BR.parseMinidump(b); }) : f.text().then(function (t) { return kind === 'xml' ? BR.parseCrashXml(t) : kind === 'ini' ? BR.parseCrashIni(t) : BR.parseGameLog(t); });
           return p.then(function (data) {
             var key = (x.path || f.name) + '|' + f.size + '|' + f.lastModified;
             br.items = br.items.filter(function (i) { return i.key !== key; });
@@ -3524,9 +3526,13 @@ var viewReports = (function () {
   }
   function run() {
     if (!br.items.length) { br.res = null; render(); return; }
-    try { var parts = BR.assemble(br.items); br.res = BR.analyze(parts, matchInfo()); br.res.skipped = parts.skipped.concat(br.skipped); if (!br.title) br.title = defaultTitle(br.res); br.openKey = {}; br.more = 0; }
-    catch (e) { br.err = 'The files were read but the analysis failed: ' + (e && e.message || e); br.res = null; }
-    render();
+    var parts; try { parts = BR.assemble(br.items); } catch (e) { br.err = 'The files were read but the analysis failed: ' + (e && e.message || e); br.res = null; render(); return; }
+    if (parts.pdb) { br.busy = 'Looking up function names in ' + (parts.pdb.fileName || 'the PDB'); render(); }
+    BR.symbolicate(parts, { force: br.opt.forcePdb }).then(function () {
+      try { var mi = matchInfo(); br.res = BR.analyze(parts, br.opt.useLedgers ? mi : [], { ledgerCount: mi.length, ledgersOff: !br.opt.useLedgers }); br.res.skipped = parts.skipped.concat(br.skipped); if (!br.title) br.title = defaultTitle(br.res); br.openKey = {}; br.more = 0; }
+      catch (e) { br.err = 'The files were read but the analysis failed: ' + (e && e.message || e); br.res = null; }
+      br.busy = ''; render();
+    }, function (e) { br.busy = ''; br.err = 'The symbols could not be read: ' + (e && e.message || e); br.res = null; render(); });
   }
   function defaultTitle(r) {
     var s = r.summary, d = s.start ? new Date(s.start) : new Date();
@@ -3599,19 +3605,37 @@ var viewReports = (function () {
     return h + '</details>';
   }
 
+  /* the files the reader needs, what each unlocks, and how each uploaded file checks out */
+  var REQL = { ok: ['Pass', 'ok'], missing: ['Missing', 'err'], partial: ['Partly', 'warn'], problem: ['Problem', 'err'], optional: ['Optional', ''], idle: ['Not needed yet', ''] };
+  function filesPanel(res) {
+    var saved = !!br.saved, req = (res && res.req) || BR.requirements({ crashes: [], games: [], pdb: null }, matchInfo().length), files = (res && res.files) || [];
+    var h = '<div class="panel"><h2 style="margin:0 0 4px">What the reader needs</h2><p class="note" style="margin:0 0 8px">' + (res ? 'What each file gives the report, and whether you have it.' : 'Add these files to read a problem. A play session needs the game log; a crash needs the crash folder (context, minidump and log). Add the PDB only if it is the one built with the crashed exe.') + '</p>';
+    h += bt(['', 'File', 'What it unlocks', 'You have'], req.rows.map(function (r) { var l = REQL[r.state] || ['', '']; return '<tr><td><span class="tag ' + l[1] + '">' + esc(l[0]) + '</span></td><td style="white-space:normal;min-width:170px"><strong>' + esc(r.label) + '</strong><br><span class="note" style="margin:0">' + esc(r.ext) + '</span></td><td style="white-space:normal;min-width:260px">' + esc(r.gives) + '</td><td style="white-space:normal;min-width:200px;overflow-wrap:anywhere">' + (r.found ? esc(r.found) : '') + (r.note ? '<br><span class="note" style="margin:0">' + esc(r.note) + '</span>' : '') + '</td></tr>'; }).join(''));
+    var yes = req.can.filter(function (c) { return c.ok; }), no = req.can.filter(function (c) { return !c.ok; });
+    h += '<div class="brflt" style="align-items:flex-start;margin-top:12px"><div style="flex:1 1 280px"><strong>You can read now</strong>' + (yes.length ? '<ul class="brhead" style="margin:6px 0 0;padding-left:20px">' + yes.map(function (c) { return '<li>' + esc(c.t) + '</li>'; }).join('') + '</ul>' : '<p class="note" style="margin:6px 0 0">Nothing yet.</p>') + '</div><div style="flex:1 1 280px"><strong>Not yet</strong>' + (no.length ? '<ul class="brhead" style="margin:6px 0 0;padding-left:20px">' + no.map(function (c) { return '<li>' + esc(c.t) + '<br><span class="note" style="margin:0">needs ' + esc(c.needs) + '</span></li>'; }).join('') + '</ul>' : '<p class="note" style="margin:6px 0 0">Everything can be read.</p>') + '</div></div></div>';
+    if (!files.length) return h;
+    h += '<div class="panel"><h2 style="margin:0 0 4px">Your files, checked</h2><p class="note" style="margin:0 0 8px">Each file is opened and checked for being what it claims to be and for being complete. How the files fit together is under Checks and cross-checks.' + (saved ? ' These are the results from when the report was saved.' : '') + '</p>';
+    h += bt(['', 'File', 'Used as', 'What was found', ''], files.map(function (f) {
+      var role = f.kind === 'log' ? (saved ? esc(f.role === 'crash' ? 'Crash log' : 'Game log') : '<select data-brrole="' + esc(f.key) + '" aria-label="Use ' + esc(f.name) + ' as"><option value=""' + (f.auto ? ' selected' : '') + '>Auto: ' + (f.role === 'crash' ? 'crash log' : 'game log') + '</option><option value="game"' + (f.forced === 'game' ? ' selected' : '') + '>Game log</option><option value="crash"' + (f.forced === 'crash' ? ' selected' : '') + '>Crash log</option></select>') : esc({ xml: 'Crash context', dmp: 'Minidump', ini: 'Crash settings', pdb: 'Symbols' }[f.kind] || f.kind);
+      return '<tr><td>' + stTag(f.status) + '</td><td style="white-space:normal;overflow-wrap:anywhere;min-width:170px"><strong>' + esc(f.name) + '</strong><br><span class="note" style="margin:0">' + size(f.size) + '</span></td><td style="white-space:normal">' + role + '</td><td style="white-space:normal;min-width:320px">' + f.notes.map(function (n) { return '<div style="margin:2px 0">' + (n.s === 'fail' || n.s === 'warn' ? '<span class="tag ' + (n.s === 'fail' ? 'err' : 'warn') + '" style="margin-right:6px">' + (n.s === 'fail' ? 'Problem' : 'Check') + '</span>' : '') + esc(n.t) + '</div>'; }).join('') + '</td><td>' + (saved ? '' : '<button class="btn ghost" type="button" data-brrm="' + esc(f.key) + '" aria-label="Remove ' + esc(f.name) + '">Remove</button>') + '</td></tr>';
+    }).join(''));
+    if (!saved) h += '<div class="brflt" style="margin-top:10px"><strong>Options</strong><label class="chk"><input type="checkbox" data-bropt="useLedgers"' + (br.opt.useLedgers ? ' checked' : '') + '> Compare the game log with the stored matches</label><label class="chk"><input type="checkbox" data-bropt="forcePdb"' + (br.opt.forcePdb ? ' checked' : '') + '> Use the PDB even if it is from another build (names will probably be wrong)</label></div>';
+    return h + '</div>';
+  }
+
   function viewReports() {
     var h = '', res = br.res, SEV = BR.SEV, saved = savedList(), isSaved = !!br.saved;
     h += '<div class="panel"><h2 style="margin:0 0 6px">Bug report</h2><p class="note" style="margin:0 0 10px">Drop an Unreal game log and, for a crash, the whole crash folder (the log, <em>CrashContext.runtime-xml</em>, <em>UEMinidump.dmp</em> and <em>CrashReportClient.ini</em>). They are read in your browser and checked against each other and against the matches already stored here. Only the short analysis can be saved: the raw logs, dumps, account ids and your user name never leave your machine.</p>' +
-      '<label class="brdrop" id="brDrop" for="brFile"><strong>' + (br.busy ? esc(br.busy) : 'Drop files or a folder here') + '</strong>' + (br.busy ? 'This can take a few seconds for a large log.' : 'or click to choose files. Game log (.log), crash log, crash context (.runtime-xml or .xml), .ini and minidump (.dmp).') + '</label>' +
-      '<input class="sr" id="brFile" type="file" multiple accept=".log,.txt,.xml,.runtime-xml,.ini,.dmp"' + (br.busy ? ' disabled' : '') + '>' +
+      '<label class="brdrop" id="brDrop" for="brFile"><strong>' + (br.busy ? esc(br.busy) : 'Drop files or a folder here') + '</strong>' + (br.busy ? 'This can take a few seconds for a large log.' : 'or click to choose files. Game log (.log), crash log, crash context (.runtime-xml or .xml), .ini, minidump (.dmp) and symbols (.pdb, read in place, never loaded whole).') + '</label>' +
+      '<input class="sr" id="brFile" type="file" multiple accept=".log,.txt,.xml,.runtime-xml,.ini,.dmp,.pdb"' + (br.busy ? ' disabled' : '') + '>' +
       '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px"><label class="btn ghost" for="brDir" style="cursor:pointer">Choose a folder</label><input class="sr" id="brDir" type="file" webkitdirectory multiple' + (br.busy ? ' disabled' : '') + '>' +
       (br.items.length ? '<button class="btn ghost" type="button" data-brclear="1">Clear and start over</button>' : '') + '<span class="note" role="status" style="margin:0">' + (br.err ? '<span class="err">' + esc(br.err) + '</span>' : br.items.length ? br.items.length + ' file' + (br.items.length === 1 ? '' : 's') + ' read. Drop more to add them to the same report.' : '') + '</span></div>';
-    if (br.items.length) h += '<div style="margin-top:8px">' + br.items.map(function (i) { return '<div class="brfile"><span class="tag">' + esc({ log: 'Log', xml: 'Crash context', ini: 'Ini', dmp: 'Minidump' }[i.kind]) + '</span><span style="overflow-wrap:anywhere">' + esc(i.path) + '</span><span class="note" style="margin:0">' + size(i.size) + (i.kind === 'log' ? ', ' + num(i.data.lines) + ' lines' : '') + '</span></div>'; }).join('') + '</div>';
     if (res && res.skipped && res.skipped.length) h += '<p class="note" style="margin:8px 0 0">Not used: ' + res.skipped.map(esc).join('; ') + '</p>';
     h += '</div>';
+    h += filesPanel(res);
 
     /* saved */
-    h += '<div class="panel"><h2 style="margin:0 0 6px">Saved reports</h2>' + (saved.length ? plainTable(['Report', 'Saved', 'By', 'Crashes', 'Findings', '', ''], saved.map(function (s) {
+    h += '<div class="panel"><h2 style="margin:0 0 6px">Saved reports</h2>' + (saved.length ? bt(['Report', 'Saved', 'By', 'Crashes', 'Findings', '', ''], saved.map(function (s) {
       var d = br.docs[s.id], on = confirmKey === 'rp:' + s.id;
       return '<tr><td>' + (d ? '<strong>' + esc(d.title || s.id) + '</strong>' : '<span class="note" style="margin:0">' + esc(s.id) + '</span>') + (br.saved && br.saved.id === s.id ? ' <span class="tag ok">Open</span>' : '') + '</td><td>' + esc(new Date(s.v).toLocaleString()) + '</td><td>' + (d ? esc(d.by || '-') : '') + '</td><td>' + (d ? d.summary.crashes : '') + '</td><td>' + (d ? d.summary.findings : '') + '</td><td><button class="btn ghost" type="button" data-bropen="' + esc(s.id) + '"' + (br.docBusy === s.id ? ' disabled' : '') + '>' + (br.docBusy === s.id ? 'Opening' : 'Open') + '</button></td><td>' + (canEdit ? '<button class="btn" type="button" data-confirm="rp:' + esc(s.id) + '"' + (on ? ' style="background:var(--bad);color:#fff"' : ' style="background:transparent;color:var(--fg);border:1px solid var(--line)"') + ' aria-label="Delete report">' + (on ? 'Click again to delete' : 'Delete') + '</button>' : '') + '</td></tr>';
     }).join('')) : '<p class="note" style="margin:0">No saved reports yet. Analyze files above, then save the report to keep it.</p>') + '</div>';
@@ -3642,7 +3666,7 @@ var viewReports = (function () {
     /* checks */
     var ck = res.checks.slice().sort(function (a, b) { return { fail: 0, warn: 1, info: 2, pass: 3 }[a.status] - { fail: 0, warn: 1, info: 2, pass: 3 }[b.status]; }), shown = ck.filter(function (c) { return br.allChecks || c.status !== 'pass'; });
     h += '<div class="panel"><h2 style="margin:0 0 4px">Checks and cross-checks</h2><p class="note" style="margin:0 0 6px">Each file is checked against the others (crash context against minidump and log, the log against the ledgers of the matches it covers). A failure means two sources disagree.</p><label class="chk"><input type="checkbox" data-brchk="1"' + (br.allChecks ? ' checked' : '') + '> Show the ' + (ck.length - shown.length > 0 || br.allChecks ? s.checks.pass : 0) + ' checks that passed</label>' +
-      (shown.length ? plainTable(['', 'About', 'Check', 'What was found'], shown.map(function (c) { return '<tr><td>' + stTag(c.status) + '</td><td>' + esc(c.group) + '</td><td style="min-width:150px;white-space:normal"><strong>' + esc(c.title) + '</strong></td><td style="min-width:340px;white-space:normal">' + esc(c.detail) + '</td></tr>'; }).join('')) : '<p class="note">Everything that could be checked agrees.</p>') + '</div>';
+      (shown.length ? bt(['', 'About', 'Check', 'What was found'], shown.map(function (c) { return '<tr><td>' + stTag(c.status) + '</td><td>' + esc(c.group) + '</td><td style="min-width:150px;white-space:normal"><strong>' + esc(c.title) + '</strong></td><td style="min-width:340px;white-space:normal">' + esc(c.detail) + '</td></tr>'; }).join('')) : '<p class="note">Everything that could be checked agrees.</p>') + '</div>';
 
     /* crashes */
     if (res.crashes && res.crashes.length) {
@@ -3650,7 +3674,8 @@ var viewReports = (function () {
       h += '<div class="panel"><h2 style="margin:0 0 4px">Crashes</h2><p class="note" style="margin:0 0 6px">Grouped by stack hash: the same hash is the same crash.</p>' + Object.keys(groups).map(function (k) {
         var g = groups[k], c = g[0], inf = c.info || {}, d = c.dump;
         var x = '<details class="cdet" data-brk="cg:' + esc(k) + '"' + (br.openKey['cg:' + k] !== false ? ' open' : '') + '><summary><span class="tag err brsev">' + esc(c.type || 'Crash') + '</span> <strong>' + esc(String(c.error || '').replace(/^Unhandled Exception: /, '')) + '</strong> <span class="note" style="margin:0">' + g.length + ' time' + (g.length === 1 ? '' : 's') + ', stack ' + esc(String(k).slice(0, 10)) + '</span></summary>';
-        if (c.stack && c.stack.length) x += '<h3 style="margin:10px 0 4px;font-size:14px">Call stack, crashing thread</h3>' + plainTable(['#', 'Module', 'Whose', 'Offset'], c.stack.map(function (f, i) { return '<tr><td>' + i + '</td><td>' + esc(f.mod) + '</td><td><span class="tag ' + (f.owner === 'mod' ? 'warn' : f.owner === 'game' ? 'err' : '') + '">' + esc({ game: 'Game', mod: 'Mod loader', system: 'Windows', driver: 'Driver', other: 'Other' }[f.owner] || f.owner) + '</span></td><td>+0x' + esc(f.off) + '</td></tr>'; }).join(''));
+        if (c.stack && c.stack.length) x += '<h3 style="margin:10px 0 4px;font-size:14px">Call stack, crashing thread</h3>' + bt(['#', 'Module', 'Whose', 'Offset', 'Function'], c.stack.map(function (f, i) { return '<tr><td>' + i + '</td><td>' + esc(f.mod) + '</td><td><span class="tag ' + (f.owner === 'mod' ? 'warn' : f.owner === 'game' ? 'err' : '') + '">' + esc({ game: 'Game', mod: 'Mod loader', system: 'Windows', driver: 'Driver', other: 'Other' }[f.owner] || f.owner) + '</span></td><td>+0x' + esc(f.off) + '</td><td style="white-space:normal;overflow-wrap:anywhere">' + (f.sym ? '<span title="' + esc(f.raw || '') + '">' + esc(f.sym) + '</span>' : '') + '</td></tr>'; }).join(''));
+        if (c.sym) x += '<div class="brmeta"><span class="tag ' + (c.sym.status === 'ok' ? 'ok' : c.sym.status === 'unverified' ? 'warn' : 'err') + '">Symbols: ' + esc({ ok: 'matched', mismatch: 'wrong build', unverified: 'unchecked', forced: 'forced' }[c.sym.status] || c.sym.status) + '</span><span>' + esc(c.sym.msg) + '</span></div>';
         if (d) x += '<div class="brmeta"><span>Minidump: ' + esc(d.exc && d.exc.name || '') + (d.exc && d.exc.access ? ' ' + esc(d.exc.access) + ' ' + esc(d.exc.target) : '') + '</span>' + (d.fault ? '<span>Fault in ' + esc(d.fault.mod) + ' +0x' + esc(d.fault.off) + '</span>' : '') + '<span>' + d.threads + ' threads, ' + d.mods + ' modules</span>' + (d.uptime != null ? '<span>Ran ' + BR.fmtDur(d.uptime) + ' before it crashed</span>' : '') + '</div>';
         if (d && d.other && d.other.length) x += '<div class="brmeta"><span>Not Windows or game:</span>' + d.other.slice(0, 8).map(function (m) { return '<span>' + esc(m.n) + (m.v ? ' ' + esc(m.v) : '') + '</span>'; }).join('') + '</div>';
         if (inf.cmd) x += '<div class="brmeta"><span>Launch options:</span></div><div class="brpre">' + esc(inf.cmd.trim()) + '</div>';
@@ -3665,7 +3690,7 @@ var viewReports = (function () {
     var gm = res.game;
     if (gm && gm.phases && gm.phases.length) {
       var linkBy = {}; (res.links || []).forEach(function (l) { linkBy[l.phase] = l; });
-      h += '<div class="panel"><h2 style="margin:0 0 4px">Session timeline</h2><p class="note" style="margin:0 0 6px">What the game log says the game was doing, with the stored match each map phase belongs to. Times are the log machine\'s local clock.</p>' + plainTable(['What', 'Map', 'From', 'Length', 'Errors', 'Warnings', 'Stored match', 'Ledger offsets'], gm.phases.filter(function (p) { return p.kind !== 'transit'; }).map(function (p) {
+      h += '<div class="panel"><h2 style="margin:0 0 4px">Session timeline</h2><p class="note" style="margin:0 0 6px">What the game log says the game was doing, with the stored match each map phase belongs to. Times are the log machine\'s local clock.</p>' + bt(['What', 'Map', 'From', 'Length', 'Errors', 'Warnings', 'Stored match', 'Ledger offsets'], gm.phases.filter(function (p) { return p.kind !== 'transit'; }).map(function (p) {
         var l = linkBy[p.i]; return '<tr><td><strong>' + esc(phaseLabel(res, p.i)) + '</strong></td><td>' + esc(p.map) + '</td><td>' + clockAt(res, p.t0) + '</td><td>' + BR.fmtDur(p.t1 - p.t0) + '</td><td>' + num(p.errors) + '</td><td>' + num(p.warnings) + '</td><td>' + (p.kind !== 'match' ? '' : l && l.match ? '<a class="plink" href="#match-' + esc(l.match) + '">' + esc(l.title) + '</a>' : '<span class="tag warn">Not stored</span>') + '</td><td>' + (l && l.match ? 'starts +' + l.startGap + ' s, ends ' + (l.endGap >= 0 ? '-' : '+') + Math.abs(l.endGap) + ' s' : '') + '</td></tr>';
       }).join('')) + '</div>';
     }
@@ -3680,7 +3705,9 @@ var viewReports = (function () {
     if (t.id === 'brFile' || t.id === 'brDir') { var fl = [].slice.call(t.files || []).map(function (f) { return { file: f, path: f.webkitRelativePath || f.name }; }); t.value = ''; ingest(fl); return; }
     if (t.dataset && t.dataset.brsev) { br.sevOn[t.dataset.brsev] = t.checked; br.more = 0; render(); return; }
     if (t.dataset && t.dataset.brarea !== undefined) { br.area = t.value; br.more = 0; render(); return; }
-    if (t.dataset && t.dataset.brchk) { br.allChecks = t.checked; render(); }
+    if (t.dataset && t.dataset.brchk) { br.allChecks = t.checked; render(); return; }
+    if (t.dataset && t.dataset.bropt) { br.opt[t.dataset.bropt] = t.checked; run(); return; }
+    if (t.dataset && t.dataset.brrole !== undefined) { br.items.forEach(function (i) { if (i.key === t.dataset.brrole) i.forceRole = t.value; }); run(); }
   });
   document.addEventListener('input', function (e) {
     var t = e.target; if (!t) return;
@@ -3689,9 +3716,10 @@ var viewReports = (function () {
   });
   document.addEventListener('toggle', function (e) { var d = e.target; if (d && d.dataset && d.dataset.brk) br.openKey[d.dataset.brk] = d.open; }, true);
   document.addEventListener('click', function (e) {
-    var t = e.target.closest && e.target.closest('[data-brsave],[data-brclear],[data-bropen],[data-brcopy],[data-brdl],[data-brmore],[data-confirm]'); if (!t) return;
+    var t = e.target.closest && e.target.closest('[data-brsave],[data-brclear],[data-brrm],[data-bropen],[data-brcopy],[data-brdl],[data-brmore],[data-confirm]'); if (!t) return;
     if (t.dataset.confirm && t.dataset.confirm.indexOf('rp:') === 0) { var k = t.dataset.confirm; if (confirmKey === k) delSaved(k.slice(3)); else { confirmKey = k; render(); } e.stopImmediatePropagation(); return; }
     if (t.dataset.brsave) { saveReport(); return; }
+    if (t.dataset.brrm) { br.items = br.items.filter(function (i) { return i.key !== t.dataset.brrm; }); br.saved = null; run(); return; }
     if (t.dataset.brclear) { br.items = []; br.res = null; br.saved = null; br.err = ''; br.msg = ''; br.title = ''; render(); return; }
     if (t.dataset.bropen) { openSaved(t.dataset.bropen); return; }
     if (t.dataset.brmore) { br.more++; render(); return; }

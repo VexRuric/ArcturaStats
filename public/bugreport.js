@@ -201,6 +201,7 @@
   }
   function parseCrashIni(t) { var o = {}, sec = ''; String(t).split(/\r?\n/).forEach(function (l) { var s = /^\[(.+)\]/.exec(l); if (s) { sec = s[1]; return; } var kv = /^([^=;#]+)=(.*)$/.exec(l); if (kv) o[kv[1].trim()] = kv[2].trim(); }); return { kind: 'ini', section: sec, values: o }; }
   var EXC = { 0xc0000005: 'ACCESS_VIOLATION', 0xc00000fd: 'STACK_OVERFLOW', 0xc0000094: 'INT_DIVIDE_BY_ZERO', 0xc000001d: 'ILLEGAL_INSTRUCTION', 0xc0000374: 'HEAP_CORRUPTION', 0x80000003: 'BREAKPOINT', 0xc0000409: 'STACK_BUFFER_OVERRUN', 0xe06d7363: 'C++ EXCEPTION', 0xc0000017: 'NO_MEMORY' };
+  function fmtGuid(dv, o) { var h = function (v, n) { return ('00000000' + v.toString(16)).slice(-n); }; return h(dv.getUint32(o, true), 8) + '-' + h(dv.getUint16(o + 4, true), 4) + '-' + h(dv.getUint16(o + 6, true), 4) + '-' + h(dv.getUint8(o + 8), 2) + h(dv.getUint8(o + 9), 2) + '-' + [10, 11, 12, 13, 14, 15].map(function (i) { return h(dv.getUint8(o + i), 2); }).join(''); }
   function parseMinidump(buf) {
     var dv = new DataView(buf), b8 = new Uint8Array(buf);
     if (b8.length < 32 || String.fromCharCode(b8[0], b8[1], b8[2], b8[3]) !== 'MDMP') throw new Error('not a minidump');
@@ -209,7 +210,8 @@
     var td = typeof TextDecoder !== 'undefined' ? new TextDecoder('utf-16le') : null;
     function u16(rva) { var n = dv.getUint32(rva, true); return td ? td.decode(new Uint8Array(buf, rva + 4, n)) : ''; }
     if (S[7]) { var s7 = S[7].rva; D.arch = dv.getUint16(s7, true) === 9 ? 'x64' : dv.getUint16(s7, true) === 0 ? 'x86' : 'arch ' + dv.getUint16(s7, true); D.os = dv.getUint32(s7 + 8, true) + '.' + dv.getUint32(s7 + 12, true) + '.' + dv.getUint32(s7 + 16, true); }
-    if (S[4]) { var m4 = S[4].rva, cnt = dv.getUint32(m4, true); for (i = 0; i < cnt; i++) { var mo = m4 + 4 + i * 108; if (mo + 108 > b8.length) break; var ms = dv.getUint32(mo + 24 + 8, true), ls = dv.getUint32(mo + 24 + 12, true); D.mods.push({ base: dv.getBigUint64(mo, true), size: dv.getUint32(mo + 8, true), stamp: dv.getUint32(mo + 16, true) * 1000, name: u16(dv.getUint32(mo + 20, true)).split('\\').pop(), ver: ms || ls ? (ms >>> 16) + '.' + (ms & 0xffff) + '.' + (ls >>> 16) + '.' + (ls & 0xffff) : '' }); } }
+    if (S[4]) { var m4 = S[4].rva, cnt = dv.getUint32(m4, true); for (i = 0; i < cnt; i++) { var mo = m4 + 4 + i * 108; if (mo + 108 > b8.length) break; var ms = dv.getUint32(mo + 24 + 8, true), ls = dv.getUint32(mo + 24 + 12, true); var cvSz = dv.getUint32(mo + 76, true), cvRva = dv.getUint32(mo + 80, true), cv = null; if (cvSz >= 24 && cvRva + 24 <= b8.length && String.fromCharCode(b8[cvRva], b8[cvRva + 1], b8[cvRva + 2], b8[cvRva + 3]) === 'RSDS') cv = { guid: fmtGuid(dv, cvRva + 4), age: dv.getUint32(cvRva + 20, true) };
+      D.mods.push({ cv: cv, base: dv.getBigUint64(mo, true), size: dv.getUint32(mo + 8, true), stamp: dv.getUint32(mo + 16, true) * 1000, name: u16(dv.getUint32(mo + 20, true)).split('\\').pop(), ver: ms || ls ? (ms >>> 16) + '.' + (ms & 0xffff) + '.' + (ls >>> 16) + '.' + (ls & 0xffff) : '' }); } }
     if (S[3]) D.threadCount = dv.getUint32(S[3].rva, true);
     if (S[15]) { var m15 = S[15].rva, fl = dv.getUint32(m15 + 4, true); if (fl & 1) D.pid = dv.getUint32(m15 + 8, true); if (fl & 2) { D.created = dv.getUint32(m15 + 12, true) * 1000; D.userSec = dv.getUint32(m15 + 16, true); D.kernelSec = dv.getUint32(m15 + 20, true); } }
     if (S[6]) {
@@ -230,6 +232,7 @@
     var n = String(name || '').toLowerCase(), base = n.split(/[\\\/]/).pop();
     if (head && head.length >= 4 && head[0] === 0x4d && head[1] === 0x44 && head[2] === 0x4d && head[3] === 0x50) return 'dmp';
     if (/\.dmp$/.test(base)) return 'dmp';
+    if (/\.pdb$/.test(base)) return 'pdb';
     if (/\.(runtime-xml|xml)$/.test(base)) return 'xml';
     if (/\.ini$/.test(base)) return 'ini';
     if (/\.(log|txt)$/.test(base)) return 'log';
@@ -238,35 +241,221 @@
 
   /* ---------- put the pieces together: one crash per CrashGUID, game logs on their own ---------- */
   function assemble(items) {
-    var crashes = {}, games = [], loose = [], skipped = [];
+    /* a file the person set to "ignore" is left out; a log set to "game log" or "crash log" skips the guess */
+    items = items.filter(function (it) { return it.forceRole !== 'ignore'; });
+    var crashes = {}, games = [], loose = [], skipped = [], pdb = null;
     function gid(g) { return String(g || '').replace(/_\d+$/, ''); }
     function bucket(g) { g = gid(g); return crashes[g] || (crashes[g] = { guid: g, parts: {} }); }
+    function put(it, b, key) { b[key] = it.data; b.parts[key] = it.name; it.role = 'crash'; it.crash = b.guid; }
     items.forEach(function (it) {
+      it.role = ''; it.crash = '';
       var folder = (/(UECC-[A-Za-z0-9-]+?)(?:_\d+)?(?:[\\\/]|$)/.exec(it.path || '') || [])[1] || '';
-      if (it.kind === 'xml') { var b = bucket(it.data.guid || folder || 'x' + hash8(it.name)); b.guid = it.data.guid || b.guid; b.xml = it.data; b.parts.xml = it.name; b.folder = folder; }
-      else if (it.kind === 'ini') { var g = folder; if (g) { var c = bucket(g); c.ini = it.data; c.parts.ini = it.name; } else loose.push(it); }
-      else if (it.kind === 'dmp') { if (folder) { var c2 = bucket(folder); c2.dmp = it.data; c2.parts.dmp = it.name; } else loose.push(it); }
+      if (it.kind === 'pdb') { pdb = it.data; pdb.fileName = it.name; it.role = 'symbols'; return; }
+      if (it.kind === 'xml') { var b = bucket(it.data.guid || folder || 'x' + hash8(it.name)); b.guid = it.data.guid || b.guid; b.folder = folder; put(it, b, 'xml'); }
+      else if (it.kind === 'ini') { if (folder) put(it, bucket(folder), 'ini'); else loose.push(it); }
+      else if (it.kind === 'dmp') { if (folder) put(it, bucket(folder), 'dmp'); else loose.push(it); }
       else if (it.kind === 'log') {
         var gl = it.data.guid || '';
-        if (/UECC-/.test(folder) || (gl && crashes[gid(gl)] && crashes[gid(gl)].xml)) { var c3 = bucket(folder || gl); c3.log = it.data; c3.parts.log = it.name; }
+        if (it.forceRole === 'game') { games.push(it); it.role = 'game'; }
+        else if (it.forceRole === 'crash') put(it, bucket(folder || gl || 'x' + hash8(it.name)), 'log');
+        else if (/UECC-/.test(folder) || (gl && crashes[gid(gl)] && crashes[gid(gl)].xml)) put(it, bucket(folder || gl), 'log');
         else loose.push(it);
       } else skipped.push(it.name);
     });
     /* files without a folder: the crash log carries the same CrashGUID as the xml; the minidump goes with the crash whose log ended nearest to its time */
     loose.forEach(function (it) {
       if (it.kind === 'log') {
-        var gl = it.data.guid, c = null; Object.keys(crashes).forEach(function (k) { if (k === gid(gl)) c = crashes[k]; });
-        if (c && !c.log && it.data.exit && !it.data.exit.clean && it.data.durSec < 3600 && c.xml) { c.log = it.data; c.parts.log = it.name; } else games.push(it);
+        var c = crashes[gid(it.data.guid)];
+        if (c && !c.log && it.data.exit && !it.data.exit.clean && it.data.durSec < 3600 && c.xml) put(it, c, 'log'); else { games.push(it); it.role = 'game'; }
       }
     });
     loose.forEach(function (it) {
       if (it.kind === 'dmp' || it.kind === 'ini') {
         var best = null, bd = 1e12;
         Object.keys(crashes).forEach(function (k) { var c = crashes[k]; if (c[it.kind]) return; var ref = c.log && c.log.end ? c.log.end : null; if (it.kind === 'ini') { if (!best) best = c; return; } if (ref != null) { var d = Math.abs(ref - it.data.time); if (d < bd) { bd = d; best = c; } } else if (!best) best = c; });
-        if (best && (it.kind === 'ini' || bd < 120000 || bd === 1e12)) { best[it.kind] = it.data; best.parts[it.kind] = it.name; } else skipped.push(it.name + ' (no crash to attach it to)');
+        if (best && (it.kind === 'ini' || bd < 120000 || bd === 1e12)) put(it, best, it.kind);
+        else if (it.kind === 'dmp') put(it, bucket('dmp-' + hash8(it.name + it.data.size + it.data.time)), 'dmp');  /* a minidump on its own is a crash too */
+        else skipped.push(it.name + ' (a settings file only: add the minidump or CrashContext.runtime-xml)');
       }
     });
-    return { crashes: Object.keys(crashes).map(function (k) { return crashes[k]; }), games: games.map(function (g) { return { name: g.name, size: g.size, log: g.data }; }), skipped: skipped };
+    return { crashes: Object.keys(crashes).map(function (k) { return crashes[k]; }), games: games.map(function (g) { return { name: g.name, size: g.size, log: g.data }; }), pdb: pdb, items: items, skipped: skipped };
+  }
+
+  /* ---------- symbols: a Microsoft PDB (MSF 7.00) read through random-access slices, so a 500 MB file is never loaded whole ----------
+     Only what a lookup needs is read: the stream directory, the build id, the section table and the public symbol address map. */
+  function demangle(n) {
+    n = String(n);
+    if (n.charAt(0) !== '?') return n;
+    var ctor = /^\?\?([01])/.exec(n), body = ctor ? n.slice(3) : n.slice(1);
+    if (!ctor && (body.charAt(0) === '?' || body.charAt(0) === '$')) return n.length > 90 ? n.slice(0, 89) + '\u2026' : n;           /* ??_G, ??_R and other compiler helpers: keep as they are */
+    var end = body.indexOf('@@'); if (end < 0) return n;
+    var parts = body.slice(0, end).split('@'); if (parts.some(function (p) { return !p || p.charAt(0) === '?' || p.charAt(0) === '$'; })) return n.length > 90 ? n.slice(0, 89) + '…' : n;
+    var scope = parts.slice().reverse();
+    if (ctor) { var cls = scope[scope.length - 1]; return scope.join('::') + '::' + (ctor[1] === '1' ? '~' : '') + cls; }
+    return scope.join('::');
+  }
+  function openPdb(rd) {
+    var u8 = function (o, n) { return Promise.resolve(rd.read(o, n)).then(function (b) { return b instanceof Uint8Array ? b : new Uint8Array(b); }); };
+    var bs, sizes = [], blocks = [], sym = null;
+    function sread(i, off, len) {
+      if (!blocks[i]) return Promise.reject(new Error('stream ' + i + ' is not in this PDB'));
+      if (off + len > sizes[i]) len = Math.max(0, sizes[i] - off);
+      var out = new Uint8Array(len), first = Math.floor(off / bs), last = Math.floor((off + len - 1) / bs), runs = [], k = first, run;
+      while (len && k <= last) { run = 1; while (k + run <= last && blocks[i][k + run] === blocks[i][k + run - 1] + 1) run++; runs.push([k, run]); k += run; }
+      return runs.reduce(function (p, r) {
+        return p.then(function () {
+          return u8(blocks[i][r[0]] * bs, r[1] * bs).then(function (chunk) {
+            var a = Math.max(off, r[0] * bs), z = Math.min(off + len, (r[0] + r[1]) * bs);
+            out.set(chunk.subarray(a - r[0] * bs, z - r[0] * bs), a - off);
+          });
+        });
+      }, Promise.resolve()).then(function () { return out; });
+    }
+    var dvOf = function (b) { return new DataView(b.buffer, b.byteOffset, b.byteLength); };
+    return u8(0, 64).then(function (sb) {
+      if (String.fromCharCode.apply(null, sb.subarray(0, 25)) !== 'Microsoft C/C++ MSF 7.00\r') throw new Error('not a PDB (only the Microsoft MSF 7.00 format is read)');
+      var d = dvOf(sb); bs = d.getUint32(32, true);
+      var dirBytes = d.getUint32(44, true), mapAddr = d.getUint32(52, true), nd = Math.ceil(dirBytes / bs);
+      return u8(mapAddr * bs, nd * 4).then(function (bm) {
+        var bv = dvOf(bm), dir = new Uint8Array(nd * bs), ps = [], i;
+        for (i = 0; i < nd; i++) (function (i) { ps.push(u8(bv.getUint32(i * 4, true) * bs, bs).then(function (c) { dir.set(c, i * bs); })); })(i);
+        return Promise.all(ps).then(function () { return dir; });
+      });
+    }).then(function (dir) {
+      var dd = dvOf(dir), ns = dd.getUint32(0, true), p = 4 + ns * 4, i, j;
+      for (i = 0; i < ns; i++) sizes.push(dd.getUint32(4 + i * 4, true));
+      for (i = 0; i < ns; i++) { var c = sizes[i] === 0xffffffff ? 0 : Math.ceil(sizes[i] / bs), a = []; if (sizes[i] === 0xffffffff) sizes[i] = 0; for (j = 0; j < c; j++) { a.push(dd.getUint32(p, true)); p += 4; } blocks.push(a); }
+      return sread(1, 0, 28);
+    }).then(function (info) {
+      var iv = dvOf(info), P = { size: rd.size, guid: fmtGuid(iv, 12), age: iv.getUint32(8, true) };
+      /* lookup tables are read the first time a name is wanted */
+      P.lookup = function (rva) {
+        var ready = sym ? Promise.resolve(sym) : sread(3, 0, 64).then(function (h) {
+          var hv = dvOf(h), pubIx = hv.getUint16(16, true), recIx = hv.getUint16(20, true), optOff = 64 + hv.getUint32(24, true) + hv.getUint32(28, true) + hv.getUint32(32, true) + hv.getUint32(36, true) + hv.getUint32(40, true) + hv.getUint32(52, true), optSize = hv.getUint32(48, true);
+          if (optSize < 12) throw new Error('this PDB has no section table');
+          return sread(3, optOff, optSize).then(function (ob) {
+            var shIx = dvOf(ob).getUint16(10, true);
+            return Promise.all([sread(shIx, 0, sizes[shIx]), sread(pubIx, 0, 28)]).then(function (r) {
+              var sh = dvOf(r[0]), secs = [], i; for (i = 0; i + 40 <= r[0].length; i += 40) secs.push({ vsize: sh.getUint32(i + 8, true), va: sh.getUint32(i + 12, true) });
+              var pv = dvOf(r[1]), cbHash = pv.getUint32(0, true), cbAddr = pv.getUint32(4, true);
+              return sread(pubIx, 28 + cbHash, cbAddr).then(function (am) { sym = { secs: secs, rec: recIx, addr: new DataView(am.buffer, am.byteOffset, am.byteLength), n: Math.floor(cbAddr / 4) }; return sym; });
+            });
+          });
+        });
+        return ready.then(function (S) {
+          var si = -1, i; for (i = 0; i < S.secs.length; i++) if (rva >= S.secs[i].va && rva < S.secs[i].va + Math.max(S.secs[i].vsize, 1)) { si = i; break; }
+          if (si < 0) return null;
+          var seg = si + 1, off = rva - S.secs[si].va;
+          function at(k) {
+            var o = S.addr.getUint32(k * 4, true);
+            return sread(S.rec, o, 4).then(function (h) {
+              var len = dvOf(h).getUint16(0, true) + 2;
+              return sread(S.rec, o, len).then(function (r) {
+                var v = dvOf(r), type = v.getUint16(2, true); if (type !== 0x110e) return null;
+                var e = 14; while (e < r.length && r[e] !== 0) e++;
+                return { off: v.getUint32(8, true), seg: v.getUint16(12, true), name: String.fromCharCode.apply(null, r.subarray(14, e)) };
+              });
+            });
+          }
+          function search(lo, hi, best) {
+            if (lo > hi) return Promise.resolve(best);
+            var mid = (lo + hi) >> 1;
+            return at(mid).then(function (r) { if (!r) return search(lo, mid - 1, best); var cmp = (r.seg - seg) || (r.off - off); return cmp <= 0 ? search(mid + 1, hi, r) : search(lo, mid - 1, best); });
+          }
+          return search(0, S.n - 1, null).then(function (r) { if (!r || r.seg !== seg || off - r.off > 0x100000) return null; return { raw: r.name, name: demangle(r.name), dist: off - r.off }; });
+        });
+      };
+      return P;
+    });
+  }
+  /* Put function names on the frames of the game's own module, but only when the PDB is the one the crashed exe was built with. */
+  function symbolicate(parts, opts) {
+    opts = opts || {}; var P = parts.pdb; if (!P) return Promise.resolve(parts);
+    var work = Promise.resolve();
+    (parts.crashes || []).forEach(function (c) {
+      var exe = c.dmp && c.dmp.mods.filter(function (m) { return /^AeonVersus/i.test(m.name); })[0], cv = exe && exe.cv, name = P.fileName || 'the PDB';
+      var frames = [];
+      if (c.xml) { (c.xml.stack || []).concat(c.xml.callStack || []).forEach(function (f) { frames.push(f); }); (c.xml.threads || []).forEach(function (t) { if (t.crashed) t.frames.forEach(function (f) { frames.push(f); }); }); }
+      if (!cv) { c.sym = { status: 'unverified', pdb: name, msg: name + ' is for build ' + P.guid + ', but there is no minidump with this crash, so there is no way to tell which build crashed. Names were not added. Add the minidump to check.' }; return; }
+      var same = cv.guid.toLowerCase() === P.guid.toLowerCase() && cv.age === P.age;
+      if (!same && !opts.force) { c.sym = { status: 'mismatch', pdb: name, pdbGuid: P.guid, exeGuid: cv.guid, msg: name + ' is for build ' + P.guid + ' (age ' + P.age + '), but the AeonVersus.exe that crashed is ' + cv.guid + ' (age ' + cv.age + ', built ' + new Date(exe.stamp).toISOString().replace('T', ' ').slice(0, 16) + ' UTC). Function names from the wrong PDB would be wrong, so none are shown. You need the PDB that was produced with that exact exe.' }; return; }
+      var seen = {}, n = 0, todo = [];
+      if (c.dmp && c.dmp.fault && /^AeonVersus/i.test(c.dmp.fault.mod)) todo.push(c.dmp.fault);
+      frames.forEach(function (f) { if (/^AeonVersus/i.test(f.mod)) todo.push(f); });
+      todo.forEach(function (f) {
+        work = work.then(function () {
+          var key = f.off; if (seen[key]) { f.sym = seen[key].name; f.raw = seen[key].raw; return; }
+          return P.lookup(parseInt(f.off, 16)).then(function (r) { if (r) { seen[key] = r; f.sym = r.name; f.raw = r.raw; n++; } }, function () { });
+        });
+      });
+      work = work.then(function () { c.sym = { status: same ? 'ok' : 'forced', pdb: name, pdbGuid: P.guid, exeGuid: cv.guid, msg: same ? name + ' is the PDB of the crashed AeonVersus.exe (build id ' + P.guid + ', age ' + P.age + '). Function names were added to the game frames.' : 'Names added from a PDB that does not match this build. Do not trust them.' }; });
+    });
+    return work.then(function () { return parts; });
+  }
+
+  /* ---------- is each file readable, and what does the reader still need ---------- */
+  /* Per-file check. Notes are {s: pass|warn|fail|info, t}. The status of the file is the worst note. */
+  function validateFile(it) {
+    var d = it.data || {}, n = [], rank = { pass: 0, info: 0, warn: 1, fail: 2 }, st = 'pass';
+    function add(s, t) { n.push({ s: s, t: t }); if (rank[s] > rank[st]) st = s; }
+    if (it.kind === 'log') {
+      if (!d.start) add('fail', 'No timestamped lines, so this is not an Unreal log (or it is empty).');
+      else {
+        if (!d.header || !d.header.openLocal) add('warn', 'The top of the file is missing (no "Log file open" line). The log was cut, so its clock zone is unknown and the startup facts are gone.');
+        add('info', num0(d.total) + ' lines, ' + fmtDur(d.durSec) + (d.header && d.header.buildversion ? ', build ' + d.header.buildversion : '') + '.');
+        if (it.role === 'crash') add(d.exit && d.exit.clean ? 'warn' : 'pass', d.exit && d.exit.clean ? 'A crash log should end where the game died, but this one shows a normal shutdown. Is it the game log?' : 'Ends where the game stopped, as a crash log should.');
+        else { add(d.exit && d.exit.clean ? 'pass' : 'warn', d.exit && d.exit.clean ? 'Ends with a normal shutdown, so the whole run is in it.' : 'No normal shutdown line: the game was closed forcibly or crashed, so the end of the run is cut.'); if (d.durSec < 30) add('warn', 'Under 30 seconds long, too short to hold a match.'); }
+        if (!d.phases || !d.phases.length) add(it.role === 'crash' ? 'info' : 'warn', it.role === 'crash' ? 'No map had loaded before the crash, so it happened during startup.' : 'No map loads were found, so there is no timeline to place against matches.');
+        if (!d.counts.error && !d.counts.warning) add('info', 'No errors or warnings. Was the log taken at a low verbosity?');
+        add('info', it.role === 'crash' ? 'Used as the crash log' + (it.crash ? ' of ' + String(it.crash).replace(/^UECC-Windows-/, '').slice(0, 8) : '') + '.' : 'Used as a game log.');
+      }
+    } else if (it.kind === 'xml') {
+      if (!d.guid) add('fail', 'No CrashGUID: this is not a crash context.');
+      if (!d.error) add('warn', 'No error message recorded.');
+      if (!d.stack || !d.stack.length) add('warn', 'No call stack in the context, so the stack cannot be shown or compared with the dump.');
+      else add('pass', d.stack.length + ' stack frames, ' + (d.threads ? d.threads.length : 0) + ' threads.');
+      if (d.hash) add('info', 'Stack hash ' + d.hash.slice(0, 12) + '.'); else add('warn', 'No stack hash, so repeats of this crash cannot be grouped.');
+      if (d.type && d.type !== 'Crash') add('info', 'Type: ' + d.type + '.');
+    } else if (it.kind === 'dmp') {
+      if (!d.exc) add('fail', 'No exception record: this dump was not taken at a crash, so there is no fault to read.');
+      else add('pass', d.exc.name + (d.exc.access ? ' ' + d.exc.access + ' ' + d.exc.target : '') + (d.fault ? ' in ' + d.fault.mod + ' +0x' + d.fault.off : ' at an address in no loaded module') + '.');
+      if (!d.mods || !d.mods.length) add('warn', 'No module list, so frames cannot be tied to a module or a build.');
+      else { var exe = d.mods.filter(function (m) { return /^AeonVersus/i.test(m.name); })[0]; if (exe && exe.cv) add('info', 'Game exe build id ' + exe.cv.guid + ' (age ' + exe.cv.age + ').'); else if (exe) add('warn', 'The game exe has no build id recorded, so a PDB cannot be matched to it.'); else add('warn', 'AeonVersus.exe is not in the module list.'); }
+      if (d.size < 200000) add('warn', 'Very small dump (' + Math.round(d.size / 1024) + ' KB). Part of the file may be missing.');
+      add('info', (d.arch || '') + ', ' + d.threadCount + ' threads, ' + (d.mods ? d.mods.length : 0) + ' modules.');
+    } else if (it.kind === 'ini') {
+      add('pass', 'Crash reporter settings only. It adds no evidence on its own.');
+    } else if (it.kind === 'pdb') {
+      add('pass', 'Build id ' + d.guid + ', age ' + d.age + '.');
+      add('info', 'It only gives names to the game frames, and only for the build it was made with.');
+    }
+    return { status: st, notes: n };
+  }
+  function num0(v) { return Number(v || 0).toLocaleString('en-US'); }
+  /* What files the reader wants, what each one unlocks, and what can be read with the ones given. */
+  function requirements(parts, ledgers, off) {
+    var C = parts.crashes || [], G = parts.games || [], P = parts.pdb, n = C.length, rows = [], can = [];
+    var cnt = function (k) { return C.filter(function (c) { return c.parts && c.parts[k]; }).length; };
+    var names = function (k) { return C.filter(function (c) { return c.parts && c.parts[k]; }).map(function (c) { return c.parts[k]; }); };
+    function crashRow(id, label, ext, gives, k, optional) {
+      var have = cnt(k), state = n === 0 ? 'idle' : have === n ? 'ok' : have === 0 ? (optional ? 'optional' : 'missing') : 'partial';
+      rows.push({ id: id, label: label, ext: ext, gives: gives, state: state, found: have ? have + ' of ' + n + ' crash' + (n === 1 ? '' : 'es') : '', note: state === 'missing' ? 'Add it to read the crash fully.' : state === 'partial' ? (n - have) + ' crash' + (n - have === 1 ? '' : 'es') + ' without it.' : '' });
+    }
+    rows.push({ id: 'game', label: 'Game log', ext: 'AeonVersus.log from the Logs folder', gives: 'Every error and warning grouped, the session timeline, and the comparison with the matches stored here.', state: G.length ? 'ok' : (n ? 'idle' : 'missing'), found: G.map(function (g) { return g.name; }).join(', '), note: G.length ? '' : n ? 'Only needed to review a play session.' : 'Add it to review a play session.' });
+    rows.push({ id: 'ledgers', label: 'Stored matches', ext: 'Match Ledger files uploaded by an admin', gives: 'Proof that the log matches real play: start and end times, players, map, skill use.', state: !G.length ? 'idle' : off ? 'optional' : ledgers ? 'ok' : 'missing', found: ledgers ? ledgers + ' ledger' + (ledgers === 1 ? '' : 's') + ' stored' + (off ? ', not used' : '') : '', note: off ? 'Switched off in Options below.' : G.length && !ledgers ? 'Upload the ledgers from this session in Upload (admin).' : '' });
+    crashRow('xml', 'Crash context', 'CrashContext.runtime-xml', 'The full call stack, launch options, hardware, build and the stack hash that groups repeats.', 'xml');
+    crashRow('dmp', 'Minidump', 'UEMinidump.dmp', 'The exact fault, loaded modules with versions, and the build id that proves a PDB belongs to the crash.', 'dmp');
+    crashRow('clog', 'Crash log', 'AeonVersus.log inside the crash folder', 'What the game was doing in its last seconds, and its crash id, which ties the files together.', 'log', true);
+    crashRow('ini', 'Crash reporter ini', 'CrashReportClient.ini', 'Nothing beyond what the other files give.', 'ini', true);
+    var sy = C.map(function (c) { return c.sym && c.sym.status; }).filter(Boolean), bad = sy.filter(function (s) { return s === 'mismatch' || s === 'forced'; }).length, unv = sy.filter(function (s) { return s === 'unverified'; }).length, ok = sy.filter(function (s) { return s === 'ok'; }).length;
+    rows.push({ id: 'pdb', label: 'Symbols', ext: 'AeonVersus.pdb of the same build as the crashed exe', gives: 'Function names for the game frames of the call stack, in place of module and offset.', state: !P ? 'optional' : bad ? 'problem' : unv ? 'partial' : ok ? 'ok' : (n ? 'partial' : 'optional'), found: P ? (P.fileName || 'PDB') + ', build id ' + P.guid : '', note: !P ? 'Optional. Without it the stack shows module and offset only.' : bad ? 'It is from a different build than the crashed exe, so no names are shown.' : unv ? 'Cannot be checked: add the minidump of that crash.' : ok ? 'Matches the crashed build.' : n ? '' : 'Add a crash to use it.' });
+    can.push({ t: 'Errors and warnings from a play session, grouped', ok: G.length > 0, needs: 'a game log' });
+    can.push({ t: 'Check a play session against the stored matches', ok: G.length > 0 && ledgers > 0 && !off, needs: off ? 'the option "Compare the game log with the stored matches" switched on' : G.length ? 'stored match ledgers from that session' : 'a game log and stored match ledgers' });
+    can.push({ t: 'The exact fault and loaded modules of a crash', ok: cnt('dmp') > 0, needs: 'a minidump (.dmp)' });
+    can.push({ t: 'The full call stack, launch options and hardware of a crash', ok: cnt('xml') > 0, needs: 'the crash context (.runtime-xml)' });
+    can.push({ t: 'Prove the crash files belong together', ok: n > 0 && C.some(function (c) { return c.xml && c.dmp; }), needs: 'the crash context and the minidump of the same crash' });
+    can.push({ t: 'Function names for the game frames', ok: ok > 0, needs: !P ? 'the AeonVersus.pdb of the crashed build' : bad ? 'the PDB built with the crashed exe (the one added is from another build)' : 'a minidump to confirm the PDB matches' });
+    return { rows: rows, can: can };
   }
 
   /* ---------- checks and cross-checks ---------- */
@@ -278,8 +467,12 @@
   function crashSummary(c) {
     var x = c.xml, d = c.dmp, o = { guid: c.guid, parts: c.parts, hash: x ? x.hash : '', type: x ? (x.isEnsure ? 'Ensure' : x.isAssert ? 'Assertion' : x.isStall ? 'Stall' : x.type || 'Crash') : (d ? 'Crash' : ''), error: x ? x.error : (d ? d.exc.name + ' ' + (d.exc.access || '') + ' ' + (d.exc.target || '') : ''), diag: [] };
     o.exc = x ? x.exc : null; o.dump = d ? { time: d.time, size: d.size, os: d.os, arch: d.arch, threads: d.threadCount, mods: d.mods.length, exc: { code: d.exc && d.exc.code, name: d.exc && d.exc.name, access: d.exc && d.exc.access, target: d.exc && d.exc.target, addr: d.exc && ('0x' + d.exc.addr.toString(16)) }, fault: d.fault, uptime: d.created ? Math.max(0, Math.round((d.time - d.created) / 1000)) : null, cpuSec: d.userSec != null ? d.userSec + d.kernelSec : null,
+      exe: (function () { var m = d.mods.filter(function (x) { return /^AeonVersus/i.test(x.name); })[0]; return m ? { name: m.name, guid: m.cv && m.cv.guid, age: m.cv && m.cv.age, stamp: m.stamp } : null; })(),
       other: d.mods.filter(function (m) { var ow = modOwner(m.name); return ow === 'mod' || ow === 'other'; }).map(function (m) { return { n: m.name, v: m.ver }; }).slice(0, 12) } : null;
+    /* no crash context: the dump alone still gives the exception, the faulting frame and the loaded modules, but not the full call stack */
+    if (!x && d && d.exc) { o.exc = { name: 'EXCEPTION_' + d.exc.name, access: d.exc.access || '', addr: d.exc.target || '' }; o.stack = d.fault ? [{ mod: d.fault.mod.replace(/\.(dll|exe)$/i, ''), base: d.fault.base, off: d.fault.off, owner: d.fault.owner }] : []; o.info = { pid: d.pid || 0, os: d.os || '' }; o.hash = 'dmp' + hash8(String(d.fault ? d.fault.mod + d.fault.off : '') + d.exc.code).toUpperCase(); o.dumpOnly = true; o.error = 'Unhandled Exception: EXCEPTION_' + d.exc.name + (d.exc.access ? ' ' + d.exc.access + ' address ' + d.exc.target : ''); }
     if (x) { o.info = { game: x.game, exe: x.exe, config: x.config, engine: x.engine, build: x.build, cmd: x.cmd, mode: x.mode, os: x.os, cpu: x.cpu, gpu: x.gpu, cores: x.cores, ramGB: x.ramGB, rhi: x.rhi, secs: x.secsSinceStart, pid: x.pid, baseDir: x.baseDir, oom: x.oom }; o.stack = x.stack.slice(0, 20); o.threads = x.threads.filter(function (t) { return t.crashed; }).map(function (t) { return { id: t.id, name: t.name, frames: t.frames }; }); o.threadCount = x.threads.length; }
+    if (c.sym) o.sym = c.sym;
     if (c.log) { var L = c.log; o.log = { lines: L.lines, start: L.start, end: L.end, durSec: L.durSec, errors: L.counts.error, warnings: L.counts.warning, browse: L.browse, lastMap: L.phases.length ? L.phases[L.phases.length - 1].map : '', phases: L.phases.length, initSec: L.header.initSec || null, header: L.header, issues: L.issues.slice(0, 12) }; }
     return o;
   }
@@ -295,16 +488,18 @@
     /* 2. crash guid agrees (log header vs xml) */
     if (o.log && o.guid) { var lg = String(o.logGuid || '').replace(/_\d+$/, ''), cg = o.guid.replace(/_\d+$/, ''); if (lg) ck(checks, 'guid:' + o.guid, G, lg === cg ? 'pass' : 'fail', 'Crash id in the log matches the crash context', lg === cg ? 'Both name ' + cg + '.' : 'The log says ' + lg + ' but the crash context says ' + cg + '. These files belong to different crashes.'); }
     /* 3. xml vs dmp exception */
-    if (x && d && d.exc) {
+    if (x && d && d.exc && !o.dumpOnly) {
       var codeOk = !x.name || (EXC[d.exc.code] || '').replace(/_/g, '') === x.name.replace(/^EXCEPTION_/, '').replace(/_/g, '') || x.name === 'EXCEPTION_' + (EXC[d.exc.code] || '');
       var tgtOk = !x.addr || !d.exc.target || BigInt(x.addr) === BigInt(d.exc.target);
       ck(checks, 'exc:' + o.guid, G, codeOk && tgtOk ? 'pass' : 'fail', 'Minidump exception agrees with the crash context', codeOk && tgtOk ? 'Both record ' + (x.name || d.exc.name) + (x.access ? ' ' + x.access + ' address ' + x.addr : '') + '.' : 'Context says ' + (o.error) + '; the dump says ' + d.exc.name + ' ' + (d.exc.access || '') + ' ' + (d.exc.target || '') + '.');
     }
     /* 4. the top stack frame resolves in the dump's module list at the same address */
-    if (x && d && d.exc && d.fault && st.length) {
+    if (x && d && d.exc && d.fault && st.length && !o.dumpOnly) {
       var f0 = st[0], same = f0.mod.toLowerCase().replace(/\.(dll|exe)$/, '') === d.fault.mod.toLowerCase().replace(/\.(dll|exe)$/, '') && parseInt(f0.off, 16) === parseInt(d.fault.off, 16);
       ck(checks, 'stack:' + o.guid, G, same ? 'pass' : 'warn', 'Call stack top frame lands where the dump says it crashed', same ? f0.mod + ' + 0x' + f0.off + ' in both, with the module loaded at the same address.' : 'Context top frame is ' + f0.mod + ' + 0x' + f0.off + ' but the dump faulted in ' + d.fault.mod + ' + 0x' + d.fault.off + '.');
     }
+    /* symbols: does the PDB belong to the crashed build? */
+    if (o.sym) ck(checks, 'pdb:' + o.guid, G, o.sym.status === 'ok' ? 'pass' : o.sym.status === 'unverified' ? 'warn' : 'fail', o.sym.status === 'ok' ? 'Symbols match the crashed build' : o.sym.status === 'unverified' ? 'Symbols cannot be checked against the crashed build' : 'Symbols are from a different build', o.sym.msg);
     /* 5. time of the dump against the end of the crash log */
     if (d && o.log && o.log.end) { var dt = (d.time - o.log.end) / 1000; ck(checks, 'time:' + o.guid, G, Math.abs(dt) <= 10 ? 'pass' : Math.abs(dt) <= 120 ? 'warn' : 'fail', 'Dump time against the last log line', 'The dump was written ' + r1(Math.abs(dt)) + ' s ' + (dt >= 0 ? 'after' : 'before') + ' the last line of the crash log' + (Math.abs(dt) <= 10 ? ', so they are the same moment.' : Math.abs(dt) <= 120 ? '.' : '. They are probably from different runs.')); }
     /* 6. versions */
@@ -328,7 +523,7 @@
     else if (x && /ACCESS_VIOLATION/.test(x.name)) why.push('The code touched memory it does not own (' + (x.access || 'access') + ' ' + x.addr + ').');
     if (dx.modInStack) why.push('The stack passes through the UE4SS mod loader, which hooks game functions. Test the same steps with it off (no --ue4ss-path) before treating this as a game bug.');
     if (d && d.fault) why.push('Fault is inside ' + d.fault.mod + ' (+0x' + d.fault.off + ')' + (d.fault.owner === 'system' ? ', a Windows runtime library, so the bad pointer came from the code that called it, further down the stack.' : '.'));
-    var top = dx.top; if (top) fix.push('First non-system frame: ' + top.mod + ' + 0x' + top.off + (top.owner === 'game' ? ' (game code: resolve with the symbols for ' + ((o.info && o.info.build) || 'this build') + ')' : top.owner === 'mod' ? ' (mod code)' : '') + '.');
+    var top = dx.top; if (top) fix.push('First non-system frame: ' + top.mod + ' + 0x' + top.off + (top.sym ? ' = ' + top.sym : '') + (top.owner === 'game' ? (top.sym ? ' (game code)' : ' (game code: add the AeonVersus.pdb of this exact build to see the function name)') : top.owner === 'mod' ? ' (mod code)' : '') + '.');
     return { key: 'cr:' + (o.hash || o.guid || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 16), id: 'crash', sev: 'critical', area: 'crash', title: 'Crash: ' + clip(err.replace(/^Unhandled Exception: /, ''), 90), n: n, why: why.join(' '), fix: fix.join(' ') || 'Resolve the stack with the build symbols.', det: [], samples: [clip(err, 200)], ph: {}, first: 0, last: 0, crashHash: o.hash };
   }
 
@@ -408,6 +603,7 @@
     opts = opts || {};
     var checks = [], findings = [], crashes = (parts.crashes || []).map(function (c) { var s = crashSummary(c); s.logGuid = c.log && c.log.guid; return s; }), games = parts.games || [], i;
     var issues = [], sources = [], seenIssue = {};
+    if (parts.pdb) sources.push({ kind: 'pdb', name: parts.pdb.fileName || 'symbols', size: parts.pdb.size || 0, lines: 0, parts: ['pdb'] });
     /* game logs */
     games.forEach(function (g) { var L = g.log; sources.push({ kind: 'game', name: g.name, size: g.size, lines: L.lines, parts: ['log'] }); });
     var G0 = games[0] && games[0].log;
@@ -460,7 +656,8 @@
       var hi = findings.filter(function (f) { return f.sev === 'high' || (f.sev === 'critical' && f.area !== 'crash'); }); if (hi.length) head.push(hi.length + ' high-severity problem' + (hi.length === 1 ? '' : 's') + ': ' + hi.slice(0, 3).map(function (f) { return f.title + (f.det && f.det[0] ? ' (' + f.det[0].k + ')' : ''); }).join('; ') + '.');
     }
     var summary = { headlines: head, status: cnt.fail || sevN.critical ? 'fail' : cnt.warn || sevN.high ? 'warn' : 'pass', crashes: crashes.length, crashGroups: crashFind.length, findings: findings.length, sev: sevN, checks: cnt, errors: G0 ? G0.counts.error : 0, warnings: G0 ? G0.counts.warning : 0, lines: G0 ? G0.total : 0, start: G0 ? G0.start : (crashes[0] && crashes[0].dump && crashes[0].dump.time) || 0, end: G0 ? G0.end : 0, durSec: G0 ? G0.durSec : 0, tz: G0 ? G0.tzMin : 0, build: (G0 && G0.header.buildversion) || info0.build || '', engine: (G0 && G0.header.engineversion) || info0.engine || '', os: (G0 && G0.header.os) || info0.os || '', cpu: (G0 && G0.header.cpu) || info0.cpu || '', gpu: (G0 && G0.header.gpu) || info0.gpu || '', matchesLinked: links.filter(function (l) { return l.match; }).length, matchPhases: links.length };
-    return { v: 1, createdAt: Date.now(), summary: summary, sources: sources, findings: findings.slice(0, 300), checks: checks, crashes: crashes.map(function (c) { delete c.logGuid; return c; }), links: links,
+    var files = (parts.items || []).map(function (it) { var v = validateFile(it); return { key: it.key || '', name: it.name, kind: it.kind, size: it.size || 0, role: it.role || '', auto: !it.forceRole, forced: it.forceRole || '', status: v.status, notes: v.notes }; });
+    return { v: 1, createdAt: Date.now(), summary: summary, files: files, req: requirements(parts, opts.ledgerCount != null ? opts.ledgerCount : (matches || []).length, !!opts.ledgersOff), sources: sources, findings: findings.slice(0, 300), checks: checks, crashes: crashes.map(function (c) { delete c.logGuid; return c; }), links: links,
       game: G0 ? { header: G0.header, counts: G0.counts, phases: G0.phases, players: G0.players.map(function (p) { return { name: p.name, team: p.team }; }), exit: G0.exit, metrics: G0.metrics, nets: G0.nets.slice(0, 60), durSec: G0.durSec, start: G0.start, tzMin: G0.tzMin, lines: G0.total, topCats: topOf(G0.cats, 8) } : null };
   }
 
@@ -485,6 +682,6 @@
     return L.join('\n');
   }
 
-  var api = { SEV: SEV, RULES: RULES, parseGameLog: parseGameLog, parseCrashXml: parseCrashXml, parseCrashIni: parseCrashIni, parseMinidump: parseMinidump, sniff: sniff, assemble: assemble, analyze: analyze, toText: toText, scrub: scrub, fmtDur: fmtDur, hash8: hash8 };
+  var api = { validateFile: validateFile, requirements: requirements, openPdb: openPdb, symbolicate: symbolicate, demangle: demangle, SEV: SEV, RULES: RULES, parseGameLog: parseGameLog, parseCrashXml: parseCrashXml, parseCrashIni: parseCrashIni, parseMinidump: parseMinidump, sniff: sniff, assemble: assemble, analyze: analyze, toText: toText, scrub: scrub, fmtDur: fmtDur, hash8: hash8 };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.BR = api;
 })(typeof window !== 'undefined' ? window : this);

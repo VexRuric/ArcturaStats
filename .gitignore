@@ -13,3 +13,4 @@ dev.js
 # raw game logs, crash folders and minidumps: large, and they hold machine and account ids
 /Logs/
 /Crashes/
+*.pdb
