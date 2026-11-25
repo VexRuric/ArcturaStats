@@ -191,6 +191,7 @@ a.fhero:hover{border-color:var(--fc)}a.fhero:focus-visible{outline:2px solid var
   <main id="view" aria-live="polite"></main>
 </div>
 
+<script src="bugreport.js"></script>
 <script>
 function parseCSV(text){const rows=[];let row=[],f='',q=false;for(let i=0;i<text.length;i++){const c=text[i];if(q){if(c==='"'){if(text[i+1]==='"'){f+='"';i++}else q=false}else f+=c}else if(c==='"')q=true;else if(c===','){row.push(f);f=''}else if(c==='\n'){row.push(f);rows.push(row);row=[];f=''}else if(c!=='\r')f+=c}if(f!==''||row.length){row.push(f);rows.push(row)}return rows}
 function hashText(s){let h1=0x811c9dc5,h2=5381;for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);h1^=c;h1=Math.imul(h1,16777619);h2=((h2<<5)+h2+c)|0}return 'm'+(h1>>>0).toString(16)+(h2>>>0).toString(16)+s.length.toString(16)}
@@ -622,7 +623,7 @@ function evRename(id){
   if(!n||!snaps[id]||!db)return;
   db.collection('snapshots').doc(id).set(Object.assign({},snaps[id],{name:n})).then(function(){evEdit={id:'',v:''};evMsg='';render()},function(){evMsg='Could not save the name.';render()})
 }
-function snapDelete(id){db&&db.collection('snapshots').doc(id).delete().then(function(){location.hash='admin'},function(){})}
+function snapDelete(id){db&&db.collection('snapshots').doc(id).delete().then(function(){subSel['designer']='handler';location.hash='designer'},function(){})}
 function snapshotPanel(){
   var ms=everyMatch().filter(function(m){return m.saved}).sort(function(a,b){return playedAt(a.doc)-playedAt(b.doc)});
   var list=Object.keys(snaps).map(function(k){return {id:k,s:snaps[k]}}).sort(function(a,b){return (b.s.createdAt||0)-(a.s.createdAt||0)});
@@ -1042,7 +1043,7 @@ function viewSnapshot(id){
   if(!s)return '<div><h1>Event not found</h1></div>'+empty(dbState==='loading'?'Loading':'No event with that id','It may have been deleted, or it is still loading.');
   var ms=(s.matchIds||[]).map(function(k){return everyMatch().filter(function(m){return m.id===k})[0]}).filter(Boolean).sort(function(a,b){return playedAt(a.doc)-playedAt(b.doc)});
   var missing=(s.matchIds||[]).length-ms.length;
-  var h='<div class="bar"><div><p class="sub" style="margin:0">'+(canEdit?'<a class="plink" href="#admin">Admin</a>':'<a class="plink" href="#events">Events</a>')+' / Event '+pubTag(id)+'</p><h1>'+esc(s.name)+'</h1><p class="sub">'+ms.length+' match'+(ms.length===1?'':'es')+', created '+esc(new Date(s.createdAt||0).toLocaleDateString())+(missing?' <span class="tag warn">'+missing+' match'+(missing===1?'':'es')+' no longer stored</span>':'')+'</p></div><div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><label class="chk"><input type="checkbox" id="botsChk"'+(hideBots?' checked':'')+'> Hide bot players</label><button class="btn ghost" type="button" data-card="copy">Copy stats image</button><button class="btn ghost" type="button" data-card="save">Save PNG</button><span class="note" id="cardMsg" role="status" style="margin:0"></span>'+(canEdit?'<button class="btn ghost" type="button" data-expev="'+esc(id)+'">Export JSON</button>'+pubBtn(id)+'<button class="btn ghost" type="button" data-snapdel="'+esc(id)+'">Delete event</button>':'')+'</div></div>';
+  var h='<div class="bar"><div><p class="sub" style="margin:0">'+(canEdit?'<a class="plink" href="#designer" data-dzgo="handler">Designer</a>':'<a class="plink" href="#events">Events</a>')+' / Event '+pubTag(id)+'</p><h1>'+esc(s.name)+'</h1><p class="sub">'+ms.length+' match'+(ms.length===1?'':'es')+', created '+esc(new Date(s.createdAt||0).toLocaleDateString())+(missing?' <span class="tag warn">'+missing+' match'+(missing===1?'':'es')+' no longer stored</span>':'')+'</p></div><div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><label class="chk"><input type="checkbox" id="botsChk"'+(hideBots?' checked':'')+'> Hide bot players</label><button class="btn ghost" type="button" data-card="copy">Copy stats image</button><button class="btn ghost" type="button" data-card="save">Save PNG</button><span class="note" id="cardMsg" role="status" style="margin:0"></span>'+(canEdit?'<button class="btn ghost" type="button" data-expev="'+esc(id)+'">Export JSON</button>'+pubBtn(id)+'<button class="btn ghost" type="button" data-snapdel="'+esc(id)+'">Delete event</button>':'')+'</div></div>';
   if(canEdit)h+='<div class="panel" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><label for="evName" class="note" style="margin:0">Event name</label><input id="evName" type="text" maxlength="80" value="'+esc(evEdit.id===id?evEdit.v:s.name)+'" style="flex:1 1 260px;padding:8px 10px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--fg);font:inherit"><button class="btn" type="button" data-evrename="'+esc(id)+'">Save name</button>'+(evMsg?'<span class="note err" role="alert" style="margin:0">'+esc(evMsg)+'</span>':'')+'</div>';
   if(!ms.length)return h+empty('No matches','Every match in this event has been removed.');
   var F={0:{w:0,l:0,dr:0,u:0,k:0,sc:0,mob:0,m:0},1:{w:0,l:0,dr:0,u:0,k:0,sc:0,mob:0,m:0}},P={},C={},mins=0,K=0;
@@ -1124,8 +1125,8 @@ function copyBugs(){
 var DOC_LIMIT=3.5*1024*1024,DOC_WARN=0.8*DOC_LIMIT;
 /* position check limits: kill distance between attacker and defender, kill event vs sampled defender, map bound, movement while dead, sample gap (s), standing still (units, s) */
 var POSMAX={kill:75,loc:40,bound:350,dead:5,gap:15,still:8,stillSec:120,mob:40,camp:100,obj:60,cp:40,pair:1};
-function viewAdmin(){
-  lastBugPanel='';
+function viewAdmin(part){
+  admPart=part||'data';lastBugPanel='';
   var h='<div><h1>Admin</h1><p class="sub">Match handling, uploads, accounts, and automatic checks that find problems in the logs, the game and the balance '+statusLine()+'</p></div>';
   if(!canDesign)return h+empty('Designers and admins only','This page is for designers and admins.');
   var ms=everyMatch().filter(bfOk);if(!ms.length)return adminShell(h,empty(bfKey?'No matches in this build':'No matches yet','Upload combat logs in the Upload section.'),'',0);
@@ -1564,12 +1565,9 @@ document.addEventListener('change',function(e){var t=e.target;
   if(t&&t.id==='jvFile'&&t.files&&t.files[0]){var f=t.files[0],rd=new FileReader();rd.onload=function(){try{jvLoad(JSON.parse(String(rd.result).replace(/^\ufeff/,'')),f.name,f.size)}catch(x){jv.data=null;jv.err='That file is not valid JSON: '+x.message;render()}};rd.onerror=function(){jv.err='Could not read the file.';render()};rd.readAsText(f)}
 });
 document.addEventListener('input',function(e){var t=e.target;if(t&&t.id==='jvQ'){jv.q=t.value;var q=document.getElementById('jvRes');if(q)q.innerHTML=jvResHtml()}});
-function adminShell(h,ov,bg,nb){
-  var secs=[['overview','Overview'],['bugs','Bugs &amp; checks'+(nb?' ('+nb+')':'')],['json','JSON reader']];
-  if(canEdit)secs.push(['handler','Match handler'],['upload','Upload'],['accounts','Accounts']);
-  var sn=subTabs('admin',secs);
-  return h+sn.h+(sn.cur==='overview'||sn.cur==='bugs'?bfBar():'')+(sn.cur==='json'?jsonReader():sn.cur==='bugs'?bg:sn.cur==='handler'&&canEdit?matchHandler():sn.cur==='upload'&&canEdit?viewUpload():sn.cur==='accounts'&&canEdit?accountsPanel():ov);
-}
+/* The Admin tools live inside the Designer area now (viewDesigner builds the tabs). viewAdmin(part) builds the Data health and Match checks content and this picks one. */
+var admPart='data';
+function adminShell(h,ov,bg,nb){return admPart==='bugs'?(bg||ov):ov}
 /* Match handler: pick matches, delete one (click twice), or make an event from the picked ones and publish it in one step */
 var evModal=null;
 function evList(){
@@ -3419,7 +3417,7 @@ function viewDzScore(){
   var key=dz.sb&&B.some(function(g){return g.key===dz.sb})?dz.sb:bfKey&&B.some(function(g){return g.key===bfKey})?bfKey:B[B.length-1].key,ix=B.map(function(g){return g.key}).indexOf(key),g=B[ix],pg=ix>0?B[ix-1]:null;
   B.forEach(function(x){x.ids=[];dzMatches(true).all.forEach(function(m){if(((m.doc.meta||{}).skillsHash||'unknown')===x.key)x.ids.push(m.id)})});
   if(MB.doc===undefined)mbLoad().then(function(){render()});
-  var bfSave=bfKey;bfKey='';viewAdmin();bfKey=bfSave;var bugs=lastBugs.slice();bugs.seenAgain=function(b){var rec=(adminData&&adminData.bugs||{})[b.key];return !!(rec&&rec.at&&b.ls&&b.ls.t>rec.at)};
+  var bfSave=bfKey;bfKey='';viewAdmin('bugs');bfKey=bfSave;var bugs=lastBugs.slice();bugs.seenAgain=function(b){var rec=(adminData&&adminData.bugs||{})[b.key];return !!(rec&&rec.at&&b.ls&&b.ls.t>rec.at)};
   var cur=dzChecks(g,bugs),prev=pg?dzChecks(pg,bugs):null,pm={};if(prev)prev.forEach(function(c){pm[c.id]=c});
   var shown=function(c){return c.low?'low':c.status};
   var cnt={pass:0,warn:0,fail:0,low:0,info:0};cur.forEach(function(c){cnt[shown(c)]++});
@@ -3473,12 +3471,263 @@ function viewDzOverview(G){
   h+='<p class="note">Damage share counts every player entry in the matches chosen above, bots left out. The donuts answer how much of the game each class carries, and the Scorecard tab checks whether that share is where you want it.</p>';
   return h;
 }
+/* Bug reports (Designer area). The engine that reads the files is bugreport.js; this is the page for it: upload, findings, checks, crashes, timeline, saved reports.
+   Raw logs and crash files are read in the browser and never uploaded. Only the finished analysis can be saved. */
+var viewReports = (function () {
+  var BR = window.BR;
+  var br = { items: [], busy: '', err: '', res: null, saved: null, openKey: {}, sevOn: { critical: 1, high: 1, medium: 1, low: 0, info: 0 }, area: '', q: '', allChecks: false, more: 0, title: '', msg: '', drag: false, docs: {}, meta: {}, docBusy: '', skipped: [] };
+  var SEVL = { critical: 'Critical', high: 'High', medium: 'Medium', low: 'Low', info: 'Info' };
+  var AREAL = { crash: 'Crash', blueprint: 'Blueprint', gameplay: 'Gameplay', data: 'Data tables', audio: 'Audio', network: 'Network', art: 'Art and assets', animation: 'Animation', vfx: 'Effects', ui: 'UI', performance: 'Performance', assets: 'Streaming', other: 'Other' };
+  var STL = { open: 'Open', devs: 'With devs', fixed: 'Fixed', ignored: 'Ignored' };
+  var MAXFILE = 400 * 1024 * 1024;
+
+  var css = document.createElement('style');
+  css.textContent = '.brdrop{display:block;border:2px dashed var(--line);border-radius:8px;padding:26px 16px;text-align:center;color:var(--muted);cursor:pointer;background:var(--panel)}.brdrop:hover,.brdrop.on,.brdrop:focus-within{border-color:var(--accent);color:var(--fg)}.brdrop strong{display:block;color:var(--fg);font:600 18px var(--font-d);letter-spacing:.04em;text-transform:uppercase;margin-bottom:4px}' +
+    '.brsev{display:inline-block;min-width:68px;text-align:center}.brmeta{display:flex;gap:6px 14px;flex-wrap:wrap;color:var(--muted);font-size:13px;margin:6px 0}.brpre{margin:6px 0;padding:8px 10px;background:var(--bg);border:1px solid var(--line);border-radius:4px;font:12px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--muted)}' +
+    '.brev{margin:6px 0;padding:6px 10px;border-left:3px solid var(--accent);background:var(--bg)}.brfile{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:4px 0}.brhead li{margin:4px 0}.brflt{display:flex;gap:10px 16px;flex-wrap:wrap;align-items:center;margin:8px 0}.brflt input[type=search]{flex:1 1 220px;min-width:0}';
+  document.head.appendChild(css);
+
+  /* ---------- files in ---------- */
+  function readEntry(entry, out) {
+    return new Promise(function (ok) {
+      if (!entry) return ok();
+      if (entry.isFile) { entry.file(function (f) { out.push({ file: f, path: (entry.fullPath || f.name).replace(/^\//, '') }); ok(); }, function () { ok(); }); return; }
+      if (!entry.isDirectory) return ok();
+      var rd = entry.createReader(), all = [];
+      (function more() { rd.readEntries(function (b) { if (!b.length) return Promise.all(all.map(function (e) { return readEntry(e, out); })).then(ok); all = all.concat([].slice.call(b)); more(); }, function () { ok(); }); })();
+    });
+  }
+  function ingest(list) {
+    if (br.busy) return;
+    br.err = ''; br.msg = ''; br.saved = null; br.skipped = [];
+    var todo = list.filter(function (x) { return x.file; });
+    if (!todo.length) { render(); return; }
+    var chain = Promise.resolve();
+    todo.forEach(function (x) {
+      chain = chain.then(function () {
+        var f = x.file;
+        if (f.size > MAXFILE) { br.skipped.push(f.name + ' (over ' + Math.round(MAXFILE / 1048576) + ' MB)'); return; }
+        br.busy = 'Reading ' + f.name + ' (' + (f.size > 1048576 ? (f.size / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(f.size / 1024)) + ' KB') + ')'; render();
+        return new Promise(function (r) { setTimeout(r, 30); }).then(function () { return f.slice(0, 8).arrayBuffer(); }).then(function (hb) {
+          var kind = BR.sniff(x.path || f.name, new Uint8Array(hb), f.size);
+          if (!kind) { br.skipped.push(f.name + ' (not a log, crash xml, ini or minidump)'); return; }
+          var p = kind === 'dmp' ? f.arrayBuffer().then(function (b) { return BR.parseMinidump(b); }) : f.text().then(function (t) { return kind === 'xml' ? BR.parseCrashXml(t) : kind === 'ini' ? BR.parseCrashIni(t) : BR.parseGameLog(t); });
+          return p.then(function (data) {
+            var key = (x.path || f.name) + '|' + f.size + '|' + f.lastModified;
+            br.items = br.items.filter(function (i) { return i.key !== key; });
+            br.items.push({ key: key, name: f.name, path: x.path || f.name, size: f.size, kind: kind, data: data });
+          }, function (e) { br.skipped.push(f.name + ' (' + (e && e.message || 'could not be read') + ')'); });
+        });
+      });
+    });
+    chain.then(function () { br.busy = ''; run(); }, function (e) { br.busy = ''; br.err = 'Could not read the files: ' + (e && e.message || 'error'); render(); });
+  }
+  function run() {
+    if (!br.items.length) { br.res = null; render(); return; }
+    try { var parts = BR.assemble(br.items); br.res = BR.analyze(parts, matchInfo()); br.res.skipped = parts.skipped.concat(br.skipped); if (!br.title) br.title = defaultTitle(br.res); br.openKey = {}; br.more = 0; }
+    catch (e) { br.err = 'The files were read but the analysis failed: ' + (e && e.message || e); br.res = null; }
+    render();
+  }
+  function defaultTitle(r) {
+    var s = r.summary, d = s.start ? new Date(s.start) : new Date();
+    return (s.crashes ? s.crashes + ' crash' + (s.crashes === 1 ? '' : 'es') + (r.game ? ' and game log' : '') : 'Game log') + ', ' + d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + (s.build ? ', ' + String(s.build).replace(/^\+\+UE5\+Release-[\d.]+-/, '') : '');
+  }
+
+  /* ledgers, boiled down to what the checks need */
+  function wall(s) { var m = /(\d{4})-(\d\d)-(\d\d)[_ T](\d\d)[-:](\d\d)[-:](\d\d)/.exec(s || ''); return m ? Date.UTC(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : null; }
+  function matchInfo() {
+    return everyMatch().filter(function (m) { return m.doc && m.doc.ledger; }).map(function (m) {
+      var d = m.doc, mt = d.meta || {}, end = Date.parse(mt.endedAtUtc || ''), casts = {};
+      if (d.castLog && d.castLog.n && d.castLog.r) d.castLog.r.forEach(function (r) { var nm = d.castLog.n[r[2]]; if (nm) casts[nm] = (casts[nm] || 0) + 1; });
+      return { id: m.id, title: mtitle(d), endUtc: isNaN(end) ? null : end, startWall: wall(mt.startedLocal) || wall(d.name), dur: d.duration || 0, map: d.map || '', endReason: d.endReason || '', relicEvents: (d.types || {}).relicEvents || 0,
+        humans: (d.players || []).filter(function (p) { return !isBot(p.name); }).map(function (p) { return p.name; }), casts: casts };
+    });
+  }
+
+  /* ---------- saved reports ---------- */
+  function savedList() {
+    var l = ((adminData && adminData.reports) || []).slice().sort(function (a, b) { return b.v - a.v; });
+    /* titles live inside each report, so fetch the newest few once to name the rows */
+    l.slice(0, 20).forEach(function (s) { if (br.docs[s.id] || br.meta[s.id]) return; br.meta[s.id] = 1; api('GET', '/api/doc?c=reports&id=' + encodeURIComponent(s.id)).then(function (d) { br.docs[s.id] = d; render(); }, function () {}); });
+    return l;
+  }
+  function openSaved(id) {
+    br.docBusy = id; br.err = ''; render();
+    api('GET', '/api/doc?c=reports&id=' + encodeURIComponent(id)).then(function (d) { br.docs[id] = d; br.saved = { id: id, doc: d }; br.res = d; br.items = []; br.openKey = {}; br.more = 0; br.docBusy = ''; render(); window.scrollTo(0, 0); }, function (e) { br.docBusy = ''; br.err = 'Could not open that report: ' + (e && e.code || 'error'); render(); });
+  }
+  function saveReport() {
+    if (!br.res || br.saved) return;
+    var rep = JSON.parse(JSON.stringify(br.res)); rep.title = (br.title || 'Bug report').slice(0, 100); rep.skipped = undefined;
+    var id = 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    br.msg = 'Saving'; render();
+    api('PUT', '/api/doc?c=reports&id=' + id, rep).then(function () { br.msg = 'Saved. Everyone with designer access can open it from Saved reports.'; br.saved = { id: id, doc: rep }; adminData = null; return refresh(true); }, function (e) { br.msg = 'Could not save: ' + (e && e.code === 'bad_doc' ? 'the report was rejected' : e && e.code || 'error'); render(); }).then(function () { if (canDesign) loadAdmin(); });
+  }
+  function delSaved(id) {
+    api('DELETE', '/api/doc?c=reports&id=' + encodeURIComponent(id)).then(function () { if (br.saved && br.saved.id === id) { br.saved = null; br.res = null; } confirmKey = ''; adminData = null; return refresh(true); }, function (e) { br.err = 'Could not delete: ' + (e && e.code || 'error'); confirmKey = ''; render(); }).then(function () { if (canDesign) loadAdmin(); });
+  }
+
+  /* ---------- helpers for the view ---------- */
+  function clockAt(res, sec) { var s = res.summary; if (!s.start) return ''; var d = new Date(s.start + sec * 1000 + (s.tz || 0) * 60000); return ('0' + d.getUTCHours()).slice(-2) + ':' + ('0' + d.getUTCMinutes()).slice(-2) + ':' + ('0' + d.getUTCSeconds()).slice(-2); }
+  function dayAt(ms, tz) { var d = new Date(ms + (tz || 0) * 60000); return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }); }
+  function sevTag(s) { return '<span class="tag brsev ' + (s === 'critical' || s === 'high' ? 'err' : s === 'medium' ? 'warn' : '') + '">' + esc(SEVL[s] || s) + '</span>'; }
+  function stTag(s) { return '<span class="tag ' + (s === 'fail' ? 'err' : s === 'warn' ? 'warn' : s === 'pass' ? 'ok' : '') + '">' + esc({ fail: 'Fail', warn: 'Warn', pass: 'Pass', info: 'Info' }[s] || s) + '</span>'; }
+  function phaseLabel(res, k) {
+    var ph = (res.game && res.game.phases) || [], p = ph[k]; if (!p) return 'Startup';
+    if (p.kind === 'match') { var n = 0; for (var i = 0; i <= k; i++) if (ph[i].kind === 'match') n++; return 'Match ' + n; }
+    return p.kind === 'lobby' ? 'Lobby' : 'Loading';
+  }
+  function bugRec(key) { return ((adminData && adminData.bugs) || {})[key]; }
+  function size(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB'; }
+
+  function findingHtml(res, f) {
+    var rec = bugRec(f.key), st = (rec && rec.s) || 'open', ph = Object.keys(f.ph || {}).map(Number).sort(function (a, b) { return a - b; });
+    var h = '<details class="cdet" data-brk="' + esc(f.key) + '"' + (br.openKey[f.key] ? ' open' : '') + '><summary>' + sevTag(f.sev) + ' <strong>' + esc(f.title) + '</strong>' + (f.n > 1 ? ' <span class="note" style="margin:0">x ' + num(f.n) + '</span>' : '') + ' <span class="tag">' + esc(AREAL[f.area] || f.area) + '</span>' + (st !== 'open' ? ' <span class="tag ok">' + esc(STL[st]) + '</span>' : '') + (f.det && f.det[0] ? ' <span class="note" style="margin:0;overflow-wrap:anywhere">' + esc(f.det[0].k) + '</span>' : '') + '</summary>';
+    if (f.why) h += '<p style="margin:8px 0 4px"><strong>What it breaks.</strong> ' + esc(f.why) + '</p>';
+    (f.ev || []).forEach(function (e) { h += '<div class="brev">' + esc(e) + '</div>'; });
+    if (f.fix) h += '<p style="margin:4px 0"><strong>What to check.</strong> ' + esc(f.fix) + '</p>';
+    var meta = [];
+    if (f.area === 'crash') { if (f.occ) meta.push(esc(f.occ.length + ' occurrence' + (f.occ.length === 1 ? '' : 's') + ': ' + f.occ.map(function (o) { return o.at ? new Date(o.at).toLocaleString() : ''; }).join('; '))); }
+    else {
+      if (f.n > 1 || f.last > f.first) meta.push('First at ' + clockAt(res, f.first || 0) + (f.last > f.first ? ', last at ' + clockAt(res, f.last) : ''));
+      if (ph.length) meta.push(ph.slice(0, 8).map(function (k) { return esc(phaseLabel(res, k)) + ' ' + num(f.ph[k]); }).join(', '));
+    }
+    if (meta.length) h += '<div class="brmeta">' + meta.map(function (m) { return '<span>' + m + '</span>'; }).join('') + '</div>';
+    if (f.det && f.det.length > 1) h += '<div class="brmeta"><span>Also on:</span>' + f.det.slice(1, 6).map(function (d) { return '<span>' + esc(d.k) + (d.n > 1 ? ' x ' + d.n : '') + '</span>'; }).join('') + '</div>';
+    if (f.samples && f.samples.length) h += '<div class="brpre">' + f.samples.map(esc).join('\n') + (f.extra && f.extra.length ? '\n' + f.extra.map(esc).join('\n') : '') + '</div>';
+    h += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px"><span class="note" style="margin:0">Status</span>' + ['open', 'devs', 'fixed', 'ignored'].map(function (s) { return '<button class="btn' + (s === st ? '' : ' ghost') + '" type="button" data-aop="bug:' + esc(f.key) + '|' + s + '"' + (s === st ? ' aria-pressed="true"' : '') + '>' + STL[s] + '</button>'; }).join('') + '<button class="btn ghost" type="button" data-brcopy="' + esc(f.key) + '">Copy for devs</button></div>';
+    if (rec && st !== 'open') h += '<p class="note" style="margin:6px 0 0">' + esc(STL[st]) + (rec.n ? ' by ' + esc(rec.n) : '') + ', ' + esc(new Date(rec.at).toLocaleString()) + '</p>';
+    return h + '</details>';
+  }
+
+  function viewReports() {
+    var h = '', res = br.res, SEV = BR.SEV, saved = savedList(), isSaved = !!br.saved;
+    h += '<div class="panel"><h2 style="margin:0 0 6px">Bug report</h2><p class="note" style="margin:0 0 10px">Drop an Unreal game log and, for a crash, the whole crash folder (the log, <em>CrashContext.runtime-xml</em>, <em>UEMinidump.dmp</em> and <em>CrashReportClient.ini</em>). They are read in your browser and checked against each other and against the matches already stored here. Only the short analysis can be saved: the raw logs, dumps, account ids and your user name never leave your machine.</p>' +
+      '<label class="brdrop" id="brDrop" for="brFile"><strong>' + (br.busy ? esc(br.busy) : 'Drop files or a folder here') + '</strong>' + (br.busy ? 'This can take a few seconds for a large log.' : 'or click to choose files. Game log (.log), crash log, crash context (.runtime-xml or .xml), .ini and minidump (.dmp).') + '</label>' +
+      '<input class="sr" id="brFile" type="file" multiple accept=".log,.txt,.xml,.runtime-xml,.ini,.dmp"' + (br.busy ? ' disabled' : '') + '>' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px"><label class="btn ghost" for="brDir" style="cursor:pointer">Choose a folder</label><input class="sr" id="brDir" type="file" webkitdirectory multiple' + (br.busy ? ' disabled' : '') + '>' +
+      (br.items.length ? '<button class="btn ghost" type="button" data-brclear="1">Clear and start over</button>' : '') + '<span class="note" role="status" style="margin:0">' + (br.err ? '<span class="err">' + esc(br.err) + '</span>' : br.items.length ? br.items.length + ' file' + (br.items.length === 1 ? '' : 's') + ' read. Drop more to add them to the same report.' : '') + '</span></div>';
+    if (br.items.length) h += '<div style="margin-top:8px">' + br.items.map(function (i) { return '<div class="brfile"><span class="tag">' + esc({ log: 'Log', xml: 'Crash context', ini: 'Ini', dmp: 'Minidump' }[i.kind]) + '</span><span style="overflow-wrap:anywhere">' + esc(i.path) + '</span><span class="note" style="margin:0">' + size(i.size) + (i.kind === 'log' ? ', ' + num(i.data.lines) + ' lines' : '') + '</span></div>'; }).join('') + '</div>';
+    if (res && res.skipped && res.skipped.length) h += '<p class="note" style="margin:8px 0 0">Not used: ' + res.skipped.map(esc).join('; ') + '</p>';
+    h += '</div>';
+
+    /* saved */
+    h += '<div class="panel"><h2 style="margin:0 0 6px">Saved reports</h2>' + (saved.length ? plainTable(['Report', 'Saved', 'By', 'Crashes', 'Findings', '', ''], saved.map(function (s) {
+      var d = br.docs[s.id], on = confirmKey === 'rp:' + s.id;
+      return '<tr><td>' + (d ? '<strong>' + esc(d.title || s.id) + '</strong>' : '<span class="note" style="margin:0">' + esc(s.id) + '</span>') + (br.saved && br.saved.id === s.id ? ' <span class="tag ok">Open</span>' : '') + '</td><td>' + esc(new Date(s.v).toLocaleString()) + '</td><td>' + (d ? esc(d.by || '-') : '') + '</td><td>' + (d ? d.summary.crashes : '') + '</td><td>' + (d ? d.summary.findings : '') + '</td><td><button class="btn ghost" type="button" data-bropen="' + esc(s.id) + '"' + (br.docBusy === s.id ? ' disabled' : '') + '>' + (br.docBusy === s.id ? 'Opening' : 'Open') + '</button></td><td>' + (canEdit ? '<button class="btn" type="button" data-confirm="rp:' + esc(s.id) + '"' + (on ? ' style="background:var(--bad);color:#fff"' : ' style="background:transparent;color:var(--fg);border:1px solid var(--line)"') + ' aria-label="Delete report">' + (on ? 'Click again to delete' : 'Delete') + '</button>' : '') + '</td></tr>';
+    }).join('')) : '<p class="note" style="margin:0">No saved reports yet. Analyze files above, then save the report to keep it.</p>') + '</div>';
+
+    if (!res) return h;
+
+    /* verdict */
+    var s = res.summary, tz = s.tz || 0;
+    h += '<div class="panel"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2 style="margin:0">' + (isSaved ? esc(res.title || 'Saved report') : 'Verdict') + '</h2><span class="tag ' + (s.status === 'fail' ? 'err' : s.status === 'warn' ? 'warn' : 'ok') + '">' + esc({ fail: 'Problems found', warn: 'Needs a look', pass: 'Clean' }[s.status]) + '</span>' + (isSaved ? '<span class="note" style="margin:0">Saved ' + esc(new Date(res.savedAt || res.createdAt).toLocaleString()) + (res.by ? ' by ' + esc(res.by) : '') + '. Built from files that are not stored.</span>' : '') + '</div>';
+    if (s.headlines && s.headlines.length) h += '<ul class="brhead" style="margin:10px 0 0;padding-left:20px">' + s.headlines.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>';
+    h += '<div class="kpis" style="margin-top:12px"><div class="kpi"><b>' + s.crashes + '</b><small>Crashes (' + s.crashGroups + ' distinct)</small></div><div class="kpi"><b>' + s.sev.critical + '/' + s.sev.high + '</b><small>Critical / high</small></div><div class="kpi"><b>' + s.findings + '</b><small>Distinct problems</small></div><div class="kpi"><b>' + s.checks.fail + '/' + s.checks.warn + '</b><small>Checks failed / warned</small></div><div class="kpi"><b>' + (s.matchPhases ? s.matchesLinked + '/' + s.matchPhases : '-') + '</b><small>Matches with ledger</small></div></div>';
+    var run = [];
+    if (s.build) run.push('Build ' + esc(s.build)); if (s.engine) run.push('Engine ' + esc(s.engine)); if (s.os) run.push(esc(s.os)); if (s.gpu) run.push(esc(s.gpu)); if (s.start && s.durSec) run.push('Run ' + esc(dayAt(s.start, tz)) + ' ' + clockAt(res, 0) + ' to ' + clockAt(res, s.durSec) + ' (the log machine\'s clock), ' + BR.fmtDur(s.durSec) + ', ' + num(s.lines) + ' lines');
+    if (run.length) h += '<div class="brmeta">' + run.map(function (x) { return '<span>' + x + '</span>'; }).join('') + '</div>';
+    h += '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:8px">';
+    if (!isSaved) h += '<label class="note" for="brTitle" style="margin:0">Title</label><input id="brTitle" type="text" maxlength="100" value="' + esc(br.title) + '" style="flex:1 1 240px;padding:8px 10px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--fg);font:inherit"><button class="btn" type="button" data-brsave="1">Save report</button>';
+    h += '<button class="btn ghost" type="button" data-brcopy="all">Copy for devs</button><button class="btn ghost" type="button" data-brdl="txt">Download text</button><button class="btn ghost" type="button" data-brdl="json">Download JSON</button><span class="note" role="status" style="margin:0">' + esc(br.msg) + '</span></div></div>';
+
+    /* findings */
+    var areas = {}; res.findings.forEach(function (f) { areas[f.area] = (areas[f.area] || 0) + 1; });
+    var q = br.q.toLowerCase(), list = res.findings.filter(function (f) { return br.sevOn[f.sev] && (!br.area || f.area === br.area) && (!q || (f.title + ' ' + (f.det || []).map(function (d) { return d.k; }).join(' ') + ' ' + (f.samples || []).join(' ')).toLowerCase().indexOf(q) >= 0); });
+    h += '<div class="panel"><h2 style="margin:0 0 4px">Findings</h2><p class="note" style="margin:0">Each distinct log problem once, with how often it happened, what it breaks, and what the match data says about it. Low and info are hidden until you tick them.</p><div class="brflt">' + SEV.map(function (k) { return '<label class="chk"><input type="checkbox" data-brsev="' + k + '"' + (br.sevOn[k] ? ' checked' : '') + '> ' + SEVL[k] + ' (' + (s.sev[k] || 0) + ')</label>'; }).join('') +
+      '<label class="chk">Area <select data-brarea="1"><option value="">All</option>' + Object.keys(areas).sort().map(function (a) { return '<option value="' + esc(a) + '"' + (br.area === a ? ' selected' : '') + '>' + esc(AREAL[a] || a) + ' (' + areas[a] + ')</option>'; }).join('') + '</select></label><input type="search" id="brQ" placeholder="Search findings" aria-label="Search findings" value="' + esc(br.q) + '"></div>';
+    var cap = 60 + br.more * 100;
+    h += list.length ? list.slice(0, cap).map(function (f) { return findingHtml(res, f); }).join('') + (list.length > cap ? '<p style="margin:10px 0 0"><button class="btn ghost" type="button" data-brmore="1">Show more (' + (list.length - cap) + ' left)</button></p>' : '') : '<p class="note">' + (res.findings.length ? 'Nothing matches these filters.' : 'No problems found in these files.') + '</p>';
+    h += '</div>';
+
+    /* checks */
+    var ck = res.checks.slice().sort(function (a, b) { return { fail: 0, warn: 1, info: 2, pass: 3 }[a.status] - { fail: 0, warn: 1, info: 2, pass: 3 }[b.status]; }), shown = ck.filter(function (c) { return br.allChecks || c.status !== 'pass'; });
+    h += '<div class="panel"><h2 style="margin:0 0 4px">Checks and cross-checks</h2><p class="note" style="margin:0 0 6px">Each file is checked against the others (crash context against minidump and log, the log against the ledgers of the matches it covers). A failure means two sources disagree.</p><label class="chk"><input type="checkbox" data-brchk="1"' + (br.allChecks ? ' checked' : '') + '> Show the ' + (ck.length - shown.length > 0 || br.allChecks ? s.checks.pass : 0) + ' checks that passed</label>' +
+      (shown.length ? plainTable(['', 'About', 'Check', 'What was found'], shown.map(function (c) { return '<tr><td>' + stTag(c.status) + '</td><td>' + esc(c.group) + '</td><td style="min-width:150px;white-space:normal"><strong>' + esc(c.title) + '</strong></td><td style="min-width:340px;white-space:normal">' + esc(c.detail) + '</td></tr>'; }).join('')) : '<p class="note">Everything that could be checked agrees.</p>') + '</div>';
+
+    /* crashes */
+    if (res.crashes && res.crashes.length) {
+      var groups = {}; res.crashes.forEach(function (c) { var k = c.hash || c.guid; (groups[k] = groups[k] || []).push(c); });
+      h += '<div class="panel"><h2 style="margin:0 0 4px">Crashes</h2><p class="note" style="margin:0 0 6px">Grouped by stack hash: the same hash is the same crash.</p>' + Object.keys(groups).map(function (k) {
+        var g = groups[k], c = g[0], inf = c.info || {}, d = c.dump;
+        var x = '<details class="cdet" data-brk="cg:' + esc(k) + '"' + (br.openKey['cg:' + k] !== false ? ' open' : '') + '><summary><span class="tag err brsev">' + esc(c.type || 'Crash') + '</span> <strong>' + esc(String(c.error || '').replace(/^Unhandled Exception: /, '')) + '</strong> <span class="note" style="margin:0">' + g.length + ' time' + (g.length === 1 ? '' : 's') + ', stack ' + esc(String(k).slice(0, 10)) + '</span></summary>';
+        if (c.stack && c.stack.length) x += '<h3 style="margin:10px 0 4px;font-size:14px">Call stack, crashing thread</h3>' + plainTable(['#', 'Module', 'Whose', 'Offset'], c.stack.map(function (f, i) { return '<tr><td>' + i + '</td><td>' + esc(f.mod) + '</td><td><span class="tag ' + (f.owner === 'mod' ? 'warn' : f.owner === 'game' ? 'err' : '') + '">' + esc({ game: 'Game', mod: 'Mod loader', system: 'Windows', driver: 'Driver', other: 'Other' }[f.owner] || f.owner) + '</span></td><td>+0x' + esc(f.off) + '</td></tr>'; }).join(''));
+        if (d) x += '<div class="brmeta"><span>Minidump: ' + esc(d.exc && d.exc.name || '') + (d.exc && d.exc.access ? ' ' + esc(d.exc.access) + ' ' + esc(d.exc.target) : '') + '</span>' + (d.fault ? '<span>Fault in ' + esc(d.fault.mod) + ' +0x' + esc(d.fault.off) + '</span>' : '') + '<span>' + d.threads + ' threads, ' + d.mods + ' modules</span>' + (d.uptime != null ? '<span>Ran ' + BR.fmtDur(d.uptime) + ' before it crashed</span>' : '') + '</div>';
+        if (d && d.other && d.other.length) x += '<div class="brmeta"><span>Not Windows or game:</span>' + d.other.slice(0, 8).map(function (m) { return '<span>' + esc(m.n) + (m.v ? ' ' + esc(m.v) : '') + '</span>'; }).join('') + '</div>';
+        if (inf.cmd) x += '<div class="brmeta"><span>Launch options:</span></div><div class="brpre">' + esc(inf.cmd.trim()) + '</div>';
+        x += '<div class="brmeta">' + [inf.exe && inf.exe + ' ' + (inf.config || ''), inf.engine && 'Engine ' + inf.engine, inf.os, inf.cpu, inf.gpu && inf.gpu + (inf.rhi && inf.rhi.driver ? ' (driver ' + inf.rhi.driver + ')' : ''), inf.ramGB && inf.ramGB + ' GB RAM'].filter(Boolean).map(function (v) { return '<span>' + esc(v) + '</span>'; }).join('') + '</div>';
+        x += '<div class="brmeta"><span>Files:</span>' + g.map(function (cc) { return '<span>' + esc(String(cc.guid).replace(/^UECC-Windows-/, '').slice(0, 8)) + ': ' + ['log', 'xml', 'dmp', 'ini'].map(function (p) { return (cc.parts && cc.parts[p] ? '' : 'no ') + p; }).join(', ') + '</span>'; }).join('') + '</div>';
+        if (c.log && c.log.issues && c.log.issues.length) x += '<h3 style="margin:10px 0 4px;font-size:14px">Last warnings and errors in the crash log</h3><div class="brpre">' + c.log.issues.slice(0, 6).map(function (i) { return esc('[' + i.level + '] ' + (i.samples[0] || i.title)); }).join('\n') + '</div>';
+        return x + '</details>';
+      }).join('') + '</div>';
+    }
+
+    /* match timeline */
+    var gm = res.game;
+    if (gm && gm.phases && gm.phases.length) {
+      var linkBy = {}; (res.links || []).forEach(function (l) { linkBy[l.phase] = l; });
+      h += '<div class="panel"><h2 style="margin:0 0 4px">Session timeline</h2><p class="note" style="margin:0 0 6px">What the game log says the game was doing, with the stored match each map phase belongs to. Times are the log machine\'s local clock.</p>' + plainTable(['What', 'Map', 'From', 'Length', 'Errors', 'Warnings', 'Stored match', 'Ledger offsets'], gm.phases.filter(function (p) { return p.kind !== 'transit'; }).map(function (p) {
+        var l = linkBy[p.i]; return '<tr><td><strong>' + esc(phaseLabel(res, p.i)) + '</strong></td><td>' + esc(p.map) + '</td><td>' + clockAt(res, p.t0) + '</td><td>' + BR.fmtDur(p.t1 - p.t0) + '</td><td>' + num(p.errors) + '</td><td>' + num(p.warnings) + '</td><td>' + (p.kind !== 'match' ? '' : l && l.match ? '<a class="plink" href="#match-' + esc(l.match) + '">' + esc(l.title) + '</a>' : '<span class="tag warn">Not stored</span>') + '</td><td>' + (l && l.match ? 'starts +' + l.startGap + ' s, ends ' + (l.endGap >= 0 ? '-' : '+') + Math.abs(l.endGap) + ' s' : '') + '</td></tr>';
+      }).join('')) + '</div>';
+    }
+    return h;
+  }
+
+  /* ---------- events ---------- */
+  function copyText(t, done) { try { navigator.clipboard.writeText(t).then(function () { done('Copied.'); }, function () { done('Copy failed. Your browser blocked clipboard access.'); }); } catch (e) { done('Copy failed. Your browser blocked clipboard access.'); } }
+  function download(name, text, type) { var b = new Blob([text], { type: type }), a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = name; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500); }
+  document.addEventListener('change', function (e) {
+    var t = e.target; if (!t) return;
+    if (t.id === 'brFile' || t.id === 'brDir') { var fl = [].slice.call(t.files || []).map(function (f) { return { file: f, path: f.webkitRelativePath || f.name }; }); t.value = ''; ingest(fl); return; }
+    if (t.dataset && t.dataset.brsev) { br.sevOn[t.dataset.brsev] = t.checked; br.more = 0; render(); return; }
+    if (t.dataset && t.dataset.brarea !== undefined) { br.area = t.value; br.more = 0; render(); return; }
+    if (t.dataset && t.dataset.brchk) { br.allChecks = t.checked; render(); }
+  });
+  document.addEventListener('input', function (e) {
+    var t = e.target; if (!t) return;
+    if (t.id === 'brTitle') br.title = t.value;
+    if (t.id === 'brQ') { br.q = t.value; br.more = 0; render(); var q = document.getElementById('brQ'); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }
+  });
+  document.addEventListener('toggle', function (e) { var d = e.target; if (d && d.dataset && d.dataset.brk) br.openKey[d.dataset.brk] = d.open; }, true);
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest && e.target.closest('[data-brsave],[data-brclear],[data-bropen],[data-brcopy],[data-brdl],[data-brmore],[data-confirm]'); if (!t) return;
+    if (t.dataset.confirm && t.dataset.confirm.indexOf('rp:') === 0) { var k = t.dataset.confirm; if (confirmKey === k) delSaved(k.slice(3)); else { confirmKey = k; render(); } e.stopImmediatePropagation(); return; }
+    if (t.dataset.brsave) { saveReport(); return; }
+    if (t.dataset.brclear) { br.items = []; br.res = null; br.saved = null; br.err = ''; br.msg = ''; br.title = ''; render(); return; }
+    if (t.dataset.bropen) { openSaved(t.dataset.bropen); return; }
+    if (t.dataset.brmore) { br.more++; render(); return; }
+    if (t.dataset.brcopy && br.res) {
+      var k2 = t.dataset.brcopy, only = k2 === 'all' ? function (f) { return br.sevOn[f.sev]; } : function (f) { return f.key === k2; };
+      copyText(BR.toText(br.res, only), function (m) { br.msg = m; render(); }); return;
+    }
+    if (t.dataset.brdl && br.res) { var base = (br.res.title || br.title || 'bug-report').replace(/[^a-z0-9]+/gi, '-').toLowerCase().replace(/^-|-$/g, '') || 'bug-report'; if (t.dataset.brdl === 'txt') download(base + '.txt', BR.toText(br.res), 'text/plain'); else download(base + '.json', JSON.stringify(br.res), 'application/json'); }
+  }, true);
+  /* drag and drop, folders included */
+  document.addEventListener('dragover', function (e) { var z = e.target.closest && e.target.closest('#brDrop'); if (z) { e.preventDefault(); z.classList.add('on'); } });
+  document.addEventListener('dragleave', function (e) { var z = e.target.closest && e.target.closest('#brDrop'); if (z) z.classList.remove('on'); });
+  document.addEventListener('drop', function (e) {
+    var z = e.target.closest && e.target.closest('#brDrop'); if (!z) return; e.preventDefault(); z.classList.remove('on');
+    var out = [], items = e.dataTransfer && e.dataTransfer.items;
+    if (items && items.length && items[0].webkitGetAsEntry) {
+      var ents = []; for (var i = 0; i < items.length; i++) { var en = items[i].webkitGetAsEntry(); if (en) ents.push(en); }
+      Promise.all(ents.map(function (en) { return readEntry(en, out); })).then(function () { ingest(out); });
+    } else ingest([].slice.call(e.dataTransfer.files || []).map(function (f) { return { file: f, path: f.name }; }));
+  });
+  return viewReports;
+})();
 function viewDesigner(){
   if(!canDesign)return '<div><h1>Designer</h1></div>'+empty('Designers and admins only','These tools are for designers and admins.');
-  var G=dzMatches(),sn=subTabs('designer',[['overview','Overview'],['score','Scorecard'],['graphs','Graphs'],['builds','Builds'],['balance','Skill balance'],['skills','Skills'],['mobs','Mobs'],['bugs','Bugs'+(lastBugCount?' ('+lastBugCount+')':'')]]);
-  var h='<div class="bar"><div><h1>Designer</h1><p class="sub">Balance and bug hunting across many matches at once. '+G.all.length+' ledger match'+(G.all.length===1?'':'es')+' available.</p></div>'+
-    '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><a class="btn ghost" href="#map" style="text-decoration:none">Heat map</a><a class="btn ghost" href="#admin" data-dzgo="bugs" style="text-decoration:none">Bugs &amp; checks</a><a class="btn ghost" href="#admin" data-dzgo="json" style="text-decoration:none">JSON reader</a></div></div>'+sn.h;
-  if(sn.cur==='bugs'){var hb=viewAdmin();return h+bfBar()+(lastBugPanel||hb)}
+  var G=dzMatches(),AD=' <span class="tag" style="margin-left:4px">Admin</span>',tabs=[['overview','Overview'],['score','Scorecard'],['graphs','Graphs'],['builds','Builds'],['balance','Skill balance'],['skills','Skills'],['mobs','Mobs'],['bugs','Match checks'+(lastBugCount?' ('+lastBugCount+')':'')],['reports','Bug reports'],['data','Data health'],['json','JSON reader']];
+  if(canEdit)tabs.push(['handler','Match handler'+AD],['upload','Upload'+AD],['accounts','Accounts'+AD]);
+  var sn=subTabs('designer',tabs);
+  var h='<div class="bar"><div><h1>Designer</h1><p class="sub">Balance, bug hunting and data tools'+(canEdit?', plus the admin tools for matches, uploads and accounts':'')+'. '+G.all.length+' ledger match'+(G.all.length===1?'':'es')+' available.</p></div>'+
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><a class="btn ghost" href="#map" style="text-decoration:none">Heat map</a><a class="btn ghost" href="#designer" data-dzgo="reports" style="text-decoration:none">Bug reports</a><a class="btn ghost" href="#designer" data-dzgo="bugs" style="text-decoration:none">Match checks</a><a class="btn ghost" href="#designer" data-dzgo="json" style="text-decoration:none">JSON reader</a></div></div>'+sn.h;
+  if(sn.cur==='reports')return h+(typeof viewReports==='function'?viewReports():empty('Loading','The bug report tools are still loading.'));
+  if(sn.cur==='bugs'){var hb=viewAdmin('bugs');return h+bfBar()+(lastBugPanel||hb)}
+  if(sn.cur==='data')return h+bfBar()+viewAdmin('data');
+  if(sn.cur==='json')return h+jsonReader();
+  if(sn.cur==='handler'&&canEdit)return h+matchHandler();
+  if(sn.cur==='upload'&&canEdit)return h+viewUpload();
+  if(sn.cur==='accounts'&&canEdit)return h+accountsPanel();
   if(sn.cur==='skills')return h+viewSkills().replace('<h1>Skills</h1>','<h2 style="margin:0">Skills</h2>');
   if(sn.cur==='mobs')return h+viewDzMobs();
   if(sn.cur==='score')return h+viewDzScore();
@@ -3493,7 +3742,7 @@ function viewDesigner(){
 }
 document.addEventListener('click',function(e){
   var g=e.target.closest&&e.target.closest('[data-dz]');if(g){dz.scope=g.dataset.dz;if(dz.scope==='pick'&&!Object.keys(dz.pick).length)dzMatches().all.slice(0,5).forEach(function(m){dz.pick[m.id]=1});render();return}
-  var go=e.target.closest&&e.target.closest('[data-dzgo]');if(go){subSel['admin']=go.dataset.dzgo}
+  var go=e.target.closest&&e.target.closest('[data-dzgo]');if(go){subSel['designer']=go.dataset.dzgo;render()}
   var sq=e.target.closest&&e.target.closest('[data-dzseq]');if(sq){var qi=sq.dataset.dzseq.indexOf('|'),mid=sq.dataset.dzseq.slice(0,qi);subSel['match-'+mid]='graphs';subSel['gx-'+mid]='skills';gx.sk='seq';gx.pl=sq.dataset.dzseq.slice(qi+1);location.hash='match-'+mid;return}
   var sk=e.target.closest&&e.target.closest('[data-dzsk]');if(sk){dz.sk=sk.dataset.dzsk;render();var pe=document.getElementById('dzskd');if(pe&&pe.scrollIntoView)pe.scrollIntoView({block:'start'});return}
   var dd=e.target.closest&&e.target.closest('[data-dzdt]');if(dd){dz.dt=dd.dataset.dzdt;render();return}
@@ -3502,17 +3751,17 @@ document.addEventListener('click',function(e){
 });
 document.addEventListener('toggle',function(e){var d=e.target;if(d&&d.classList&&d.classList.contains('dzcls'))dz.co[d.dataset.dzcls]=d.open},true);
 document.addEventListener('change',function(e){var t=e.target;if(!t||!t.dataset)return;if(t.dataset.skutil){skFilter.util=t.checked;render();return}if(t.dataset.dzp){if(t.checked)dz.pick[t.dataset.dzp]=1;else delete dz.pick[t.dataset.dzp];render()}else if(t.dataset.dzs){dz[t.dataset.dzs]=t.value;render()}else if(t.dataset.dzc){dz[t.dataset.dzc]=t.checked;render()}});
-function route(){var h=location.hash.replace('#','')||'players';if(h.indexOf('match-')===0)return {t:'match',id:h.slice(6)};if(h.indexOf('player-')===0)return {t:'player',id:h.slice(7)};if(h.indexOf('class-')===0)return {t:'class',id:h.slice(6)};if(h.indexOf('faction-')===0)return {t:'faction',id:h.slice(8)};if(h.indexOf('event-')===0)return {t:'snapshot',id:h.slice(6)};if(h.indexOf('snapshot-')===0)return {t:'snapshot',id:h.slice(9)};if(h==='events'||h==='snapshots')return {t:'snapshots'};return {t:(TABS.some(function(x){return x[0]===h})||h==='admin'||h==='designer')?h:'players'}}
+function route(){var h=location.hash.replace('#','')||'players';if(h==='admin')return {t:'designer'};if(h.indexOf('match-')===0)return {t:'match',id:h.slice(6)};if(h.indexOf('player-')===0)return {t:'player',id:h.slice(7)};if(h.indexOf('class-')===0)return {t:'class',id:h.slice(6)};if(h.indexOf('faction-')===0)return {t:'faction',id:h.slice(8)};if(h.indexOf('event-')===0)return {t:'snapshot',id:h.slice(6)};if(h.indexOf('snapshot-')===0)return {t:'snapshot',id:h.slice(9)};if(h==='events'||h==='snapshots')return {t:'snapshots'};return {t:(TABS.some(function(x){return x[0]===h})||h==='admin'||h==='designer')?h:'players'}}
 function render(){
-  var r=route();if(r.t==='skills'){subSel['designer']='skills';r={t:'designer'}}if(r.t==='upload'){subSel['admin']='upload';r={t:'admin'}}if(r.t!=='admin')evModal=null;if((r.t==="admin"||r.t==="designer")&&canDesign&&!adminData)loadAdmin();
+  var r=route();if(r.t==='skills'){subSel['designer']='skills';r={t:'designer'}}if(r.t==='upload'){subSel['designer']='upload';r={t:'designer'}}if(r.t!=='designer')evModal=null;if(r.t==='designer'&&canDesign&&!adminData)loadAdmin();
   var cur=r.t==='snapshot'||r.t==='snapshots'?'events':r.t==='match'?'matches':r.t==='player'?'players':r.t==='class'?'classes':r.t==='faction'?'factions':r.t;
   var sec=cur==='matches'||cur==='events'||cur==='map'?'matches':cur==='upload'||cur==='admin'||cur==='designer'?cur:'players',
-    top=[['players','Players'],['matches','Matches']].concat(canDesign?[['designer','Designer'],['admin','Admin']]:[]);
+    top=[['players','Players'],['matches','Matches']].concat(canDesign?[['designer','Designer']]:[]);
   $nav.innerHTML=top.map(function(t){return '<a href="#'+t[0]+'"'+(t[0]===sec?' aria-current="page"':'')+'>'+t[1]+'</a>'}).join('')+(canDesign?'<a href="https://aeon-damage-tester.vercel.app/" target="_blank" rel="noopener noreferrer">Damage tester <span aria-hidden="true">&#8599;</span></a>':'');
   var subs=sec==='matches'?[['matches','Matches'],['events','Events'],['map','Heat map']]:sec==='players'?[['players','Players'],['classes','Classes'],['factions','Factions']]:null,
     subHtml=subs?'<nav class="subnav sec" aria-label="'+(sec==='matches'?'Matches':'Players')+' sections">'+subs.map(function(t){return '<a href="#'+t[0]+'"'+(t[0]===cur?' aria-current="page"':'')+'>'+t[1]+'</a>'}).join('')+'</nav>':'';
   var f=document.activeElement&&document.activeElement.id;
-  $view.innerHTML=subHtml+(r.t==='snapshots'?viewSnapshots():r.t==='player'?viewPlayer(r.id):r.t==='match'?viewMatch(r.id):r.t==='snapshot'?viewSnapshot(r.id):r.t==='class'?viewClass(r.id):r.t==='faction'?viewFaction(+r.id):r.t==='factions'?viewFactions():r.t==='map'?viewMap():r.t==='classes'?viewClasses():r.t==='designer'?viewDesigner():r.t==='matches'?viewMatches():r.t==='upload'?viewUpload():r.t==='admin'?viewAdmin():viewPlayers())+evModalHtml();
+  $view.innerHTML=subHtml+(r.t==='snapshots'?viewSnapshots():r.t==='player'?viewPlayer(r.id):r.t==='match'?viewMatch(r.id):r.t==='snapshot'?viewSnapshot(r.id):r.t==='class'?viewClass(r.id):r.t==='faction'?viewFaction(+r.id):r.t==='factions'?viewFactions():r.t==='map'?viewMap():r.t==='classes'?viewClasses():r.t==='designer'?viewDesigner():r.t==='matches'?viewMatches():viewPlayers())+evModalHtml();
   if(f){var e=document.getElementById(f);if(e&&e.focus)try{e.focus()}catch(x){}}
 }
 document.addEventListener('change',function(e){var ds=e.target.closest&&e.target.closest('[data-delsel]');if(ds){delSel[ds.dataset.delsel]=ds.checked;confirmKey='';render();return}var c=e.target.closest&&e.target.closest('[data-snapsel]');if(c){snapDraft.sel[c.dataset.snapsel]=c.checked;render()}});

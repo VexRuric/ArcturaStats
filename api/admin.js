@@ -7,11 +7,13 @@ module.exports = L.handler(async (req, res) => {
   if (!isA && !L.isDesigner(s0, st0)) return L.send(res, 403, { error: 'admin_only' });
 
   if (req.method === 'GET') {
+    /* saved bug reports: ids and versions, the page fetches each one from /api/doc?c=reports */
+    const reports = await L.listDocs('reports/');
     /* a designer sees the bug tracker only, never the account list */
-    if (!isA) return L.send(res, 200, { users: [], players: Object.keys(st0.players).length, bugs: st0.bugs || {} });
+    if (!isA) return L.send(res, 200, { users: [], players: Object.keys(st0.players).length, bugs: st0.bugs || {}, reports });
     const users = Object.keys(st0.users).map(id => ({ id, name: st0.users[id].name, avatar: st0.users[id].avatar || null, seen: st0.users[id].seen || 0, admin: st0.admins.indexOf(id) >= 0, designer: (st0.designers || []).indexOf(id) >= 0, claim: st0.byUser[id] || null, theme: (st0.users[id].theme || {}).t || null }))
       .sort((a, b) => (b.admin - a.admin) || (b.designer - a.designer) || a.name.localeCompare(b.name));
-    return L.send(res, 200, { users, players: Object.keys(st0.players).length, bugs: st0.bugs || {} });
+    return L.send(res, 200, { users, players: Object.keys(st0.players).length, bugs: st0.bugs || {}, reports });
   }
   if (req.method !== 'POST') return L.send(res, 405, { error: 'method' });
 

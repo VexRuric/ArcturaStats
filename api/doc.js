@@ -3,7 +3,7 @@ const L = require('./_lib');
 
 const route = L.handler(async (req, res) => {
   const c = req.q.c, id = req.q.id;
-  if ((c !== 'matches' && c !== 'snapshots' && c !== 'raw' && c !== 'schema') || !L.ID_OK.test(id || '')) return L.send(res, 400, { error: 'bad_target' });
+  if ((c !== 'matches' && c !== 'snapshots' && c !== 'raw' && c !== 'schema' && c !== 'reports') || !L.ID_OK.test(id || '')) return L.send(res, 400, { error: 'bad_target' });
   const p = c + '/' + id + '.json';
   /* Reading: matches are public; an event is public only once published (admins can read drafts). */
   /* raw: the uploaded Match Ledger exactly as parsed, kept so any later feature can be rebuilt from it. Admin only, never cached, never cross-origin.
@@ -15,6 +15,27 @@ const route = L.handler(async (req, res) => {
     const dr = await L.getJSON(p); if (!dr) return L.send(res, 404, { error: 'not_found' });
     res.statusCode = 200; res.setHeader('Content-Type', 'application/json'); res.setHeader('Cache-Control', 'private, no-store');
     return res.end(JSON.stringify(dr));
+  }
+  /* reports: bug reports built from game logs and crash files. Designers and admins can read and save them; only admins delete.
+     Only the short analysis is stored (a few hundred KB), never the raw logs, minidumps or crash files. */
+  if (c === 'reports') {
+    const stR = await L.readState(), sR = L.session(req), isA = L.isAdmin(sR, stR);
+    if (!L.isDesigner(sR, stR)) return L.send(res, 403, { error: 'designer_only' });
+    if (req.method === 'GET') {
+      const dr = await L.getJSON(p); if (!dr) return L.send(res, 404, { error: 'not_found' });
+      res.statusCode = 200; res.setHeader('Content-Type', 'application/json'); res.setHeader('Cache-Control', 'private, no-store');
+      return res.end(JSON.stringify(dr));
+    }
+    if (req.method === 'PUT') {
+      const d = await L.body(req, 3.5 * 1024 * 1024);
+      if (!d || typeof d !== 'object' || Array.isArray(d) || !d.summary || !Array.isArray(d.findings)) return L.send(res, 400, { error: 'bad_doc' });
+      const who = stR.users && stR.users[sR.id] && stR.users[sR.id].name;
+      d.by = who ? String(who).slice(0, 40) : null; d.byId = sR.id || null; d.savedAt = Date.now();
+      await L.putJSON(p, d);
+      return L.send(res, 200, { ok: true });
+    }
+    if (req.method === 'DELETE') { if (!isA) return L.send(res, 403, { error: 'admin_only' }); await L.delPath(p); return L.send(res, 200, { ok: true }); }
+    return L.send(res, 405, { error: 'method' });
   }
   if (req.method === 'GET') {
     if (c === 'snapshots') { const st0 = await L.readState(); if (!st0.published[id] && !L.isAdmin(L.session(req), st0)) return L.send(res, 404, { error: 'not_found' }); }
