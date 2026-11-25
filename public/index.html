@@ -162,7 +162,7 @@ a.fhero:hover{border-color:var(--fc)}a.fhero:focus-visible{outline:2px solid var
 .cb2{display:grid;grid-template-columns:110px 1fr 64px;gap:10px;align-items:center}.cb2 em{font-style:normal;text-align:right;font-variant-numeric:tabular-nums}
 .fmatch li{grid-template-columns:62px 92px 1fr}.fsc{font-variant-numeric:tabular-nums;white-space:nowrap}
 .podium{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}.pcard{display:flex;flex-direction:column;gap:4px;border:1px solid var(--line);border-left:4px solid var(--fc);border-radius:6px;padding:12px 14px;background:var(--panel);color:var(--fg);text-decoration:none}.pcard:hover{border-color:var(--fc)}.pcard .pn{color:var(--muted);font:700 13px var(--font-d)}.pcard strong{font-size:18px;overflow-wrap:anywhere}.pcard small{color:var(--muted)}.bkx{border-collapse:collapse;font-size:13px}.bkx th,.bkx td{padding:6px 10px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}.bkx th{color:var(--muted);font-weight:600;min-width:84px;max-width:118px;white-space:normal;line-height:1.2;vertical-align:bottom}.bkx th:nth-child(2),.bkx td:nth-child(2){text-align:right}.bkx th:first-child,.bkx td:first-child{position:sticky;left:0;z-index:1;background:var(--panel);text-align:left}
-.subnav{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 16px;border-bottom:1px solid var(--line)}.subnav button{background:none;border:0;border-bottom:3px solid transparent;color:var(--muted);font:600 16px/1 var(--font-d);letter-spacing:.06em;text-transform:uppercase;padding:10px 16px 11px;cursor:pointer;margin-bottom:-1px}.subnav button:hover{color:var(--fg)}.subnav button[aria-selected=true]{color:var(--fg);border-bottom-color:var(--accent)}
+.subnav{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 16px;border-bottom:1px solid var(--line)}.subnav button{background:none;border:0;border-bottom:3px solid transparent;color:var(--muted);font:600 16px/1 var(--font-d);letter-spacing:.06em;text-transform:uppercase;padding:10px 16px 11px;cursor:pointer;margin-bottom:-1px}.subnav button:hover{color:var(--fg)}.subnav button[aria-selected=true]{color:var(--fg);border-bottom-color:var(--accent)}.subnav.l2{margin-bottom:12px}.subnav.l3{border-bottom:0;gap:8px;margin:0 0 16px}.subnav.l3 button{border:1px solid var(--line);border-radius:999px;font-size:14px;padding:8px 14px;margin:0}.subnav.l3 button[aria-selected=true]{border-color:var(--accent);background:var(--panel)}
 .pcard.story{border-top:3px solid var(--accent)}.pcard.top{border:1px solid var(--accent);border-left:4px solid var(--fc)}.pcard.top strong{font-size:22px}
 .accstrip{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:14px}
 .accteams{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,460px),1fr));gap:14px}
@@ -3716,11 +3716,19 @@ var viewReports = (function () {
 })();
 function viewDesigner(){
   if(!canDesign)return '<div><h1>Designer</h1></div>'+empty('Designers and admins only','These tools are for designers and admins.');
-  var G=dzMatches(),AD=' <span class="tag" style="margin-left:4px">Admin</span>',tabs=[['overview','Overview'],['score','Scorecard'],['graphs','Graphs'],['builds','Builds'],['balance','Skill balance'],['skills','Skills'],['mobs','Mobs'],['bugs','Match checks'+(lastBugCount?' ('+lastBugCount+')':'')],['reports','Bug reports'],['data','Data health'],['json','JSON reader']];
-  if(canEdit)tabs.push(['handler','Match handler'+AD],['upload','Upload'+AD],['accounts','Accounts'+AD]);
-  var sn=subTabs('designer',tabs);
+  /* three levels: the page (Designer), a group of tools, and the tools in that group. The group is worked out from the open tool. */
+  var G=dzMatches(),groups=[['balance','Balance',[['overview','Overview'],['score','Scorecard'],['graphs','Graphs'],['builds','Builds'],['balance','Skill balance'],['skills','Skills'],['mobs','Mobs']]],
+    ['bugs','Bugs',[['reports','Bug reports'],['bugs','Match checks'+(lastBugCount?' ('+lastBugCount+')':'')]]],
+    ['data','Data',[['data','Data health'],['json','JSON reader']]]];
+  if(canEdit)groups.push(['admin','Admin',[['handler','Match handler'],['upload','Upload'],['accounts','Accounts']]]);
+  var flat=[];groups.forEach(function(g){g[2].forEach(function(t){flat.push(t[0])})});
+  var cur=flat.indexOf(subSel['designer'])>=0?subSel['designer']:'overview',grp=groups.filter(function(g){return g[2].some(function(t){return t[0]===cur})})[0];
+  subSel['dzlast-'+grp[0]]=cur;
+  var sn={cur:cur};
   var h='<div class="bar"><div><h1>Designer</h1><p class="sub">Balance, bug hunting and data tools'+(canEdit?', plus the admin tools for matches, uploads and accounts':'')+'. '+G.all.length+' ledger match'+(G.all.length===1?'':'es')+' available.</p></div>'+
-    '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><a class="btn ghost" href="#map" style="text-decoration:none">Heat map</a><a class="btn ghost" href="#designer" data-dzgo="reports" style="text-decoration:none">Bug reports</a><a class="btn ghost" href="#designer" data-dzgo="bugs" style="text-decoration:none">Match checks</a><a class="btn ghost" href="#designer" data-dzgo="json" style="text-decoration:none">JSON reader</a></div></div>'+sn.h;
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><a class="btn ghost" href="#map" style="text-decoration:none">Heat map</a></div></div>'+
+    '<div class="subnav l2" role="tablist" aria-label="Designer areas">'+groups.map(function(g){var t=subSel['dzlast-'+g[0]];if(!g[2].some(function(x){return x[0]===t}))t=g[2][0][0];return '<button type="button" role="tab" data-sub="designer|'+t+'" aria-selected="'+(g===grp)+'">'+g[1]+(g[0]==='bugs'&&lastBugCount?' <span class="tag warn" style="margin-left:4px">'+lastBugCount+'</span>':'')+'</button>'}).join('')+'</div>'+
+    '<div class="subnav l3" role="tablist" aria-label="'+esc(grp[1])+' tools">'+grp[2].map(function(t){return '<button type="button" role="tab" data-sub="designer|'+t[0]+'" aria-selected="'+(t[0]===cur)+'">'+t[1]+'</button>'}).join('')+'</div>';
   if(sn.cur==='reports')return h+(typeof viewReports==='function'?viewReports():empty('Loading','The bug report tools are still loading.'));
   if(sn.cur==='bugs'){var hb=viewAdmin('bugs');return h+bfBar()+(lastBugPanel||hb)}
   if(sn.cur==='data')return h+bfBar()+viewAdmin('data');
