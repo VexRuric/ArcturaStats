@@ -547,7 +547,7 @@
     function win(m) { var d = (m.dur || 0) * 1000; if (m.endUtc != null) return { s: m.endUtc - d, e: m.endUtc, src: 'utc' }; if (m.startWall != null) { var s = m.startWall - L.tzMin * 60000; return { s: s, e: s + d, src: 'wall' }; } return null; }
     var utc = function (sec) { return L.start + sec * 1000; }, lc = function (ms) { return clock(ms + L.tzMin * 60000); };
     var winStart = utc(0), winEnd = utc(L.durSec);
-    var near = matches.filter(function (m) { var w = win(m); return w && overlap(w.s, w.e, winStart - 600000, winEnd + 600000) > 0; });
+    var near = matches.filter(function (m) { var w = win(m); return w && overlap(w.s, w.e, winStart, winEnd) > 0; });
     if (!mp.length) ck(checks, 'm:phases', GR, 'info', 'This log has no match map', 'The log never left the lobby, so there is nothing to compare with match data.');
     ck(checks, 'm:window', GR, near.length ? 'pass' : 'warn', 'Stored matches inside the log time span', near.length ? near.length + ' stored match' + (near.length === 1 ? '' : 'es') + ' fall between ' + day(winStart + L.tzMin * 60000) + ' ' + lc(winStart) + ' and ' + lc(winEnd) + ' (' + near.map(function (m) { return m.title; }).join(', ') + ').' : 'No stored match falls between ' + day(winStart + L.tzMin * 60000) + ' ' + lc(winStart) + ' and ' + lc(winEnd) + '. Upload the ledgers from that session, or the log is from another day.');
     var used = {}, zone = null;
@@ -607,6 +607,7 @@
     /* game logs */
     games.forEach(function (g) { var L = g.log; sources.push({ kind: 'game', name: g.name, size: g.size, lines: L.lines, parts: ['log'] }); });
     var G0 = games[0] && games[0].log;
+    if (games.length > 1) ck(checks, 'log:many', 'Game log', 'warn', games.length + ' game logs uploaded, only the first is analysed', 'Only "' + games[0].name + '" is read. The other ' + (games.length - 1) + ' (' + clip(games.slice(1).map(function (g) { return g.name; }).join(', '), 160) + ') are not in these findings. Check one play session at a time.');
     if (G0) {
       var L = G0, G = 'Game log';
       L.issues.forEach(function (is) { if (is.n && !seenIssue[is.key]) { seenIssue[is.key] = 1; issues.push(is); } });
