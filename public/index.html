@@ -1203,6 +1203,28 @@ function viewAdmin(part){
       if(p.cls){var c=cls[p.cls]||(cls[p.cls]={cls:p.cls,picks:0,mins:0,dmg:0,taken:0,heal:0,kills:0,deaths:0});var mn=(d.duration||0)/60;c.picks++;c.mins+=mn;c.dmg+=p.dmg;c.taken+=p.taken;c.heal+=p.heal;c.kills+=p.kills;c.deaths+=p.deaths}
     });
     var tm=d.teams||{};T.pts+=Object.keys(tm).reduce(function(s,k){return s+tm[k].points},0);T.relics+=Object.keys(tm).reduce(function(s,k){return s+tm[k].relics},0)});
+  /* ledger books: points, kill credit and cast counts must add up between the lists inside one ledger */
+  var cdSpam=[],ptsGap=[],ptsOver=[],noKillPts=[],envDeaths=[],castGap=[];
+  ms.forEach(function(m){var d=m.doc;if(!d.ledger)return;var tp=d.teamPoints||{},pl=d.players||[];
+    [0,1].forEach(function(t){if(tp[t]==null)return;var ps=0;pl.forEach(function(p){if(p.team===t)ps+=p.score||0});
+      if(ps!==tp[t]){var df=tp[t]-ps;(df>0?ptsGap:ptsOver).push({m:m.id,mn:mtitle(d),t:'Team '+t+': team points '+tp[t]+', players add up to '+ps+' ('+(df>0?df+' point'+(df===1?'':'s')+' no player is credited for':(-df)+' more than the team has')+')'})}});
+    var kills=(d.log||[]).filter(function(e){return e.k==='kill'}),byP=kills.filter(function(e){return e.a!=='Mob or environment'&&e.a!=='?'}),env=kills.length-byP.length;
+    if(env)envDeaths.push({m:m.id,mn:mtitle(d),t:env+' death'+(env===1?'':'s')+' caused by a mob or the environment, no player credited'+(d.pointsByType&&d.scoreEv?'':'')});
+    if(d.scoreEv&&d.scoreEv.n){var di=d.scoreEv.n.indexOf('DeathPoint'),ev=di<0?0:d.scoreEv.r.filter(function(r){return r[2]===di}).length;
+      if(di>=0&&byP.length!==ev)noKillPts.push({m:m.id,mn:mtitle(d),t:byP.length+' player kill'+(byP.length===1?'':'s')+' in the kill list, '+ev+' DeathPoint score event'+(ev===1?'':'s')+(ev<byP.length?': '+(byP.length-ev)+' kill'+(byP.length-ev===1?'':'s')+' earned no team points':': '+(ev-byP.length)+' more point event'+(ev-byP.length===1?'':'s')+' than kills')})}
+    if(d.castLog&&d.castLog.r&&d.castLog.r.length<30000){var cn={};d.castLog.r.forEach(function(r){cn[r[1]]=(cn[r[1]]||0)+1});
+      /* a cast that starts while the skill is on cooldown or unaffordable: more casts than commits, casts packed inside the cooldown */
+      var cdt={};d.castLog.r.forEach(function(r){var k=r[1]+'|'+d.castLog.n[r[2]];(cdt[k]=cdt[k]||[]).push(r[0])});
+      pl.forEach(function(p,i){(p.skills||[]).forEach(function(k){var au=k.cd&&k.cd.a;if(!(au>=10)||!(k.casts>=3)||!(k.cm>0)||/AutoAttack$/.test(k.skill))return;var ts=(cdt[i+'|'+k.skill]||[]).slice().sort(function(x,y){return x-y}),burst=0,inCd=0;
+        ts.forEach(function(t,j){if(j&&t-ts[j-1]<1)burst++;if(j&&t-ts[j-1]<au*0.5)inCd++});
+        if(k.casts-k.cm>=3&&k.casts>=1.6*k.cm&&burst>=2)cdSpam.push({m:m.id,mn:mtitle(d),t:p.name+' '+skName(k.skill)+': '+k.casts+' casts but only '+k.cm+' committed, '+burst+' cast'+(burst===1?'':'s')+' less than 1 s after another, cooldown '+Math.round(au)+' s ('+inCd+' cast'+(inCd===1?'':'s')+' came in less than half of it)'})})});
+      pl.forEach(function(p,i){var st=p.stats&&p.stats.casts;if(st==null)return;var lg=cn[i]||0;if(lg!==st)castGap.push({m:m.id,mn:mtitle(d),t:p.name+': cast counter '+st+', cast log '+lg+' ('+Math.abs(lg-st)+(lg>st?' more rows in the log':' fewer rows in the log')+')'})})}});
+  addIssue('ptsOver','Medium','Players earned more points than their team has',ptsOver,'The points on the players add up to more than the team total. That cannot be right: a point was given to a player but never reached the team (or a team event was dropped).');
+  addIssue('ptsGap','Low','Team has points that no player is credited for',ptsGap,'The team total is higher than what its players earned. Objective points (camps, control points, relics) can go to the team by design, so confirm that each gap is meant. The ledger scoreCheck only compares team points with point types, so it cannot see this.');
+  addIssue('noKillPts','Medium','A player kill earned no team points (or points came without a kill)',noKillPts,'Every kill by a player should produce one DeathPoint score event for that team. The counts differ, so a kill was not scored or a point was awarded without a kill.');
+  addIssue('envDeaths','Low','Deaths with no player credited',envDeaths,'A mob, a boss or the environment killed a player. Points for it, if any, go to no player and no team, and the kill list has no NPC name or boss entry for it.');
+  addIssue('castGap','Low','Cast counter and cast log disagree',castGap,'A player stat says one number of casts and the cast log has another. Casts near the end of a match are the usual miss.');
+  addIssue('cdSpam','Medium','A skill can be cast again and again through its cooldown or cost',cdSpam,'The skill has many more casts than commits (a commit is what spends the resource and starts the cooldown), and some casts come less than a second after the last. Held or spammed input is being activated although it cannot be afforded or is on cooldown. For a teleport such as AstralStep that lets a player cross the map. The check needs the skill to have a cooldown of 10 s or more.');
   var med=median(hits.map(function(x){return x.v})),outl=hits.filter(function(x){return hits.length>=3&&med>0&&x.v>3*med}).map(function(x){return {m:x.m,mn:x.d,t:x.n+' hit '+num(x.v,1)}});
   var crow=Object.keys(cls).map(function(k){var c=cls[k];c.dpm=c.dmg/c.mins;c.tpm=c.taken/c.mins;c.hpm=c.heal/c.mins;c.kdr=c.deaths?c.kills/c.deaths:c.kills;return c});
   var avg=crow.length?crow.reduce(function(s,c){return s+c.dpm},0)/crow.length:0;
